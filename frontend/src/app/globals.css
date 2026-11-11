@@ -1,0 +1,282 @@
+@import "tailwindcss";
+
+/*
+  NOXIA 画面テーマ
+  - 暗めの店内でも読めるダーク配色・大きめ文字
+  - タッチしやすいボタン（最小 56px）
+  - 状態は色だけでなく文字・アイコンでも示す
+  - 背景は暗く（店内でまぶしくない）、ボタン・カード・入力欄は明るい縁取りで背景からはっきり浮かせる
+*/
+@theme {
+  --color-bg: #0b0d12;
+  --color-panel: #1a1e28;
+  --color-panel2: #232836;
+  --color-panel3: #323a4c;
+  --color-border: #4b5367; /* カード・区切り線 */
+  --color-edge: #9aa3b8; /* ボタン・入力欄の縁（白っぽく光らせる） */
+  --color-text: #f6f7f9;
+  --color-muted: #b9bfcd;
+  --color-accent: #5b93ff;
+  --color-accent-strong: #2f6fe8;
+  --color-ok: #35c178;
+  --color-warn: #f3c84b;
+  --color-orange: #f59a3b;
+  --color-danger: #f05b5b;
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 18px;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+/* --- 共通コンポーネント --- */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold select-none transition-transform active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none;
+  min-height: 56px;
+  padding: 0 1.1rem;
+  background: var(--color-panel3);
+  color: var(--color-text);
+  border: 2px solid var(--color-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.btn-sm {
+  min-height: 44px;
+  padding: 0 0.9rem;
+  font-size: 0.95rem;
+}
+.btn-lg {
+  min-height: 68px;
+  padding: 0 1.4rem;
+  font-size: 1.2rem;
+}
+/* 営業中の主操作（酔っていても押し間違えにくい大きさ） */
+.btn-xl {
+  min-height: 84px;
+  padding: 0 1.6rem;
+  font-size: 1.45rem;
+  border-radius: 18px;
+}
+.btn-primary:disabled,
+.btn-ok:disabled {
+  background: var(--color-panel2);
+  border-color: var(--color-border);
+  color: var(--color-muted);
+  box-shadow: none;
+  opacity: 1;
+}
+
+/* トースト（画面下部の大きな通知） */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: min(640px, 92vw);
+  max-width: 92vw;
+  padding: 14px 16px 14px 22px;
+  border-radius: 18px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  animation: toast-in 0.18s ease-out;
+}
+.toast-ok {
+  background: #1d6b45;
+  border: 2px solid var(--color-ok);
+}
+.toast-error {
+  background: #7a2626;
+  border: 2px solid var(--color-danger);
+}
+.toast-info {
+  background: #23314f;
+  border: 2px solid var(--color-accent);
+}
+@keyframes toast-in {
+  from {
+    transform: translate(-50%, 20px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+/* 色付きボタンは同系色の明るい縁と外側の光で、選択中・押せる状態をはっきりさせる */
+.btn-primary {
+  background: var(--color-accent-strong);
+  border-color: #9cc0ff;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(91, 147, 255, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.btn-ok {
+  background: #1f8a55;
+  border-color: #7fe0ab;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(53, 193, 120, 0.3), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.btn-danger {
+  background: #b23a3a;
+  border-color: #ff9c9c;
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(240, 91, 91, 0.3), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.btn-warn {
+  background: #c99a1b;
+  border-color: #ffe08a;
+  color: #111;
+}
+.btn-ghost {
+  background: transparent;
+  box-shadow: none;
+}
+
+.card {
+  background: var(--color-panel);
+  border: 1.5px solid var(--color-border);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.card-2 {
+  background: var(--color-panel2);
+  border: 1.5px solid var(--color-border);
+  border-radius: 14px;
+  padding: 0.9rem;
+}
+
+.input {
+  @apply w-full rounded-xl px-3 outline-none;
+  min-height: 52px;
+  background: #11141b;
+  border: 2px solid var(--color-edge);
+  color: var(--color-text);
+}
+.input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(91, 147, 255, 0.35);
+}
+.input-lg {
+  min-height: 64px;
+  font-size: 1.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+textarea.input {
+  padding: 0.6rem 0.8rem;
+  min-height: 80px;
+}
+
+.label {
+  @apply block text-sm mb-1;
+  color: var(--color-muted);
+}
+
+.badge {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-sm font-semibold;
+  background: var(--color-panel3);
+  border: 1px solid var(--color-border);
+}
+.badge-ok {
+  background: rgba(53, 193, 120, 0.18);
+  border-color: var(--color-ok);
+  color: #8ff0bd;
+}
+.badge-warn {
+  background: rgba(243, 200, 75, 0.2);
+  border-color: var(--color-warn);
+  color: #ffe79a;
+}
+.badge-orange {
+  background: rgba(245, 154, 59, 0.22);
+  border-color: var(--color-orange);
+  color: #ffc98f;
+}
+.badge-danger {
+  background: rgba(240, 91, 91, 0.2);
+  border-color: var(--color-danger);
+  color: #ffb3b3;
+}
+.badge-accent {
+  background: rgba(91, 147, 255, 0.2);
+  border-color: var(--color-accent);
+  color: #bcd2ff;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.table {
+  @apply w-full text-left;
+}
+.table th {
+  @apply text-sm font-semibold py-2 px-2;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+.table td {
+  @apply py-2.5 px-2 align-top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* アラーム段階（色＋文字で示す） */
+.alarm-warn10 {
+  background: rgba(243, 200, 75, 0.16);
+  border-color: var(--color-warn) !important;
+}
+.alarm-warn5 {
+  background: rgba(245, 154, 59, 0.2);
+  border-color: var(--color-orange) !important;
+}
+.alarm-overdue {
+  background: rgba(240, 91, 91, 0.22);
+  border-color: var(--color-danger) !important;
+  animation: pulse-border 1.6s ease-in-out infinite;
+}
+@keyframes pulse-border {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(240, 91, 91, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(240, 91, 91, 0);
+  }
+}
+
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* キーボードの操作説明は、マウス・キーボードのある端末（PC）だけに出す */
+.kbd-hint {
+  display: none;
+}
+@media (pointer: fine) {
+  .kbd-hint {
+    display: block;
+  }
+}

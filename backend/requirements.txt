@@ -1,0 +1,22 @@
+Django==5.2.18
+djangorestframework==3.18.3
+psycopg[binary]==3.3.6
+python-dotenv==1.2.4
+reportlab==4.4.4
+# --- 会計・確定申告統合（2026-11） ---
+# フィールド暗号化（freee/Square トークン・申告の入力・原本ファイル）
+cryptography==50.0.2
+# 原本ファイルの中身判定・画像の再デコード・縮小・知覚ハッシュ、HEIC → JPEG
+filetype==1.2.0
+Pillow==13.0.0
+pillow-heif==1.8.1
+# PDF の読み取り（ページ数・検証）と、将来の公式様式への重ね刷り
+pypdf==7.0.1
+# XLSX 出力（帳簿・年間損益・申告書データ）
+openpyxl==3.1.5
+# XTX（e-Tax 申告データ）の XML 生成と XSD 検証
+lxml==6.1.3
+# 領収書の AI 読取（RECEIPT_AI_PROVIDER=anthropic のときだけ使う。mock では呼ばない）
+anthropic==2.8.0
+# 銀行 CSV の文字コード判定（utf-8/cp932 で判定できないときの保険）
+charset-normalizer==3.5.2

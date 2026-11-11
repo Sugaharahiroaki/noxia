@@ -1,0 +1,142 @@
+{
+  "year": 2026,
+  "status": "draft",
+  "note": "令和8年分（2026年分）。値は 2026-11-11 時点で国税庁タックスアンサー（令和8年4月1日現在法令等）等で確認したもの。verified=false の項目は公式本文で未確認。様式・作成コーナーの令和8年分版は未公表のため、様式依存の項目は令和7年分で作っている。",
+  "income_tax": {
+    "brackets": [[1949000, "0.05", 0], [3299000, "0.10", 97500], [6949000, "0.20", 427500], [8999000, "0.23", 636000], [17999000, "0.33", 1536000], [39999000, "0.40", 2796000], [null, "0.45", 4796000]],
+    "taxable_round_unit": 1000,
+    "final_round_unit": 100,
+    "high_income_surtax_threshold": 330000000,
+    "verified": true,
+    "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+    "checked_on": "2026-11-11"
+  },
+  "surtaxes": {
+    "reconstruction_rate": "0.021",
+    "reconstruction_round": "floor",
+    "defense_rate": null,
+    "verified": true,
+    "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm",
+    "note": "復興特別所得税は基準所得税額×2.1%（1円未満切捨て）。防衛特別所得税は令和9年分から。"
+  },
+  "deductions": {
+    "basic": {
+      "table": [[1320000, 1040000], [3360000, 1040000], [4890000, 1040000], [6550000, 670000], [23500000, 620000], [24000000, 480000], [24500000, 320000], [25000000, 160000], [null, 0]],
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm",
+      "note": "本則62万円＋措法41の16の2の加算（489万円以下42万円、655万円以下5万円）。令和8年12月1日施行、令和8年分以後。11/30以前の準確定申告は改正前の額（未対応）"
+    },
+    "salary_income": {
+      "min_deduction": 740000,
+      "rows": [
+        {"upto": 741000, "type": "zero"},
+        {"upto": 2191000, "type": "minus", "value": 740000},
+        {"upto": 2193000, "type": "fixed", "value": 1451000},
+        {"upto": 2196000, "type": "fixed", "value": 1453000},
+        {"upto": 2200000, "type": "fixed", "value": 1456000},
+        {"upto": 3600000, "type": "step", "rate": "0.7", "minus": 80000},
+        {"upto": 6600000, "type": "step", "rate": "0.8", "minus": 440000},
+        {"upto": 8500000, "type": "linear", "rate": "0.9", "minus": 1100000},
+        {"upto": null, "type": "linear", "rate": "1", "minus": 1950000}
+      ],
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1410.htm",
+      "note": "最低保障74万円（令和8・9年分）。660万円未満は所得税法別表第五（4,000円刻み）の方式。ミセミル year_end_2026.json（出典「令和8年分 年末調整のしかた」）と一致"
+    },
+    "spouse": {
+      "income_limit": 620000,
+      "tiers": [9000000, 9500000, 10000000],
+      "general": [380000, 260000, 130000],
+      "elderly": [480000, 320000, 160000],
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1191.htm"
+    },
+    "spouse_special": {
+      "rows": [[950000, [380000, 260000, 130000]], [1000000, [360000, 240000, 120000]], [1050000, [310000, 210000, 110000]], [1100000, [260000, 180000, 90000]], [1150000, [210000, 140000, 70000]], [1200000, [160000, 110000, 60000]], [1250000, [110000, 80000, 40000]], [1300000, [60000, 40000, 20000]], [1330000, [30000, 20000, 10000]]],
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm"
+    },
+    "dependents": {
+      "income_limit": 620000,
+      "general": 380000,
+      "specific": 630000,
+      "elderly": 480000,
+      "elderly_cohabiting": 580000,
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm"
+    },
+    "specific_relative_special": {
+      "rows": [[850000, 630000], [900000, 610000], [950000, 510000], [1000000, 410000], [1050000, 310000], [1100000, 210000], [1150000, 110000], [1200000, 60000], [1230000, 30000]],
+      "income_floor": 620000,
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm"
+    },
+    "disability": {"general": 270000, "special": 400000, "special_cohabiting": 750000, "verified": false, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1160.htm", "note": "本文未確認"},
+    "widow": {"amount": 270000, "income_limit": 5000000, "verified": false, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1170.htm"},
+    "single_parent": {"amount": 380000, "income_limit": 5000000, "verified": false, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1171.htm", "note": "財務省の令和8年度改正概要では38万円。No.1171 本文で未確認"},
+    "working_student": {"amount": 270000, "income_limit": 890000, "verified": true, "source": "https://www.nta.go.jp/publication/pamph/gensen/2026kaisei.pdf"},
+    "life_insurance": {
+      "new": [[20000, "1", 0], [40000, "0.5", 10000], [80000, "0.25", 20000], [null, null, 40000]],
+      "old": [[25000, "1", 0], [50000, "0.5", 12500], [100000, "0.25", 25000], [null, null, 50000]],
+      "new_general_under23": [[30000, "1", 0], [60000, "0.5", 15000], [120000, "0.25", 30000], [null, null, 60000]],
+      "per_category_cap": 40000,
+      "per_category_cap_under23": 60000,
+      "total_cap": 120000,
+      "round": "ceil",
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1140.htm"
+    },
+    "earthquake": {
+      "cap": 50000,
+      "old_long_term": [[10000, "1", 0], [20000, "0.5", 5000], [null, null, 15000]],
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1145.htm"
+    },
+    "medical": {"threshold": 100000, "threshold_rate": "0.05", "cap": 2000000, "verified": true, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1120.htm"},
+    "donation": {"rate_cap": "0.40", "floor": 2000, "verified": true, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1150.htm"},
+    "blue_special": {"amount": 100000, "requires_approval": true, "verified": true, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2072.htm"},
+    "loss_carryforward": {"years": 3, "blue_only": true, "verified": true, "source": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2070.htm"},
+    "salary_income_max_supported": 20000000
+  },
+  "statement_lines": {
+    "shushi_uchiwakesho": {
+      "form_version": "R5+",
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/yoshiki/01/shinkokusho/pdf/r07/05.pdf",
+      "rows": [
+        ["1", "sales", "売上（収入）金額"], ["2", "household_consumption", "家事消費"], ["3", "other_income", "その他の収入"], ["4", "revenue_total", "計"],
+        ["5", "opening_inventory", "期首商品（製品）棚卸高"], ["6", "purchases", "仕入金額（製品製造原価）"], ["7", "cogs_subtotal", "小計"], ["8", "closing_inventory", "期末商品（製品）棚卸高"], ["9", "cogs", "差引原価"],
+        ["10", "gross_profit", "差引金額"],
+        ["11", "salaries", "給料賃金"], ["12", "outsourcing", "外注工賃"], ["13", "depreciation", "減価償却費"], ["14", "bad_debt", "貸倒金"], ["15", "rent", "地代家賃"], ["16", "interest", "利子割引料"],
+        ["イ", "taxes_dues", "租税公課"], ["ロ", "freight", "荷造運賃"], ["ハ", "utilities", "水道光熱費"], ["ニ", "travel", "旅費交通費"], ["ホ", "communication", "通信費"], ["ヘ", "advertising", "広告宣伝費"], ["ト", "entertainment", "接待交際費"], ["チ", "insurance", "損害保険料"], ["リ", "repair", "修繕費"], ["ヌ", "supplies", "消耗品費"], ["ル", "welfare", "福利厚生費"],
+        ["ヲ〜タ", "custom", "（任意の科目）"], ["レ", "misc_expense", "雑費"], ["17", "other_expenses_subtotal", "小計"],
+        ["18", "expenses_total", "経費計"], ["19", "income_before_family", "専従者控除前の所得金額"], ["20", "family_employee", "専従者控除"], ["21", "business_income", "所得金額"]
+      ]
+    },
+    "aoiro_kessansho": {
+      "form_version": "R5+",
+      "verified": true,
+      "source": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/yoshiki/01/shinkokusho/pdf/r07/10.pdf",
+      "rows": [
+        ["1", "sales", "売上（収入）金額（雑収入を含む）"], ["2", "opening_inventory", "期首商品（製品）棚卸高"], ["3", "purchases", "仕入金額（製品製造原価）"], ["4", "cogs_subtotal", "小計"], ["5", "closing_inventory", "期末商品（製品）棚卸高"], ["6", "cogs", "差引原価"], ["7", "gross_profit", "差引金額"],
+        ["8", "taxes_dues", "租税公課"], ["9", "freight", "荷造運賃"], ["10", "utilities", "水道光熱費"], ["11", "travel", "旅費交通費"], ["12", "communication", "通信費"], ["13", "advertising", "広告宣伝費"], ["14", "entertainment", "接待交際費"], ["15", "insurance", "損害保険料"], ["16", "repair", "修繕費"], ["17", "supplies", "消耗品費"], ["18", "depreciation", "減価償却費"], ["19", "welfare", "福利厚生費"], ["20", "salaries", "給料賃金"], ["21", "outsourcing", "外注工賃"], ["22", "interest", "利子割引料"], ["23", "rent", "地代家賃"], ["24", "bad_debt", "貸倒金"], ["25〜30", "custom", "（任意の科目）"], ["31", "misc_expense", "雑費"], ["32", "expenses_total", "計"], ["33", "income_before_family", "差引金額"],
+        ["38", "family_employee", "専従者給与"], ["43", "income_before_blue", "青色申告特別控除前の所得金額"], ["44", "blue_deduction", "青色申告特別控除額"], ["45", "business_income", "所得金額"]
+      ]
+    }
+  },
+  "forms": {
+    "shinkokusho_1_2": {"version": "R8（案）", "final": false, "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/pdf/0026006-063.pdf"},
+    "shushi_uchiwakesho": {"version": "R5+（令和8年分の改訂は未公表）", "final": false, "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/yoshiki/01/shinkokusho/pdf/r07/05.pdf"},
+    "aoiro_kessansho": {"version": "R5+（令和8年分の改訂は未公表）", "final": false, "url": "https://www.nta.go.jp/taxes/shiraberu/shinkoku/yoshiki/01/shinkokusho/pdf/r07/10.pdf"},
+    "xtx": {"verified": false, "spec": "e-Tax 仕様公開 令和9年1月4日受付開始分（ドラフト 2026-10-30、確定版 2026-11-25 掲載予定）", "url": "https://www.e-tax.nta.go.jp/shiyo/index.html"}
+  },
+  "sources": [
+    {"title": "No.2260 所得税の税率", "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2260.htm", "checked_on": "2026-11-11"},
+    {"title": "No.1199 基礎控除", "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1199.htm", "checked_on": "2026-11-11"},
+    {"title": "No.1410 給与所得控除", "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1410.htm", "checked_on": "2026-11-11"},
+    {"title": "No.2072 青色申告特別控除", "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2072.htm", "checked_on": "2026-11-11"},
+    {"title": "令和8年度税制改正による所得税の基礎控除の引上げ等について", "url": "https://www.nta.go.jp/users/gensen/2026kiso/index.htm", "checked_on": "2026-11-11"},
+    {"title": "確定申告書等作成コーナー", "url": "https://www.keisan.nta.go.jp/", "checked_on": "2026-11-11"},
+    {"title": "e-Tax 仕様公開", "url": "https://www.e-tax.nta.go.jp/shiyo/index.html", "checked_on": "2026-11-11"}
+  ]
+}

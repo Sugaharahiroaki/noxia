@@ -1,0 +1,16 @@
+{
+  "name": "NOXIA - ラウンジ店舗運営",
+  "short_name": "NOXIA",
+  "description": "iPad 1台で注文・会計・延長管理・バック集計・日締め・店舗管理",
+  "start_url": "/floor",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "lang": "ja",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
