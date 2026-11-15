@@ -196,7 +196,7 @@ def calculate_for_payment(taxpayer, employee, *, target_amount, period: tuple[da
     """支払い1回分の計算（DB は読むだけ）。"""
     reasons = []
     if taxpayer is None:
-        reasons.append("この店舗の事業者（源泉徴収義務者）が設定されていません。「経理設定」で店舗の事業者を設定してください。")
+        reasons.append("この店舗の事業者（お店を運営している法人または個人事業主）が登録されていません。「会計設定」で 1 回だけ設定してください。")
     if period is None:
         reasons.append("契約の報酬計算期間が未設定のため、控除額（5,000円×日数）を計算できません。")
     rule = rule_for("hostess_fee", paid_on)

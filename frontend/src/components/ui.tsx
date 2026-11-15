@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { errorMessage } from "@/lib/api";
+import { ApiError, errorMessage } from "@/lib/api";
+import { TaxpayerSetup } from "./TaxpayerSetup";
 
 export function Spinner({ label = "読み込み中…" }: { label?: string }) {
   return (
@@ -14,6 +15,8 @@ export function Spinner({ label = "読み込み中…" }: { label?: string }) {
 
 export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   if (!error) return null;
+  // 店舗の事業者が未登録: エラーではなく、その場で 1 回設定してもらう
+  if (error instanceof ApiError && error.code === "taxpayer_required") return <TaxpayerSetup />;
   return (
     <div className="card-2 flex items-start gap-3" style={{ borderColor: "var(--color-danger)" }} role="alert">
       <span className="text-xl" aria-hidden>

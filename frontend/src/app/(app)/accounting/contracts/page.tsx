@@ -10,7 +10,7 @@ import { useSession } from "@/lib/session";
 import type { CastContract, Employee } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
-type ContractsResp = { contracts: CastContract[]; checklist: { key: string; label: string }[] };
+type ContractsResp = { contracts: CastContract[]; checklist: { key: string; label: string }[]; withholding_enabled?: boolean };
 type PayItemRow = { code: string; label: string; withholding_target: boolean };
 
 const REVIEW_BADGE: Record<string, string> = { unreviewed: "badge badge-warn", needs_review: "badge badge-orange", confirmed: "badge badge-ok" };
@@ -25,12 +25,18 @@ export default function ContractsPage() {
   const [err, setErr] = useState<unknown>(null);
   const contracts = q.data?.contracts ?? [];
   const withoutContract = (emps.data ?? []).filter((e) => !contracts.some((c) => c.employee === e.id));
+  const withholding = q.data?.withholding_enabled ?? false;
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="キャスト契約・税務区分"
-        subtitle="契約書の名称（雇用・業務委託）だけで税務区分は決まりません。働き方の実態を確認し、経営者が「給与所得」か「ホステス等の報酬・料金」かを確定してください。確定するまで日払いの源泉所得税は計算せず「要確認」になります。"
+        subtitle={
+          "働く人ごとに雇用形態（雇用・業務委託）と報酬の計算期間を登録します。まだ従業員に登録していない人も「＋ 契約を登録」から名前を入れて登録できます。" +
+          (withholding
+            ? "税務区分（給与所得／ホステス等の報酬／源泉徴収なしの業務委託）は経営者が実態を見て確定し、確定するまで日払いの源泉所得税は「要確認」になります。"
+            : "この店舗は日払いで源泉所得税を差し引かない設定なので、税務区分が未確認でもお渡しや帳簿・CSV は止まりません。")
+        }
         actions={
           can("contracts.edit") && (
             <button className="btn btn-primary" onClick={() => setEditing("new")}>
@@ -46,7 +52,7 @@ export default function ContractsPage() {
           <span className="font-semibold">契約が未登録: </span>
           {withoutContract.map((e) => e.display_name).join("、")}
           <span className="text-sm ml-2" style={{ color: "var(--color-muted)" }}>
-            （日払いの源泉所得税は「要確認」になります）
+            {withholding ? "（日払いの源泉所得税は「要確認」になります）" : "（源泉徴収しない設定の店舗なので、お渡しには影響しません）"}
           </span>
         </div>
       )}
@@ -123,10 +129,12 @@ export default function ContractsPage() {
         <ContractModal
           contract={editing === "new" ? null : editing}
           employees={emps.data ?? []}
+          contractedIds={new Set(contracts.map((c) => c.employee))}
+          canAddPerson={can("employees.edit")}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null);
-            await q.reload();
+            await Promise.all([q.reload(), emps.reload()]);
           }}
         />
       )}
@@ -146,10 +154,29 @@ export default function ContractsPage() {
   );
 }
 
-function ContractModal({ contract, employees, onClose, onSaved }: { contract: CastContract | null; employees: Employee[]; onClose: () => void; onSaved: () => void }) {
+function ContractModal({
+  contract,
+  employees,
+  contractedIds,
+  canAddPerson,
+  onClose,
+  onSaved,
+}: {
+  contract: CastContract | null;
+  employees: Employee[];
+  contractedIds: Set<number>;
+  canAddPerson: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const toast = useToast();
+  // 契約がまだ無い人を先に並べる。全員契約済み（または誰もいない）なら「新しい人を登録」から始める
+  const sorted = [...employees].sort((a, b) => Number(contractedIds.has(a.id)) - Number(contractedIds.has(b.id)));
+  const firstFree = sorted.find((e) => !contractedIds.has(e.id));
+  const [isNew, setIsNew] = useState(!contract && canAddPerson && !firstFree);
+  const [person, setPerson] = useState({ display_name: "", full_name: "", role: "cast" });
   const [f, setF] = useState({
-    employee: contract?.employee ?? employees[0]?.id ?? 0,
+    employee: contract?.employee ?? firstFree?.id ?? sorted[0]?.id ?? 0,
     contract_type: contract?.contract_type ?? "outsourcing",
     start_date: contract?.start_date ?? new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }),
     end_date: contract?.end_date ?? "",
@@ -174,17 +201,22 @@ function ContractModal({ contract, employees, onClose, onSaved }: { contract: Ca
           </button>
           <button
             className="btn btn-primary"
-            disabled={busy}
+            disabled={busy || (isNew ? !person.display_name.trim() : !f.employee)}
             onClick={async () => {
               setBusy(true);
               setErr(null);
               try {
-                const body = { ...f, end_date: f.end_date || null, deductions };
+                const base = { ...f, end_date: f.end_date || null, deductions };
+                const body = !contract && isNew
+                  ? { ...base, employee: undefined, new_employee: { display_name: person.display_name.trim(), full_name: person.full_name.trim(), role: person.role } }
+                  : base;
                 const saved = contract
                   ? await api<CastContract>(`/api/accounting/contracts/${contract.id}`, { method: "PATCH", body })
                   : await api<CastContract>("/api/accounting/contracts", { method: "POST", idempotencyKey: newIdempotencyKey(), body });
                 if (file) await uploadFile(`/api/accounting/contracts/${saved.id}/document`, file);
-                toast.show({ message: "契約を保存しました" + (saved.tax_review_status === "confirmed" ? "" : "（税務区分は経営者の確認待ち）") });
+                toast.show({
+                  message: (isNew && !contract ? `${saved.employee_name}さんを登録し、` : "") + "契約を保存しました" + (saved.tax_review_status === "confirmed" ? "" : "（税務区分は経営者の確認待ち）"),
+                });
                 onSaved();
               } catch (e) {
                 setErr(e);
@@ -198,17 +230,47 @@ function ContractModal({ contract, employees, onClose, onSaved }: { contract: Ca
         </>
       }
     >
+      {!contract && canAddPerson && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button type="button" className={`btn ${!isNew ? "btn-primary" : ""}`} disabled={employees.length === 0} onClick={() => setIsNew(false)}>
+            登録済みの人から選ぶ
+          </button>
+          <button type="button" className={`btn ${isNew ? "btn-primary" : ""}`} onClick={() => setIsNew(true)}>
+            ＋ 新しい人を登録する
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field label="キャスト">
-          <select className="input" value={f.employee} disabled={!!contract} onChange={(e) => set("employee", Number(e.target.value))}>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.display_name}（{e.full_name}）
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="契約区分" hint="契約区分を変えると、税務区分の確認はやり直しになります。">
+        {isNew && !contract ? (
+          <>
+            <Field label="名前（表示名・源氏名）" hint="お店で呼ぶ名前。日払い・出勤の画面にこの名前で出ます。">
+              <input className="input" value={person.display_name} autoFocus onChange={(e) => setPerson((p) => ({ ...p, display_name: e.target.value }))} />
+            </Field>
+            <Field label="氏名（任意）" hint="空なら表示名と同じにします。あとから「従業員管理」で直せます。">
+              <input className="input" value={person.full_name} onChange={(e) => setPerson((p) => ({ ...p, full_name: e.target.value }))} />
+            </Field>
+            <Field label="お店での役割">
+              <select className="input" value={person.role} onChange={(e) => setPerson((p) => ({ ...p, role: e.target.value }))}>
+                <option value="cast">キャスト</option>
+                <option value="staff">スタッフ</option>
+                <option value="manager">店長</option>
+              </select>
+            </Field>
+          </>
+        ) : (
+          <Field label="対象の人">
+            <select className="input" value={f.employee} disabled={!!contract} onChange={(e) => set("employee", Number(e.target.value))}>
+              {sorted.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.display_name}
+                  {e.full_name && e.full_name !== e.display_name ? `（${e.full_name}）` : ""}
+                  {!contract && contractedIds.has(e.id) ? " ・契約あり" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <Field label="雇用形態（契約区分）" hint="雇用か業務委託か。変えると税務区分の確認はやり直しになります。">
           <select className="input" value={f.contract_type} onChange={(e) => set("contract_type", e.target.value)}>
             {CONTRACT_TYPES.map((t) => (
               <option key={t.key} value={t.key}>

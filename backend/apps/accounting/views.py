@@ -30,10 +30,10 @@ from apps.core.idempotency import idempotent
 from apps.core.models import Store, User
 from apps.core.money import D
 from apps.core.permissions import (
-    CAP_ACCOUNTING_BOOKKEEP, CAP_ACCOUNTING_FREEE, CAP_ACCOUNTING_SETTINGS, CAP_ACCOUNTING_VIEW, CAP_CONTRACTS_EDIT, CAP_PAYROLL_PAY,
+    CAP_ACCOUNTING_BOOKKEEP, CAP_ACCOUNTING_FREEE, CAP_ACCOUNTING_SETTINGS, CAP_ACCOUNTING_VIEW, CAP_CONTRACTS_EDIT, CAP_EMPLOYEES_EDIT, CAP_PAYROLL_PAY,
     CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_TAX_ADVISE, CAP_TAX_DECIDE, CAP_TAX_VIEW, StoreCaps, ensure_store_access, is_reauthenticated,
 )
-from apps.staff.models import Employee
+from apps.staff.models import Employee, EmployeeStoreAssignment
 
 from . import compensation, exports as exports_mod, freee, journals, jp_holidays, pdf, reports, services
 from .models import (
@@ -77,7 +77,7 @@ def get_taxpayer(request, *, required: bool = True) -> TaxPayer | None:
         return tp
     tp = compensation.taxpayer_for(request.store)
     if tp is None and required:
-        raise ApiError("taxpayer_required", "この店舗の事業者（源泉徴収義務者）が未設定です。「経理設定」で事業者を登録し、店舗に設定してください。", status=409)
+        raise ApiError("taxpayer_required", "この店舗の事業者（お店を運営している法人または個人事業主）がまだ登録されていません。帳簿・損益・CSV はこの事業者の帳簿として作ります。1 店舗につき 1 回の設定で、働く人ごとの源泉徴収とは関係ありません。", status=409)
     return tp
 
 
@@ -317,18 +317,48 @@ class ContractsView(APIView):
         qs = CastContract.objects.filter(company=request.store.company, is_active=True).select_related("employee", "tax_reviewed_by")
         if request.query_params.get("employee"):
             qs = qs.filter(employee_id=request.query_params["employee"])
+        st = getattr(request.store, "settings", None)
         return Response({"contracts": CastContractSerializer(qs, many=True, context={"request": request}).data,
-                         "checklist": [{"key": k, "label": v} for k, v in compensation.TAX_CHECKLIST]})
+                         "checklist": [{"key": k, "label": v} for k, v in compensation.TAX_CHECKLIST],
+                         # 日払いで源泉所得税を差し引くか（店舗設定）。オフなら契約・税務区分が未確認でもお渡しは止まらない
+                         "withholding_enabled": bool(getattr(st, "withholding_enabled", False))})
 
     @idempotent
     @transaction.atomic
     def post(self, request):
         require_any(request, CAP_CONTRACTS_EDIT)
-        ser = CastContractSerializer(data=request.data, context={"request": request})
+        data = dict(request.data) if isinstance(request.data, dict) else request.data.dict()
+        new_emp = data.pop("new_employee", None)
+        if new_emp:
+            # 契約の登録と同時に、まだ従業員として登録されていない人を作る（同じ取引の中なので、契約が保存できなければ人も作られない）
+            data["employee"] = _create_employee_for_contract(request, new_emp, data.get("start_date")).id
+        ser = CastContractSerializer(data=data, context={"request": request})
         ser.is_valid(raise_exception=True)
         c = ser.save(company=request.store.company, created_by=request.user)
         audit(request, "accounting.contract.create", target=c, changes={"employee": c.employee.display_name, "contract_type": c.contract_type})
         return Response(CastContractSerializer(c, context={"request": request}).data, status=201)
+
+
+def _create_employee_for_contract(request, new_emp, start_date) -> Employee:
+    require_any(request, CAP_EMPLOYEES_EDIT)
+    if not isinstance(new_emp, dict):
+        raise ApiError("validation_error", "新しく登録する人の情報が不正です。")
+    display = (new_emp.get("display_name") or "").strip()
+    full = (new_emp.get("full_name") or "").strip() or display
+    role = new_emp.get("role") or "cast"
+    if not display:
+        raise ApiError("validation_error", "名前（表示名・源氏名）を入力してください。", details={"new_employee.display_name": "必須"})
+    if role not in ("cast", "staff", "manager"):
+        raise ApiError("validation_error", "店での役割の値が不正です。", details={"new_employee.role": "不正"})
+    if Employee.objects.filter(company=request.store.company, display_name=display, is_active=True,
+                               assignments__store=request.store, assignments__is_active=True).exists():
+        raise ApiError("duplicate_employee", f"「{display}」さんはすでにこの店舗に登録されています。一覧から選んでください。", status=409,
+                       details={"new_employee.display_name": "登録済み"})
+    hired = parse_date(start_date) if isinstance(start_date, str) else None
+    emp = Employee.objects.create(company=request.store.company, full_name=full[:80], display_name=display[:60], hired_on=hired)
+    EmployeeStoreAssignment.objects.create(employee=emp, store=request.store, role=role, started_on=hired)
+    audit(request, "employee.create", target=emp, changes={"display_name": emp.display_name, "role": role, "via": "contract"})
+    return emp
 
 
 class ContractDetailView(APIView):

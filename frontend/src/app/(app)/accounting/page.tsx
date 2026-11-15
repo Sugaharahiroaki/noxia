@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, PageHeader, Spinner, Stat } from "@/components/ui";
+import { TaxpayerSetup } from "@/components/TaxpayerSetup";
 import { useToast } from "@/components/Toast";
 import { api, downloadFile, newIdempotencyKey } from "@/lib/api";
 import { ADJUSTMENT_KINDS, CATEGORY_TABS, MONTH_STATUS_BADGE, PAID_FROM, REMITTANCE_METHODS, todayJst } from "@/lib/accounting";
@@ -44,15 +44,7 @@ export default function WithholdingPage() {
           </span>
         </div>
       )}
-      {overview.data && !tp && (
-        <div className="card space-y-2">
-          <p className="text-lg font-semibold">この店舗の事業者（源泉徴収義務者）が設定されていません。</p>
-          <p style={{ color: "var(--color-muted)" }}>法人または個人事業主の情報（所轄税務署・整理番号など）を登録し、店舗に設定すると集計できます。</p>
-          <Link href="/accounting/settings" className="btn btn-primary w-fit">
-            経理設定へ
-          </Link>
-        </div>
-      )}
+      {overview.data && !tp && <TaxpayerSetup />}
       {tp && (
         <>
           <div className="card-2 flex flex-wrap items-center gap-3">
