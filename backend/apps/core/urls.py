@@ -13,6 +13,7 @@ urlpatterns = [
     path("auth/change-password", views.ChangePasswordView.as_view()),
     path("auth/accept-invite", views.AcceptInviteView.as_view()),
     path("store/settings", views.StoreSettingsView.as_view()),
+    path("store/void-pin", views.StoreVoidPinView.as_view()),
     path("store/business-date", views.BusinessDateView.as_view()),
     path("audit/logs", views.AuditLogsView.as_view()),
     path("companies/<int:company_id>", views.CompanyDetailView.as_view()),

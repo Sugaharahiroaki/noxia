@@ -347,7 +347,10 @@ class RoleTests(TenancyBase):
         r = m.put("/api/store/settings", {"nomination_fee": "1200"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(Decimal(r.json()["nomination_fee"]), Decimal("1200"))
-        self.assertEqual(m.get("/api/audit/logs?action=settings.update").json()[0]["action"], "settings.update")
+        # 操作履歴はオーナーだけが見られる（店長＝店舗タブレットの共有アカウントには出さない）
+        self.assertEqual(m.get("/api/audit/logs").status_code, 403)
+        o = client_for(self.owner_a, self.a1.store)
+        self.assertEqual(o.get("/api/audit/logs?action=settings.update").json()[0]["action"], "settings.update")
 
     def test_platform_operator_access_is_logged(self):
         op = User.objects.create_user(username="op", password=PASSWORD, is_platform_operator=True)

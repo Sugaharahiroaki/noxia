@@ -23,6 +23,7 @@ urlpatterns = [
     path("checkouts/<int:checkout_id>", views.CheckoutDetailView.as_view()),
     path("checkouts/<int:checkout_id>/handwrite", views.CheckoutHandwriteView.as_view()),
     path("checkouts/<int:checkout_id>/void", views.CheckoutVoidView.as_view()),
+    path("checkouts/<int:checkout_id>/delete", views.CheckoutDeleteView.as_view()),
     path("checkouts/<int:checkout_id>/refunds", views.CheckoutRefundsView.as_view()),
     path("receivables", views.ReceivableListView.as_view()),
     path("receivables/<int:receivable_id>/collect", views.ReceivableCollectView.as_view()),

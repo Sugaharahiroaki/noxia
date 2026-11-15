@@ -179,6 +179,10 @@ class StoreSettings(TimestampedModel):
     # 店長が自店舗の領収書を承認できるか（既定は不可。承認はオーナー・経理担当）
     manager_can_approve_expenses = models.BooleanField("店長が領収書を承認できる", default=False)
     manager_approve_limit = models.DecimalField("店長が承認できる1件の上限（null=制限なし）", max_digits=12, decimal_places=2, null=True, blank=True)
+    # 会計の取消（記録ごと削除）の 4 桁の暗証番号（ハッシュ）。5 回間違えると 10 分間止める（apps/core/void_pin.py）
+    void_pin_hash = models.CharField("会計取消の暗証番号（ハッシュ）", max_length=128, blank=True, default="")
+    void_pin_failed_count = models.PositiveSmallIntegerField(default=0)
+    void_pin_locked_until = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "店舗設定"

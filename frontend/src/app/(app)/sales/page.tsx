@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { DateRangeBar, useDateRange } from "@/components/DateRange";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Stat, type SaveState } from "@/components/ui";
-import { api, downloadFile, newIdempotencyKey } from "@/lib/api";
+import { PinPad } from "@/components/PinPad";
+import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { fmtDate, fmtTime, LINE_TYPE_LABELS, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { Checkout, Receivable } from "@/lib/types";
@@ -284,21 +285,14 @@ export default function SalesPage() {
       )}
 
       {voidTarget && (
-        <VoidDialog
+        <DeleteCheckoutDialog
           checkout={voidTarget}
           onClose={() => setVoidTarget(null)}
-          onSubmit={async (reason, terminalDone) => {
-            setSave({ kind: "saving", label: "取消中…" });
-            try {
-              await api(`/api/checkouts/${voidTarget.id}/void`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { reason, terminal_refund_done: terminalDone } });
-              setSave({ kind: "saved", label: "会計を取り消しました" });
-              setVoidTarget(null);
-              setDetail(null);
-              await reloadAll();
-            } catch (e) {
-              setSave({ kind: "error", error: e });
-              throw e;
-            }
+          onDeleted={async (mode) => {
+            setSave({ kind: "saved", label: `会計#${voidTarget.number} を取り消しました（${mode === "refund" ? `${yen(voidTarget.total)} をお客様に返してください` : "伝票は会計前に戻りました"}）` });
+            setVoidTarget(null);
+            setDetail(null);
+            await reloadAll();
           }}
         />
       )}
@@ -343,45 +337,70 @@ export default function SalesPage() {
   );
 }
 
-function VoidDialog({ checkout, onClose, onSubmit }: { checkout: Checkout; onClose: () => void; onSubmit: (reason: string, terminalDone: boolean) => Promise<void> }) {
-  const [reason, setReason] = useState("");
-  const [terminalDone, setTerminalDone] = useState(false);
+/** 会計の取消: 理由は聞かず、店舗の 4 桁の暗証番号を入れると記録ごと消す（伝票は会計前に戻る） */
+function DeleteCheckoutDialog({ checkout, onClose, onDeleted }: { checkout: Checkout; onClose: () => void; onDeleted: (mode: "refund" | "redo") => Promise<void> }) {
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const [resetKey, setResetKey] = useState(0);
+  const [mode, setMode] = useState<"refund" | "redo" | null>(null);
   const hasCard = checkout.payments.some((p) => p.method === "card" && p.status === "valid");
+  const code = err instanceof ApiError ? err.code : "";
+  const locked = code === "void_pin_locked" || code === "void_pin_not_set";
+
+  async function submit(pin: string) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/api/checkouts/${checkout.id}/delete`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { pin, mode } });
+      await onDeleted(mode ?? "redo");
+    } catch (e) {
+      setErr(e);
+      setResetKey((k) => k + 1);
+      setBusy(false);
+    }
+  }
+
   return (
-    <ConfirmDialog
-      title={`会計#${checkout.number} を取り消す`}
-      confirmLabel="会計を取り消す"
-      danger
-      busy={busy}
-      onCancel={onClose}
-      onConfirm={async () => {
-        if (!reason.trim()) return;
-        setBusy(true);
-        try {
-          await onSubmit(reason.trim(), terminalDone);
-        } catch {
-          /* 表示済み */
-        } finally {
-          setBusy(false);
-        }
-      }}
+    <Modal
+      title={`会計#${checkout.number}（${yen(checkout.total)}）を取り消す`}
+      onClose={busy ? undefined : onClose}
+      footer={
+        <button className="btn" onClick={onClose} disabled={busy}>
+          やめる
+        </button>
+      }
     >
-      <p className="text-sm mb-2">支払いごとに返金記録を作り、明細は伝票に戻ります（伝票は営業中に戻ります）。バックも打ち消されます。</p>
-      {hasCard && (
-        <div className="card-2 mb-2" style={{ borderColor: "var(--color-warn)" }}>
-          <p className="text-sm font-semibold">カード支払いがあります。</p>
-          <p className="text-sm">アプリ内の取消と、決済端末側の取消・返金は別の操作です。端末側で取消・返金を行ってください。</p>
-          <label className="flex items-center gap-2 mt-2">
-            <input type="checkbox" checked={terminalDone} onChange={(e) => setTerminalDone(e.target.checked)} />
-            決済端末側の取消・返金を実施した
-          </label>
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <button type="button" className={`btn btn-lg ${mode === "refund" ? "btn-primary" : ""}`} style={{ flexDirection: "column", alignItems: "flex-start", minHeight: 84 }} disabled={busy} onClick={() => setMode("refund")}>
+            <span>お客様に全額返す</span>
+            <span className="text-sm font-normal" style={{ opacity: 0.8 }}>伝票ごと取消。女の子のバックは給与に残ります</span>
+          </button>
+          <button type="button" className={`btn btn-lg ${mode === "redo" ? "btn-primary" : ""}`} style={{ flexDirection: "column", alignItems: "flex-start", minHeight: 84 }} disabled={busy} onClick={() => setMode("redo")}>
+            <span>打ち間違い（会計し直す）</span>
+            <span className="text-sm font-normal" style={{ opacity: 0.8 }}>伝票を会計前に戻します</span>
+          </button>
         </div>
-      )}
-      <Field label="取消理由（必須）">
-        <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-      </Field>
-    </ConfirmDialog>
+        <p className="text-sm">どちらも会計の記録は消え、売上・レジの計算からも消えます。理由の入力はありません。</p>
+        {hasCard && (
+          <p className="card-2 text-sm" style={{ borderColor: "var(--color-warn)" }}>
+            カード払いがあります。決済端末（または決済会社の管理画面）でもカードの取消をしてください。
+          </p>
+        )}
+        {mode && (
+          <>
+            <p className="font-semibold text-center">取消用の 4 桁の暗証番号を入れてください</p>
+            <PinPad onComplete={submit} disabled={busy || locked} resetKey={resetKey} />
+          </>
+        )}
+        {busy && <p className="text-center text-sm">取り消し中…</p>}
+        {err ? (
+          <p className="text-center font-semibold" role="alert" style={{ color: "var(--color-danger)" }}>
+            {errorMessage(err)}
+          </p>
+        ) : null}
+      </div>
+    </Modal>
   );
 }
 

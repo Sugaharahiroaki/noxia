@@ -1203,7 +1203,7 @@ def _conn_payload(conn: FreeeConnection) -> dict:
     return {
         "mode": conn.mode, "status": conn.status, "freee_company_id": conn.freee_company_id, "freee_company_name": conn.freee_company_name,
         "connected_at": conn.connected_at, "sync_from": conn.sync_from, "token_expires_at": conn.token_expires_at,
-        "has_token": bool(conn.access_token), "last_error": conn.last_error, "live_enabled": freee.live_enabled(), "sync_counts": counts,
+        "has_token": bool(conn.access_token), "last_error": conn.last_error, "live_enabled": freee.live_enabled(), "setup": freee.setup_status(), "sync_counts": counts,
     }
 
 

@@ -33,10 +33,14 @@ class StoreSerializer(serializers.ModelSerializer):
 
 class StoreSettingsSerializer(serializers.ModelSerializer):
     default_unlimited_course_name = serializers.CharField(source="default_unlimited_course.name", read_only=True, default=None)
+    void_pin_set = serializers.SerializerMethodField()
 
     class Meta:
         model = StoreSettings
-        exclude = ["store", "created_at", "updated_at"]
+        exclude = ["store", "created_at", "updated_at", "void_pin_hash", "void_pin_failed_count", "void_pin_locked_until"]
+
+    def get_void_pin_set(self, obj) -> bool:
+        return bool(obj.void_pin_hash)
 
     def validate_default_unlimited_course(self, course):
         if course is None:

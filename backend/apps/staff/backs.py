@@ -173,6 +173,29 @@ def settle_entries_for_checkout(checkout, lines, *, user, discount_ratio: Decima
             entry.save()
 
 
+def undo_entries_for_checkout(checkout):
+    """
+    会計の削除（記録ごと消す）: 打消しエントリは作らず、会計前の状態に戻す。
+    - 会計のときに作られたエントリは消す（もう一度会計すると作り直される）
+    - 注文のときからあったエントリは、会計との結び付きを外し、会計で確定したものは未確定に戻す（注文時確定のものはそのまま）
+    - 打消しの関係があるエントリは、結び付きを外すだけ（履歴を壊さない）
+    """
+    from apps.core.models import BackConfirmTiming
+
+    for e in BackEntry.objects.select_for_update().filter(checkout=checkout):
+        if e.reversal_of_id or e.reversals.exists():
+            BackEntry.objects.filter(pk=e.pk).update(checkout=None)
+            continue
+        if checkout.confirmed_at and e.created_at >= checkout.confirmed_at:
+            e.delete()
+            continue
+        e.checkout = None
+        if e.status == BackEntryStatus.CONFIRMED and e.confirm_timing != BackConfirmTiming.ORDER:
+            e.status = BackEntryStatus.PENDING
+            e.confirmed_at = None
+        e.save(update_fields=["checkout", "status", "confirmed_at"])
+
+
 def confirm_payment_timing_entries(checkout, *, now=None):
     now = now or timezone.now()
     BackEntry.objects.filter(checkout=checkout, status=BackEntryStatus.PENDING, confirm_timing="payment").update(

@@ -15,7 +15,7 @@ from apps.core.models import Store
 from apps.core.money import D, ZERO
 from apps.inventory.services import record_sale, reverse_sale
 from apps.staff import backs as backs_svc
-from apps.staff.models import Employee
+from apps.staff.models import BackEntry, BackEntryStatus, Employee
 
 from .models import (
     Checkout, CheckoutStatus, CourseEntry, CourseEvent, LineStatus, LineType, OrderLine, OrderLineBackTarget, Payment,
@@ -582,6 +582,97 @@ def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payme
 
 
 # --- 取消・返金 -----------------------------------------------------------------
+@transaction.atomic
+def cancel_checkout_full(store: Store, user, checkout_id) -> dict:
+    """
+    会計の取消（お客様に全額返す）。理由は聞かない。会計・支払い・ツケの記録を消し、伝票の明細も取り消して伝票を閉じる。
+    売上・レジの理論現金からこの会計は消える。女の子のバック（指名・同伴を含む）は確定のまま残し、給与に入る（お店の負担）。
+    締めた営業日の会計・一部返金を記録した会計・ツケを回収済みの会計は取り消せない。
+    """
+    from apps.cash.models import BusinessDay
+
+    checkout = Checkout.objects.select_for_update().filter(id=checkout_id, store=store).first()
+    if checkout is None:
+        raise ApiError("not_found", "会計が見つかりません（すでに取り消されたかもしれません）。", status=404)
+    if checkout.status != CheckoutStatus.CONFIRMED:
+        raise ApiError("already_voided", "この会計はすでに取消済みです。", status=409)
+    day = BusinessDay.objects.filter(store=store, date=checkout.business_date).first()
+    if day is None or day.status != "open":
+        raise ApiError("day_closed", "締めた営業日の会計は取り消せません。「開店・日締め・現金」でその営業日を再開してから取り消してください。", status=409)
+    if checkout.refunds.exists():
+        raise ApiError("has_refunds", "一部返金を記録した会計は取り消せません。", status=409)
+    receivables = Receivable.objects.filter(checkout=checkout)
+    if ReceivableCollection.objects.filter(receivable__in=receivables).exists():
+        raise ApiError("receivable_collected", "ツケを回収済みの会計は取り消せません。", status=409)
+    now = timezone.now()
+    payments = list(checkout.payments.all())
+    live = BackEntry.objects.filter(checkout=checkout, status__in=[BackEntryStatus.PENDING, BackEntryStatus.CONFIRMED],
+                                    reversal_of__isnull=True, reversals__isnull=True)
+    kept_backs = sum((e.amount for e in live), ZERO)
+    summary = {
+        "checkout_id": checkout.id, "number": checkout.number, "business_date": checkout.business_date.isoformat(),
+        "total": str(checkout.total), "visit_id": checkout.visit_id, "mode": "refund", "kept_backs": str(kept_backs),
+        "payments": [{"method": p.method, "amount": str(p.amount)} for p in payments],
+        "card": any(p.method == PaymentMethod.CARD for p in payments),
+    }
+    # バックは給与に残す: 未確定のものも確定にし、会計との結び付きだけ外す
+    live.filter(status=BackEntryStatus.PENDING).update(status=BackEntryStatus.CONFIRMED, confirmed_at=now)
+    BackEntry.objects.filter(checkout=checkout).update(checkout=None)
+    receivables.delete()
+    OrderLine.objects.filter(checkout=checkout).update(status=LineStatus.CANCELLED, checkout=None, cancelled_by=user, cancelled_at=now)
+    visit = Visit.objects.select_for_update().get(pk=checkout.visit_id)
+    checkout.delete()
+    # ほかに有効な会計・未会計の明細が無ければ、伝票ごと取消にする
+    if not visit.checkouts.filter(status=CheckoutStatus.CONFIRMED).exists() and not visit.lines.filter(status=LineStatus.ACTIVE).exists():
+        visit.status = VisitStatus.CANCELLED
+        visit.closed_at = now
+        visit.save(update_fields=["status", "closed_at", "updated_at"])
+        visit.course_entries.filter(is_active=True).update(is_active=False, ended_at=now)
+    return summary
+
+
+@transaction.atomic
+def delete_checkout(store: Store, user, checkout_id) -> dict:
+    """
+    会計の取消（記録ごと削除）。理由は聞かない。会計・支払い・ツケの記録を消し、明細を伝票に戻す（伝票は会計前に戻る）。
+    バックは会計前の状態に戻す。売上・レジの理論現金・帳簿からもこの会計は消える。
+    締めた営業日の会計・一部返金を記録した会計・ツケを回収済みの会計は消せない（お金の記録と締めの数字が合わなくなるため）。
+    戻り値は消した会計の要約（操作履歴に残す）。
+    """
+    from apps.cash.models import BusinessDay
+
+    checkout = Checkout.objects.select_for_update().filter(id=checkout_id, store=store).first()
+    if checkout is None:
+        raise ApiError("not_found", "会計が見つかりません（すでに取り消されたかもしれません）。", status=404)
+    if checkout.status != CheckoutStatus.CONFIRMED:
+        raise ApiError("already_voided", "この会計はすでに取消済みです。", status=409)
+    day = BusinessDay.objects.filter(store=store, date=checkout.business_date).first()
+    if day is None or day.status != "open":
+        raise ApiError("day_closed", "締めた営業日の会計は消せません。「開店・日締め・現金」でその営業日を再開してから取り消してください。", status=409)
+    if checkout.refunds.exists():
+        raise ApiError("has_refunds", "一部返金を記録した会計は取り消せません。", status=409)
+    receivables = Receivable.objects.filter(checkout=checkout)
+    if ReceivableCollection.objects.filter(receivable__in=receivables).exists():
+        raise ApiError("receivable_collected", "ツケを回収済みの会計は取り消せません。", status=409)
+    payments = list(checkout.payments.all())
+    summary = {
+        "checkout_id": checkout.id, "number": checkout.number, "business_date": checkout.business_date.isoformat(),
+        "total": str(checkout.total), "visit_id": checkout.visit_id,
+        "payments": [{"method": p.method, "amount": str(p.amount)} for p in payments],
+        "card": any(p.method == PaymentMethod.CARD for p in payments),
+    }
+    backs_svc.undo_entries_for_checkout(checkout)
+    receivables.delete()
+    OrderLine.objects.filter(checkout=checkout).update(checkout=None)
+    visit = Visit.objects.select_for_update().get(pk=checkout.visit_id)
+    if visit.status == VisitStatus.CLOSED:
+        visit.status = VisitStatus.OPEN
+        visit.closed_at = None
+        visit.save(update_fields=["status", "closed_at", "updated_at"])
+    checkout.delete()  # 支払いは一緒に消える（決済端末の記録は残り、会計との結び付きだけ外れる）
+    return summary
+
+
 @transaction.atomic
 def void_checkout(store: Store, user, checkout_id, reason: str, terminal_refund_done: bool = False) -> Checkout:
     """会計取消。支払いごとに返金記録を作り、明細を伝票に戻す（伝票は営業中へ戻す）。"""

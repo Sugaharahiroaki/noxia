@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+from . import void_pin
 from .audit import audit
 from .exceptions import ApiError
 from .models import (
@@ -265,6 +266,21 @@ class StoreSettingsView(APIView):
         changes = {k: {"before": before.get(k), "after": after.get(k)} for k in after if before.get(k) != after.get(k)}
         audit(request, "settings.update", target=settings_obj, changes=changes)
         return Response(after)
+
+
+class StoreVoidPinView(APIView):
+    """会計取消の暗証番号を設定・変更・解除する。店舗タブレットの共有アカウント（店長）では変えられないよう、オーナー・会社管理者だけ。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SETTINGS_VIEW, write_caps=(CAP_SETTINGS_EDIT,), reauth=True)]
+
+    def put(self, request):
+        if request.store_access.role not in ("owner", "admin", "operator"):
+            raise ApiError("forbidden", "会計取消の暗証番号はオーナーだけが設定できます。", status=403)
+        pin = request.data.get("pin")
+        st = void_pin.set_pin(request.store, None if pin in (None, "") else str(pin))
+        audit(request, "settings.void_pin", target=st, changes={"set": bool(st.void_pin_hash)})
+        return Response({"void_pin_set": bool(st.void_pin_hash)})
 
 
 # --- 会社管理（オーナー） -----------------------------------------------------

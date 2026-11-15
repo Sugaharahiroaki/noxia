@@ -68,7 +68,7 @@ export default function StoreSettingsPage() {
         actions={
           <>
             <SaveStatus state={save} />
-            {(["settings", "tables", "terminal", "roles", "audit"] as const).map((t) => (
+            {(["settings", "tables", "terminal", "roles", "audit"] as const).filter((t) => t !== "audit" || can("audit.view")).map((t) => (
               <button key={t} className={`btn btn-sm ${tab === t ? "btn-primary" : ""}`} onClick={() => setTab(t)}>
                 {{ settings: "営業ルール", tables: "卓", terminal: "カード端末", roles: "権限", audit: "操作履歴" }[t]}
               </button>
@@ -178,6 +178,7 @@ export default function StoreSettingsPage() {
             </Field>
           </section>
           <PayoutSection f={f} set={set} canEdit={canEdit} canDecideTax={can("tax.decide")} />
+          <VoidPinSection isSet={!!f.void_pin_set} onChanged={(v) => { set({ void_pin_set: v }); q.setData({ ...(q.data as StoreSettings), void_pin_set: v }); }} />
           <section className="card space-y-3">
             <Field label="設定メモ（仮設定の明示など）">
               <textarea className="input" value={f.settings_note} onChange={(e) => set({ settings_note: e.target.value })} disabled={!canEdit} />
@@ -227,8 +228,69 @@ export default function StoreSettingsPage() {
         </div>
       )}
 
-      {tab === "audit" && <AuditTab />}
+      {tab === "audit" && can("audit.view") && <AuditTab />}
     </div>
+  );
+}
+
+/** 会計取消の 4 桁の暗証番号。店舗タブレットは店長の共有アカウントなので、設定・変更はオーナーだけ */
+function VoidPinSection({ isSet, onChanged }: { isSet: boolean; onChanged: (v: boolean) => void }) {
+  const { store, withReauth } = useSession();
+  const isOwner = !!store && ["owner", "admin", "operator"].includes(store.role);
+  const [pin, setPin] = useState("");
+  const [pin2, setPin2] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function put(value: string) {
+    setBusy(true);
+    setErr(null);
+    setMsg("");
+    try {
+      const r = await withReauth(() => api<{ void_pin_set: boolean }>("/api/store/void-pin", { method: "PUT", body: { pin: value } }));
+      onChanged(r.void_pin_set);
+      setMsg(r.void_pin_set ? "暗証番号を設定しました" : "暗証番号を解除しました");
+      setPin("");
+      setPin2("");
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const ok = /^\d{4}$/.test(pin) && pin === pin2;
+  return (
+    <section className="card space-y-3">
+      <h2 className="font-bold">会計の取消（暗証番号）</h2>
+      <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+        「売上・会計履歴」で会計を取り消すときに入れる 4 桁の番号です。取消は理由を聞かず、会計の記録ごと消して伝票を会計前に戻します（いつ・いくらの会計を消したかは「操作履歴」に残ります）。
+        5 回続けて間違えると 10 分間取消できなくなります。番号が未設定の間は取消できません。
+      </p>
+      <div className="card-2">状態: {isSet ? "設定済み" : "未設定（取消できません）"}</div>
+      {isOwner ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label={isSet ? "新しい暗証番号（4 桁）" : "暗証番号（4 桁）"}>
+            <input className="input num" style={{ maxWidth: 140 }} type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))} />
+          </Field>
+          <Field label="確認のためもう一度">
+            <input className="input num" style={{ maxWidth: 140 }} type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} value={pin2} onChange={(e) => setPin2(e.target.value.replace(/[^0-9]/g, ""))} />
+          </Field>
+          <button className="btn btn-primary" disabled={busy || !ok} onClick={() => put(pin)}>
+            {isSet ? "変更する" : "設定する"}
+          </button>
+          {isSet && (
+            <button className="btn btn-ghost" disabled={busy} onClick={() => put("")}>
+              解除する
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm">設定・変更はオーナーだけができます。</p>
+      )}
+      {pin2.length === 4 && pin !== pin2 && <p className="text-sm" style={{ color: "var(--color-danger)" }}>2 つの番号が一致しません。</p>}
+      {msg && <p className="text-sm font-semibold">{msg}</p>}
+      <ErrorBox error={err} />
+    </section>
   );
 }
 

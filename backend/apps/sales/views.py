@@ -16,6 +16,7 @@ from apps.core.business_date import business_date_now, current_business_date
 from apps.core.exceptions import ApiError
 from apps.core.idempotency import idempotent
 from apps.core.money import D, ZERO
+from apps.core import void_pin
 from apps.core.permissions import CAP_FLOOR, CAP_SALES_VIEW, CAP_SALES_VOID, StoreCaps
 
 from . import services
@@ -446,12 +447,33 @@ class CheckoutHandwriteView(APIView):
         })
 
 
+class CheckoutDeleteView(APIView):
+    """会計の取消（記録ごと削除）。理由は不要、店舗の 4 桁の暗証番号が必要。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SALES_VOID)]
+
+    @idempotent
+    def post(self, request, checkout_id):
+        void_pin.verify(request.store, str(request.data.get("pin") or ""))
+        # mode=refund: お客様に全額返す（伝票も取消・女の子のバックは給与に残す）／redo: 打ち間違い（伝票を会計前に戻す）
+        if request.data.get("mode") == "refund":
+            summary = services.cancel_checkout_full(request.store, request.user, checkout_id)
+        else:
+            summary = services.delete_checkout(request.store, request.user, checkout_id)
+        # 画面・集計からは消えるが、いつ・いくらの会計を消したかは操作履歴（オーナーが見る）に残す
+        audit(request, "checkout.delete", target_type="Checkout", target_id=str(summary["checkout_id"]), changes=summary)
+        return Response({"deleted": summary})
+
+
 class CheckoutVoidView(APIView):
     def get_permissions(self):
         return [StoreCaps(CAP_SALES_VOID)]
 
     @idempotent
     def post(self, request, checkout_id):
+        if void_pin.is_set(request.store):
+            void_pin.verify(request.store, str(request.data.get("pin") or ""))
         checkout = services.void_checkout(request.store, request.user, checkout_id, request.data.get("reason", ""),
                                           terminal_refund_done=bool(request.data.get("terminal_refund_done")))
         audit(request, "checkout.void", target=checkout, changes={"reason": checkout.void_reason, "total": checkout.total})

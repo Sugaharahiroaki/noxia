@@ -95,6 +95,8 @@ export type StoreSettings = {
   withholding_enabled: boolean;
   /** お渡しのときにチェックして差し引く控除（報酬総額の%） */
   payout_deductions: PayoutDeductionItem[];
+  /** 会計取消の 4 桁の暗証番号が設定済みか（番号そのものは返らない） */
+  void_pin_set?: boolean;
 };
 
 export type PayoutDeductionItem = { code: string; label: string; percent: Money; default_on: boolean };
@@ -800,6 +802,8 @@ export type FreeeStatus = {
   has_token: boolean;
   last_error: string;
   live_enabled: boolean;
+  /** サーバーの freee 設定の状況（値は返らない） */
+  setup?: { client_id: boolean; client_secret: boolean; redirect_uri: string; live_flag: boolean };
   sync_counts: Record<string, number>;
   result?: { sent: number; failed: number };
 };

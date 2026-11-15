@@ -52,6 +52,16 @@ def live_enabled() -> bool:
     return bool(getattr(settings, "FREEE_LIVE_ENABLED", False) and settings.FREEE_CLIENT_ID and settings.FREEE_CLIENT_SECRET and settings.FREEE_REDIRECT_URI)
 
 
+def setup_status() -> dict:
+    """サーバーの設定状況（値そのものは返さない）。画面で「何が足りないか」を出すために使う。"""
+    return {
+        "client_id": bool(settings.FREEE_CLIENT_ID),
+        "client_secret": bool(settings.FREEE_CLIENT_SECRET),
+        "redirect_uri": settings.FREEE_REDIRECT_URI or "",
+        "live_flag": bool(getattr(settings, "FREEE_LIVE_ENABLED", False)),
+    }
+
+
 # --- 接続部品 ---------------------------------------------------------------------
 class MockFreeeClient:
     """模擬接続。freee には送らず、IDを払い出して記録するだけ。"""

@@ -122,9 +122,14 @@ function FreeeInner() {
             )}
           </div>
           {!s.live_enabled && (
-            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-              freee 本番との接続は、運営者がサーバーに freee のアプリ登録情報（FREEE_CLIENT_ID 等）を設定し FREEE_LIVE_ENABLED=1 にすると使えます。それまでは模擬接続で操作を確認できます。
-            </p>
+            <div className="card-2 text-sm space-y-1">
+              <p className="font-semibold">freee との自動連携（API）の準備状況</p>
+              <p>{s.setup?.client_id ? "✓" : "✗"} Client ID（サーバーの FREEE_CLIENT_ID）</p>
+              <p>{s.setup?.client_secret ? "✓" : "✗"} Client Secret（サーバーの FREEE_CLIENT_SECRET）</p>
+              <p>{s.setup?.redirect_uri ? "✓" : "✗"} コールバック URL（FREEE_REDIRECT_URI）{s.setup?.redirect_uri ? `: ${s.setup.redirect_uri}（freee のアプリにも同じ URL を登録）` : ""}</p>
+              <p>{s.setup?.live_flag ? "✓" : "✗"} 本番送信の許可（FREEE_LIVE_ENABLED=1）</p>
+              <p style={{ color: "var(--color-muted)" }}>4 つそろうと「freee と接続」が押せます。それまでは下の「freee 取込用 CSV」か模擬接続を使えます。値はサーバーの設定ファイル（backend/.env）に入れ、画面には出ません。</p>
+            </div>
           )}
           {s.last_error && <p style={{ color: "var(--color-danger)" }}>{s.last_error}</p>}
           {canManage && s.status === "connected" && (
