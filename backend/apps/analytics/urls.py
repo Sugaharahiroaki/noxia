@@ -14,6 +14,7 @@ urlpatterns = [
     path("reports/people-<str:kind>.csv", report_views.PeopleCsvView.as_view()),
     path("reports/tags", report_views.TagReportView.as_view()),
     path("reports/items", report_views.ItemReportView.as_view()),
+    path("reports/customers", report_views.CustomerReportView.as_view()),
     path("reports/export/<str:kind>.csv", report_views.ReportCsvView.as_view()),
     path("analytics/daily", views.DailySalesView.as_view()),
     path("analytics/monthly", views.MonthlySalesView.as_view()),

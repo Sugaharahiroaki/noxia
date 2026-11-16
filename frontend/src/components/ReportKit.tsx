@@ -40,6 +40,7 @@ export const REPORT_LINKS: ReportLink[] = [
   { href: "/reports/slips", label: "伝票一覧", caps: ["sales.view"], note: "期間・支払方法・値引き・取消で絞り込み。伝票ごとのキャスト別の売上小計" },
   { href: "/reports/tags", label: "タグ集計", caps: ["sales.view"], note: "タグごとの件数・客数・小計・現金・カード・売掛・販売額。タグ別・日別・月別" },
   { href: "/reports/items", label: "商品集計", caps: ["sales.view"], note: "日付 × 商品の個数、キャスト × 商品の個数と金額（折半は配分して計上）" },
+  { href: "/reports/customers", label: "お客様分析", caps: ["customers.view", "sales.view"], note: "お客様ごとの来店回数・最終来店日・単価・支払方法・指名・キープ・ランク（直近 3 か月の来店回数）" },
   { href: "/reports/cash", label: "レジ精算（月間）", caps: ["dashboard.view"], note: "営業日ごとの釣銭・現金売上・入出金・理論現金・実際の現金・過不足・預金" },
   { href: "/reports/cast", label: "キャスト集計", caps: ["payroll.view_all"], note: "キャストごとの売上（呼び・同伴）と報酬（時間報酬・バック・日払い・残り）。名前から報酬支払明細へ" },
   { href: "/reports/staff", label: "スタッフ集計", caps: ["payroll.view_all"], note: "スタッフごとの報酬（時間報酬・調整・日払い・残り）" },

@@ -52,6 +52,32 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("指名回数の数え方は per_slip か per_set を指定してください。")
         return value
 
+    def validate_customer_rank_thresholds(self, value):
+        """お客様分析のランク。[{"label": "S", "min_visits": 20}, ...]。回数の多い順に並べ直して保存する。"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("ランクの一覧を指定してください。")
+        if len(value) > 8:
+            raise serializers.ValidationError("ランクは 8 個までです。")
+        out, labels, mins = [], set(), set()
+        for item in value:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError("ランクの形式が正しくありません。")
+            label = str(item.get("label") or "").strip()
+            try:
+                n = int(item.get("min_visits"))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError("来店回数は 0 以上の整数で指定してください。")
+            if not label or len(label) > 6:
+                raise serializers.ValidationError("ランクの名前は 1〜6 文字で指定してください。")
+            if n < 0 or n > 9999:
+                raise serializers.ValidationError("来店回数は 0 以上の整数で指定してください。")
+            if label in labels or n in mins:
+                raise serializers.ValidationError("ランクの名前と来店回数は重ならないようにしてください。")
+            labels.add(label)
+            mins.add(n)
+            out.append({"label": label, "min_visits": n})
+        return sorted(out, key=lambda x: -x["min_visits"])
+
     def validate_default_unlimited_course(self, course):
         if course is None:
             return course

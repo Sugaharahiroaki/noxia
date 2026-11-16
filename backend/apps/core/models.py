@@ -161,6 +161,8 @@ class StoreSettings(TimestampedModel):
     cast_sales_split_mode = models.CharField("キャスト売上の分け方", max_length=20, default="equal")
     # 指名回数の数え方。per_slip = 1 伝票 1 回、per_set = 伝票内のセット数ぶん
     nomination_count_mode = models.CharField("指名回数の数え方", max_length=20, default="per_slip")
+    # お客様分析のランク。[{"label": "S", "min_visits": 20}, ...]（直近 3 か月の来店回数がこの回数以上）。空 = ランクを出さない
+    customer_rank_thresholds = models.JSONField("お客様のランクのしきい値", default=list, blank=True)
 
     # アラーム
     alarm_mode = models.CharField(max_length=10, choices=AlarmMode.choices, default=AlarmMode.BOTH)

@@ -793,3 +793,118 @@ def item_report(store, f: date, t: date) -> dict:
                    "by_date": {d: str(sum((p["by_date"].get(d, ZERO) for p in products.values()), ZERO)) for d in sorted(dates)}},
         "note": ITEM_NOTE,
     }
+
+
+# ---------------------------------------------------------------------------
+# M5: お客様分析
+# ---------------------------------------------------------------------------
+RANK_MONTHS = 3
+CUSTOMER_NOTE = (
+    "来店・会計はこの店舗の分だけを数えます（会社内で共有されている他店舗のお客様も、数えるのはこの店舗への来店だけです）。"
+    "取消した伝票は数えません。金額は確定した会計の合計、単価は 金額 ÷ 来店回数、平均滞在は退店済みの伝票の平均です。"
+    "本指名・場内・同伴は、その明細がある伝票の数です。ランクは直近 3 か月の来店回数で決まります。"
+)
+
+
+def months_before(d: date, months: int) -> date:
+    """d の months か月前の同じ日（その月に同じ日が無ければ月末）。例: 5/31 の 3 か月前 → 2/28"""
+    import calendar
+
+    y, m = d.year, d.month - months
+    while m <= 0:
+        y, m = y - 1, m + 12
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def clean_rank_thresholds(raw) -> list[dict]:
+    """店舗設定のランクの一覧を、来店回数の多い順に整える。形の合わない項目は捨てる。"""
+    out = []
+    for item in raw if isinstance(raw, list) else []:
+        try:
+            out.append({"label": str(item["label"]), "min_visits": int(item["min_visits"])})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(out, key=lambda x: -x["min_visits"])
+
+
+def customer_rank(visits: int, thresholds: list[dict]) -> str:
+    """直近の来店回数からランクを決める。thresholds は回数の多い順。どれにも届かなければ空（ランクなし）。"""
+    for th in thresholds:
+        if visits >= th["min_visits"]:
+            return th["label"]
+    return ""
+
+
+def customer_report(store, today: date) -> dict:
+    """
+    お客様分析。この店舗から見られる顧客（customers.services.visible_customers）ごとに、この店舗への来店を数える。
+    別会社の顧客・共有されていない他店舗の顧客は含めない。他店舗での来店・会計は数えない。
+    """
+    from django.db.models import Prefetch
+
+    from apps.customers.models import BottleKeep
+    from apps.customers.services import visible_customers
+    from apps.sales.models import OrderLine, Visit
+
+    settings = report_settings(store)
+    thresholds = clean_rank_thresholds(getattr(getattr(store, "settings", None), "customer_rank_thresholds", []))
+    since = months_before(today, RANK_MONTHS)
+    customers = list(visible_customers(store).filter(is_active=True).select_related("store", "assigned_employee"))
+    ids = [c.id for c in customers]
+    keeps: dict[int, int] = {}
+    for cid in BottleKeep.objects.filter(store=store, customer_id__in=ids, status="active").values_list("customer_id", flat=True):
+        keeps[cid] = keeps.get(cid, 0) + 1
+    money_keys = ("total", "cash", "card", "receivable")
+    count_keys = ("visits", "visits_recent", "guests", "nomination", "jounai", "douhan")
+    acc = {cid: {**{k: ZERO for k in money_keys}, **{k: 0 for k in count_keys}, "first": None, "last": None, "minutes": 0, "closed": 0} for cid in ids}
+    visits = Visit.objects.filter(store=store, customer_id__in=ids).exclude(status="cancelled").select_related("table", "customer").prefetch_related(
+        Prefetch("lines", queryset=OrderLine.objects.select_related("checkout").prefetch_related("back_targets__employee")),
+        "checkouts__payments", "checkouts__refunds",
+    )
+    for v in visits:
+        a = acc[v.customer_id]
+        s = slip_summary(v, settings)
+        a["visits"] += 1
+        a["guests"] += v.guest_count
+        if since < v.business_date <= today:
+            a["visits_recent"] += 1
+        a["first"] = v.business_date if a["first"] is None else min(a["first"], v.business_date)
+        a["last"] = v.business_date if a["last"] is None else max(a["last"], v.business_date)
+        if s["minutes"] is not None:
+            a["minutes"] += s["minutes"]
+            a["closed"] += 1
+        for k in money_keys:
+            a[k] += s[k]
+        for k in ("nomination", "jounai", "douhan"):
+            if s["names_by_kind"][k]:
+                a[k] += 1
+    rows = []
+    for c in customers:
+        a = acc[c.id]
+        unit = per_unit(a["total"], a["visits"])
+        rows.append({
+            "id": c.id, "name": c.display_name, "store_name": c.store.name, "own_store": c.store_id == store.id,
+            "assigned_employee_name": c.assigned_employee.display_name if c.assigned_employee_id else "",
+            "keep_count": keeps.get(c.id, 0), "rank": customer_rank(a["visits_recent"], thresholds),
+            "visits": a["visits"], "visits_recent": a["visits_recent"], "guests": a["guests"],
+            "first_visit": a["first"].isoformat() if a["first"] else None, "last_visit": a["last"].isoformat() if a["last"] else None,
+            "avg_minutes": round(a["minutes"] / a["closed"]) if a["closed"] else None,
+            "total": str(a["total"]), "unit_price": str(unit) if unit is not None else None,
+            "cash": str(a["cash"]), "card": str(a["card"]), "receivable": str(a["receivable"]),
+            "nomination": a["nomination"], "jounai": a["jounai"], "douhan": a["douhan"],
+        })
+    # 最終来店日の新しい順。来店の無いお客様は最後
+    rows.sort(key=lambda r: (r["last_visit"] is None, -date.fromisoformat(r["last_visit"]).toordinal() if r["last_visit"] else 0, r["name"]))
+    t_visits = sum(r["visits"] for r in rows)
+    t_total = sum((a["total"] for a in acc.values()), ZERO)
+    t_unit = per_unit(t_total, t_visits)
+    totals = {
+        "customers": len(rows), "keep_count": sum(r["keep_count"] for r in rows),
+        **{k: sum(r[k] for r in rows) for k in ("visits", "visits_recent", "guests", "nomination", "jounai", "douhan")},
+        **{k: str(sum((a[k] for a in acc.values()), ZERO)) for k in money_keys},
+        "unit_price": str(t_unit) if t_unit is not None else None,
+    }
+    return {
+        "as_of": today.isoformat(), "rank_since": since.isoformat(), "rank_months": RANK_MONTHS, "rank_thresholds": thresholds,
+        "sharing_enabled": bool(store.company.customer_sharing_enabled), "rows": rows, "totals": totals, "note": CUSTOMER_NOTE,
+    }

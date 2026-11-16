@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from apps.core.business_date import current_business_date
 from apps.core.exceptions import ApiError
 from apps.core.permissions import (
-    CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_EXPORT_SALES, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps, is_reauthenticated,
+    CAP_CUSTOMERS_VIEW, CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_EXPORT_SALES, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps, is_reauthenticated,
 )
 
 from . import reports
@@ -277,4 +277,27 @@ class ReportCsvView(APIView):
             for c in d["casts"]:
                 rows += [["キャスト別", "", it["name"], c["employee_name"], it["quantity"], it["amount"]] for it in c["items"]]
             return _csv(request, f"items_{tag}.csv", ["区分", "カテゴリー", "商品", "キャスト", "個数", "金額"], rows, "export.report.items")
+        if kind == "customers":
+            if CAP_CUSTOMERS_VIEW not in request.store_access.caps:
+                raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
+            d = reports.customer_report(request.store, current_business_date(request.store))
+            rows = [[r["name"], r["store_name"], r["rank"], r["keep_count"], r["visits"], r["visits_recent"], r["first_visit"] or "", r["last_visit"] or "",
+                     r["avg_minutes"] if r["avg_minutes"] is not None else "", r["unit_price"] or "", r["total"], r["cash"], r["card"], r["receivable"],
+                     r["nomination"], r["jounai"], r["douhan"], r["assigned_employee_name"]] for r in d["rows"]]
+            return _csv(request, f"customers_{request.store.code}_{d['as_of']}.csv", CUSTOMER_CSV_HEADER, rows, "export.report.customers")
         raise ApiError("not_found", "出力種別が不正です。", status=404)
+
+
+# --- M5: お客様分析 -----------------------------------------------------------
+CUSTOMER_CSV_HEADER = ["お客様", "登録店舗", "ランク", "キープ", "来店回数", "直近3か月の来店", "初回来店日", "最終来店日", "平均滞在(分)", "単価",
+                       "会計", "現金", "カード", "売掛", "本指名", "場内指名", "同伴", "担当"]
+
+
+class CustomerReportView(APIView):
+    """お客様分析。顧客情報（customers.view）と売上（sales.view）の両方が見られる人だけ。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_CUSTOMERS_VIEW, CAP_SALES_VIEW)]
+
+    def get(self, request):
+        return Response(reports.customer_report(request.store, current_business_date(request.store)))
