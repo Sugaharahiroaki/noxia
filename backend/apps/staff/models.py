@@ -71,6 +71,9 @@ class BackTargetType(models.TextChoices):
     NOMINATION = "nomination", "本指名"
     JOUNAI = "jounai", "場内指名"
     DOUHAN = "douhan", "同伴"
+    # 伝票の小計に対するバック（呼び売上バック率・同伴売上バック率）。会計の確定時に、指名（本指名・場内）／同伴の対象の人に付く
+    NOMINATION_SUBTOTAL = "nomination_subtotal", "指名伝票の小計"
+    DOUHAN_SUBTOTAL = "douhan_subtotal", "同伴伝票の小計"
 
 
 class BackCalcType(models.TextChoices):
@@ -121,6 +124,8 @@ class BackRule(TimestampedModel):
             BackTargetType.ALL_PRODUCTS: 1,
             BackTargetType.NOMINATION: 4,
             BackTargetType.JOUNAI: 4,
+            BackTargetType.NOMINATION_SUBTOTAL: 4,
+            BackTargetType.DOUHAN_SUBTOTAL: 4,
             BackTargetType.DOUHAN: 4,
         }.get(self.target_type, 0)
 

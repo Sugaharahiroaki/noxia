@@ -9,7 +9,9 @@ from rest_framework.views import APIView
 
 from apps.core.business_date import current_business_date
 from apps.core.exceptions import ApiError
-from apps.core.permissions import CAP_DASHBOARD, CAP_SALES_VIEW, StoreCaps
+from apps.core.permissions import (
+    CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps, is_reauthenticated,
+)
 
 from . import reports
 
@@ -117,3 +119,96 @@ class CashMonthView(APIView):
             },
             "formula_note": reports.CASH_FORMULA_NOTE,
         })
+
+# --- M3: キャスト・スタッフ集計（報酬） -----------------------------------------
+class PeopleReportView(APIView):
+    """キャスト／スタッフの月次の集計表（全員分）。既存の支払集計と同じく payroll.view_all と再認証が必要。"""
+
+    cast = True
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, reauth=True)]
+
+    def get(self, request):
+        y, m = parse_month(request)
+        return Response(reports.people_report(request.store, y, m, cast=self.cast))
+
+
+class StaffReportView(PeopleReportView):
+    cast = False
+
+
+class PersonReportView(APIView):
+    """
+    1 人の報酬支払明細と日別表。
+    全員分を見られる人（payroll.view_all）は再認証のうえで誰の分でも。キャスト本人（payroll.view_self）は自分の分だけ。
+    """
+
+    def get_permissions(self):
+        return [StoreCaps()]
+
+    def get(self, request, employee_id):
+        from apps.staff.models import Employee
+
+        access = request.store_access
+        own = getattr(request.user, "employee", None)
+        is_own = own is not None and own.id == int(employee_id) and own.company_id == request.store.company_id
+        if CAP_PAYROLL_VIEW_ALL in access.caps:
+            if not is_own and not is_reauthenticated(request):
+                raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
+        elif not (is_own and CAP_PAYROLL_VIEW_SELF in access.caps):
+            raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
+        emp = Employee.objects.filter(id=employee_id, company=request.store.company).first()
+        if emp is None:
+            raise ApiError("not_found", "従業員が見つかりません。", status=404)
+        y, m = parse_month(request)
+        return Response(reports.person_report(request.store, emp, y, m))
+
+
+CAST_CSV_COLUMNS = [
+    ("名前", "employee_name"), ("総支給額", "gross"), ("残り支給額", "balance"), ("オーダー小計", "order_subtotal"),
+    ("呼び本計", "yobi_total"), ("呼び小計", "yobi_subtotal"), ("同伴本計", "douhan_total"), ("同伴小計", "douhan_subtotal"), ("給率(%)", "pay_ratio"),
+    ("勤務日数", "days"), ("勤務分", "minutes"), ("平均時給", "avg_hourly"), ("時間報酬", "wage"),
+    ("本指名 組数", "nomination_groups"), ("本指名 回数", "nomination_count"), ("本指名バック", "back_nomination"),
+    ("場内 組数", "jounai_groups"), ("場内 回数", "jounai_count"), ("場内バック", "back_jounai"),
+    ("同伴 組数", "douhan_groups"), ("同伴 回数", "douhan_count"), ("同伴バック", "back_douhan"),
+    ("呼び小計バック", "back_yobi_subtotal"), ("同伴小計バック", "back_douhan_subtotal"),
+    ("ドリンク売上", "sales_drink"), ("ドリンク本数", "qty_drink"), ("ドリンクバック", "back_drink"),
+    ("ボトル売上", "sales_bottle"), ("ボトル本数", "qty_bottle"), ("ボトルバック", "back_bottle"),
+    ("フード売上", "sales_food"), ("フード回数", "qty_food"), ("フードバック", "back_food"),
+    ("その他バック", "back_other"), ("バック計", "back_total"), ("ボーナス", "bonus"), ("マイナス", "minus"),
+    ("控除", "deducted"), ("日払い", "paid"),
+]
+
+
+class PeopleCsvView(APIView):
+    """キャスト（または スタッフ）集計の CSV。既存の支払 CSV と同じく export.payroll と再認証が必要。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_EXPORT_PAYROLL, reauth=True)]
+
+    def get(self, request, kind):
+        import csv
+        import io
+
+        from django.http import HttpResponse
+
+        from apps.core.audit import audit
+
+        if kind not in ("cast", "staff"):
+            raise ApiError("not_found", "出力種別が不正です。", status=404)
+        y, m = parse_month(request)
+        data = reports.people_report(request.store, y, m, cast=(kind == "cast"))
+        cols = list(CAST_CSV_COLUMNS)
+        if data["settings"]["withholding_enabled"]:
+            cols.append(("源泉所得税", "withheld"))  # 源泉徴収をしている店舗だけ出す
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow([c[0] for c in cols])
+        for r in [{"employee_name": "合計", **data["totals"]}] + data["rows"]:
+            w.writerow([r.get(c[1]) if r.get(c[1]) is not None else "" for c in cols])
+        filename = f"{kind}_report_{request.store.code}_{data['month']}.csv"
+        resp = HttpResponse("\ufeff" + buf.getvalue(), content_type="text/csv; charset=utf-8")
+        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+        audit(request, f"export.report.{kind}", changes={"filename": filename})
+        return resp

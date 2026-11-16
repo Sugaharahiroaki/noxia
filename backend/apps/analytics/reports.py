@@ -508,3 +508,177 @@ def daily_report(store, d: date) -> dict:
         "movements": moves, "slips": slips["rows"], "slip_totals": slips["totals"],
         "profit_kind_note": PROFIT_KIND_NOTE, "cash_formula_note": CASH_FORMULA_NOTE, "settings": report_settings(store),
     }
+
+# ---------------------------------------------------------------------------
+# M3: キャスト・スタッフ集計（報酬）
+# ---------------------------------------------------------------------------
+# 報酬は新しく計算しない。既存の結果（勤怠×時給 = shift_wage、確定したバック = BackEntry、支払い = EmployeePayment）を集めるだけ。
+#   総支給額   = 時間報酬 ＋ バック計（調整を含む）      … staff.payroll.compute_statement の gross_amount と同じ
+#   残り支給額 = 総支給額 − 日払いなどの支払い − 源泉所得税 − その他控除   … 同 balance_amount と同じ
+PRODUCT_BACK_GROUPS = {"drink": "drink", "cast_drink": "drink", "bottle": "bottle", "shot": "bottle", "food": "food"}
+PAY_MONEY_KEYS = (
+    "wage", "back_nomination", "back_jounai", "back_douhan", "back_yobi_subtotal", "back_douhan_subtotal",
+    "back_drink", "back_bottle", "back_food", "back_other", "back_total", "bonus", "minus", "gross",
+    "paid", "withheld", "deducted", "balance",
+    "sales_drink", "sales_bottle", "sales_food", "order_subtotal",
+    "yobi_subtotal", "yobi_total", "douhan_subtotal", "douhan_total",
+)
+PAY_NUMBER_KEYS = ("minutes", "days", "qty_drink", "qty_bottle", "qty_food", "nomination_count", "jounai_count", "douhan_count",
+                   "nomination_groups", "jounai_groups", "douhan_groups")
+
+
+def _empty_pay() -> dict:
+    row = {k: ZERO for k in PAY_MONEY_KEYS}
+    row.update({k: Decimal("0") for k in PAY_NUMBER_KEYS})
+    row["shifts"] = []
+    return row
+
+
+def pay_rows(store, f: date, t: date, employee_ids=None) -> dict[tuple[int, date], dict]:
+    """（従業員, 営業日）ごとの報酬の内訳。月の集計はこれを足すだけなので、月の合計は必ず日別の合計と一致する。"""
+    from apps.staff.models import BackEntry, EmployeePayment, Shift
+    from apps.staff.payroll import shift_minutes, shift_wage
+
+    rows: dict[tuple[int, date], dict] = {}
+
+    def row(eid: int, d: date) -> dict:
+        return rows.setdefault((eid, d), _empty_pay())
+
+    def want(eid) -> bool:
+        return employee_ids is None or eid in employee_ids
+
+    rng = dict(business_date__gte=f, business_date__lte=t)
+    for sh in Shift.objects.filter(store=store, **rng).select_related("employee", "store").prefetch_related("breaks").order_by("clock_in"):
+        if not want(sh.employee_id):
+            continue
+        minutes = shift_minutes(sh)
+        wage, amount = shift_wage(sh, minutes)
+        r = row(sh.employee_id, sh.business_date)
+        r["minutes"] += minutes
+        r["wage"] += amount
+        r["shifts"].append({"clock_in": sh.clock_in.isoformat(), "clock_out": sh.clock_out.isoformat() if sh.clock_out else None, "minutes": minutes,
+                            "hourly_wage": str(wage) if wage is not None else None, "amount": str(amount)})
+    for (eid, d), r in rows.items():
+        r["days"] = Decimal(1) if r["shifts"] else Decimal(0)
+
+    # 確定したバック（打消しの負のエントリも含めて合計する = 既存の集計と同じ）
+    for e in BackEntry.objects.filter(store=store, status="confirmed", **rng).select_related("order_line"):
+        if not want(e.employee_id):
+            continue
+        r = row(e.employee_id, e.business_date)
+        r["back_total"] += e.amount
+        if e.kind == "adjustment":
+            if e.amount >= 0:
+                r["bonus"] += e.amount
+            else:
+                r["minus"] += -e.amount
+            continue
+        if e.kind in ("nomination", "jounai", "douhan"):
+            r[f"back_{e.kind}"] += e.amount
+        elif e.kind in ("yobi_subtotal", "douhan_subtotal"):
+            r[f"back_{e.kind}"] += e.amount
+        else:
+            line = e.order_line
+            group = PRODUCT_BACK_GROUPS.get(line.category_kind if line is not None else "", "other")
+            r[f"back_{group}"] += e.amount
+            # 売上・本数は、元のエントリ（打消しでないもの・打ち消されていないもの）の明細から数える
+            if group != "other" and line is not None and e.reversal_of_id is None and line.status == "active":
+                r[f"sales_{group}"] += line.amount
+                r[f"qty_{group}"] += line.quantity
+                r["order_subtotal"] += line.amount
+
+    for p in EmployeePayment.objects.filter(store=store, is_voided=False, **rng):
+        if not want(p.employee_id):
+            continue
+        r = row(p.employee_id, p.business_date)
+        r["paid"] += p.amount
+        r["withheld"] += p.withholding_amount
+        r["deducted"] += p.deduction_amount
+
+    # 伝票ごとのキャスト売上（呼び・同伴）。伝票の営業日に計上
+    settings = report_settings(store)
+    for v in visits_for_reports(store, f, t):
+        if v.status == "cancelled":
+            continue
+        s = slip_summary(v, settings)
+        for eid, vals in s["cast"].items():
+            if not want(eid):
+                continue
+            r = row(eid, v.business_date)
+            for k in ("yobi_subtotal", "yobi_total", "douhan_subtotal", "douhan_total", "nomination_count", "jounai_count", "douhan_count"):
+                r[k] += vals[k]
+            for kind in ("nomination", "jounai", "douhan"):
+                if vals[f"{kind}_count"] > 0:
+                    r[f"{kind}_groups"] += 1
+
+    for r in rows.values():
+        r["gross"] = r["wage"] + r["back_total"]
+        r["balance"] = r["gross"] - r["paid"] - r["withheld"] - r["deducted"]
+    return rows
+
+
+def sum_pay(rows: list[dict]) -> dict:
+    total = _empty_pay()
+    for r in rows:
+        for k in PAY_MONEY_KEYS + PAY_NUMBER_KEYS:
+            total[k] += r[k]
+    return total
+
+
+def pay_json(r: dict, *, with_shifts: bool = False) -> dict:
+    out = {k: str(r[k]) for k in PAY_MONEY_KEYS}
+    out.update({k: str(r[k]) for k in PAY_NUMBER_KEYS})
+    minutes = int(r["minutes"])
+    out["minutes"] = minutes
+    # 平均時給 = 時間報酬 ÷ 勤務時間（表示用。四捨五入）
+    out["avg_hourly"] = str(round_yen(r["wage"] * 60 / minutes, "half_up")) if minutes else None
+    # 給率（キャスト）= 総支給額 ÷ 呼び小計
+    pr = ratio_percent(r["gross"], r["yobi_subtotal"], 1)
+    out["pay_ratio"] = str(pr) if pr is not None else None
+    if with_shifts:
+        out["shifts"] = r["shifts"]
+    return out
+
+
+def people_report(store, year: int, month: int, *, cast: bool) -> dict:
+    """キャスト（または スタッフ）の月次の集計表。1 行 = 1 人。合計行つき。"""
+    from apps.staff.models import Employee
+
+    f, t = month_range(year, month)
+    roles = store_roles(store)
+    rows = pay_rows(store, f, t)
+    by_emp: dict[int, list[dict]] = {}
+    for (eid, _d), r in rows.items():
+        by_emp.setdefault(eid, []).append(r)
+    # 表に出す人: この店舗に配属中の人 ＋ その月に勤怠・バック・支払い・売上があった人
+    ids = set(by_emp) | {eid for eid in roles}
+    people = []
+    for emp in Employee.objects.filter(id__in=ids, company=store.company).order_by("display_name", "id"):
+        is_cast = roles.get(emp.id) == "cast"
+        if is_cast != cast:
+            continue
+        if emp.id not in by_emp and not emp.is_active:
+            continue
+        total = sum_pay(by_emp.get(emp.id, []))
+        people.append({"employee_id": emp.id, "employee_name": emp.display_name, "is_active": emp.is_active, "role": roles.get(emp.id) or "staff",
+                       **pay_json(total), "_raw": total})
+    grand = sum_pay([p.pop("_raw") for p in people])
+    return {"month": f"{year}-{month:02d}", "from": f.isoformat(), "to": t.isoformat(), "rows": people, "totals": pay_json(grand),
+            "settings": report_settings(store)}
+
+
+def person_report(store, employee, year: int, month: int) -> dict:
+    """1 人の報酬支払明細（月）と日別表。月の合計 = 日別の合計。"""
+    f, t = month_range(year, month)
+    rows = pay_rows(store, f, t, employee_ids={employee.id})
+    days = sorted(((d, r) for (_e, d), r in rows.items()), key=lambda x: x[0])
+    total = sum_pay([r for _d, r in days])
+    roles = store_roles(store)
+    return {
+        "month": f"{year}-{month:02d}", "from": f.isoformat(), "to": t.isoformat(),
+        "employee": {"id": employee.id, "name": employee.display_name, "full_name": employee.full_name, "role": roles.get(employee.id) or "staff"},
+        "store_name": store.name,
+        "totals": pay_json(total),
+        "days": [{"date": d.isoformat(), **pay_json(r, with_shifts=True)} for d, r in days],
+        "settings": report_settings(store),
+    }

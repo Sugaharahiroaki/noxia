@@ -173,6 +173,64 @@ def settle_entries_for_checkout(checkout, lines, *, user, discount_ratio: Decima
                     entry.status = BackEntryStatus.CONFIRMED
                     entry.confirmed_at = now
             entry.save()
+    create_subtotal_entries(checkout, lines, user=user, has_receivable=has_receivable, now=now)
+
+
+# 伝票の小計に対するバック（呼び売上バック率・同伴売上バック率）
+SUBTOTAL_BACKS = (
+    # (対象の明細種別, ルールの対象, BackEntry.kind)
+    (("nomination", "jounai"), BackTargetType.NOMINATION_SUBTOTAL, "yobi_subtotal"),
+    (("douhan",), BackTargetType.DOUHAN_SUBTOTAL, "douhan_subtotal"),
+)
+
+
+def find_subtotal_rule(store, employee, target_type, on_date) -> BackRule | None:
+    from django.db.models import Q
+
+    qs = BackRule.objects.filter(store=store, is_active=True, target_type=target_type, effective_from__lte=on_date).filter(
+        models_q_effective_to(on_date)).filter(Q(employee=employee) | Q(employee__isnull=True))
+    rules = sorted(qs, key=lambda r: (r.employee_id is not None, r.effective_from, r.id), reverse=True)
+    return rules[0] if rules else None
+
+
+def create_subtotal_entries(checkout, lines, *, user, has_receivable: bool = False, now=None) -> list[BackEntry]:
+    """
+    会計の確定時: この会計に入った 指名（本指名・場内）／同伴 の明細の対象の人に、会計の小計に対するバックを付ける。
+    ルール（対象「指名伝票の小計」「同伴伝票の小計」）が無ければ何も作らない（既存の店舗の結果は変わらない）。
+      基準額 = 会計の小計（ルールが「値引きを反映」なら値引き後）。対象が複数人なら均等割り（円未満切り捨て・余りは先頭の人）。
+      金額   = 基準額 × 率（%）。固定額のルールは 1 会計あたりの額。丸めはルールの設定。
+    取消・返金・会計の削除は、会計に結び付いたエントリとして既存の処理（打消し／削除）に乗る。
+    """
+    now = now or timezone.now()
+    created = []
+    store = checkout.store
+    for line_types, target_type, kind in SUBTOTAL_BACKS:
+        employees = {}
+        for line in lines:
+            if line.line_type in line_types:
+                for t in line.back_targets.select_related("employee"):
+                    employees[t.employee_id] = t.employee
+        if not employees:
+            continue
+        ids = sorted(employees)
+        for i, eid in enumerate(ids):
+            emp = employees[eid]
+            rule = find_subtotal_rule(store, emp, target_type, checkout.business_date)
+            if rule is None:
+                continue
+            base = D(checkout.subtotal) - (D(checkout.discount_total) if rule.include_discount else ZERO)
+            each = round_yen(base / len(ids), "floor")
+            basis = each + (base - each * len(ids) if i == 0 else ZERO)
+            amount = round_yen(D(rule.value), rule.rounding) if rule.calc_type == BackCalcType.FIXED else round_yen(basis * D(rule.value) / HUNDRED, rule.rounding)
+            timing = rule.confirm_timing or "checkout"
+            pending = timing == "payment" and has_receivable
+            created.append(BackEntry.objects.create(
+                store=store, employee=emp, visit=checkout.visit, checkout=checkout, kind=kind, business_date=checkout.business_date,
+                basis_amount=basis, share_percent=ZERO, amount=amount, rule=rule, rule_snapshot=rule.snapshot(),
+                status=BackEntryStatus.PENDING if pending else BackEntryStatus.CONFIRMED, confirm_timing=timing,
+                confirmed_at=None if pending else now, created_by=user,
+            ))
+    return created
 
 
 def undo_entries_for_checkout(checkout):

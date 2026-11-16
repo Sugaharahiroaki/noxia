@@ -33,7 +33,7 @@ type BackRule = {
   note: string;
 };
 
-const TARGET_LABELS: Record<string, string> = { all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品", nomination: "本指名", jounai: "場内指名", douhan: "同伴" };
+const TARGET_LABELS: Record<string, string> = { all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品", nomination: "本指名", jounai: "場内指名", douhan: "同伴", nomination_subtotal: "指名伝票の小計（呼び売上バック）", douhan_subtotal: "同伴伝票の小計（同伴売上バック）" };
 const KIND_LABELS: Record<string, string> = { drink: "ドリンク", cast_drink: "キャストドリンク", bottle: "ボトル", shot: "ショット", food: "フード", other: "その他" };
 
 export default function PricingPage() {
