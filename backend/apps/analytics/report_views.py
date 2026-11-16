@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from apps.core.business_date import current_business_date
 from apps.core.exceptions import ApiError
 from apps.core.permissions import (
-    CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps, is_reauthenticated,
+    CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_EXPORT_SALES, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps, is_reauthenticated,
 )
 
 from . import reports
@@ -212,3 +212,69 @@ class PeopleCsvView(APIView):
         resp["Content-Disposition"] = f'attachment; filename="{filename}"'
         audit(request, f"export.report.{kind}", changes={"filename": filename})
         return resp
+
+# --- M4: タグ集計・商品集計 ---------------------------------------------------
+def _csv(request, filename: str, header: list, rows: list, action: str):
+    """CSV の応答（既存の exports と同じ作法: BOM つき UTF-8、操作履歴に残す）。"""
+    import csv
+    import io
+
+    from django.http import HttpResponse
+
+    from apps.core.audit import audit
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(header)
+    for r in rows:
+        w.writerow(r)
+    resp = HttpResponse("\ufeff" + buf.getvalue(), content_type="text/csv; charset=utf-8")
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    audit(request, action, changes={"filename": filename})
+    return resp
+
+
+class TagReportView(APIView):
+    def get_permissions(self):
+        return [StoreCaps(CAP_SALES_VIEW)]
+
+    def get(self, request):
+        f, t = parse_range(request)
+        group_by = request.query_params.get("group_by") or "tag"
+        if group_by not in ("tag", "day", "month"):
+            raise ApiError("validation_error", "集計の単位は tag / day / month のいずれかです。")
+        return Response(reports.tag_report(request.store, f, t, group_by))
+
+
+class ItemReportView(APIView):
+    def get_permissions(self):
+        return [StoreCaps(CAP_SALES_VIEW)]
+
+    def get(self, request):
+        f, t = parse_range(request)
+        return Response(reports.item_report(request.store, f, t))
+
+
+class ReportCsvView(APIView):
+    """タグ集計・商品集計の CSV（export.sales）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_EXPORT_SALES)]
+
+    def get(self, request, kind):
+        f, t = parse_range(request)
+        tag = f"{request.store.code}_{f.isoformat()}_{t.isoformat()}"
+        if kind == "tags":
+            group_by = request.query_params.get("group_by") or "tag"
+            if group_by not in ("tag", "day", "month"):
+                raise ApiError("validation_error", "集計の単位は tag / day / month のいずれかです。")
+            d = reports.tag_report(request.store, f, t, group_by)
+            rows = [[r["period"], r["tag_name"], r["count"], r["guests"], r["subtotal"], r["cash"], r["card"], r["receivable"], r["total"]] for r in d["rows"]]
+            return _csv(request, f"tags_{tag}.csv", ["期間", "タグ", "件数", "客数", "伝票小計", "現金", "カード", "売掛", "販売額"], rows, "export.report.tags")
+        if kind == "items":
+            d = reports.item_report(request.store, f, t)
+            rows = [["商品別", p["category_name"], p["name"], "", p["quantity"], p["amount"]] for p in d["products"]]
+            for c in d["casts"]:
+                rows += [["キャスト別", "", it["name"], c["employee_name"], it["quantity"], it["amount"]] for it in c["items"]]
+            return _csv(request, f"items_{tag}.csv", ["区分", "カテゴリー", "商品", "キャスト", "個数", "金額"], rows, "export.report.items")
+        raise ApiError("not_found", "出力種別が不正です。", status=404)

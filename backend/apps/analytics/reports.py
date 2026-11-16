@@ -682,3 +682,114 @@ def person_report(store, employee, year: int, month: int) -> dict:
         "days": [{"date": d.isoformat(), **pay_json(r, with_shifts=True)} for d, r in days],
         "settings": report_settings(store),
     }
+
+# ---------------------------------------------------------------------------
+# M4: タグ集計・商品集計
+# ---------------------------------------------------------------------------
+TAG_NOTE = "1 つの伝票に複数のタグがあるときは、タグごとにその伝票を重複して数えます。そのため、タグの行を足しても店舗全体の合計とは一致しないことがあります。"
+TAG_KEYS = ("subtotal", "cash", "card", "receivable", "total")
+
+
+def tag_report(store, f: date, t: date, group_by: str = "tag") -> dict:
+    """
+    タグ集計。タグごとの 件数・客数・小計・現金・カード・売掛・販売額（= 確定した会計の請求額）。
+    group_by: tag（期間の合計）／day（営業日 × タグ）／month（月 × タグ）。取消済みの伝票は数えない。
+    """
+    settings = report_settings(store)
+    buckets: dict[tuple[str, int], dict] = {}
+    tagged_slips = 0
+    for v in visits_for_reports(store, f, t):
+        if v.status == "cancelled":
+            continue
+        tags = [vt.tag for vt in v.visit_tags.all()]
+        if not tags:
+            continue
+        tagged_slips += 1
+        s = slip_summary(v, settings)
+        period = "" if group_by == "tag" else v.business_date.isoformat() if group_by == "day" else v.business_date.strftime("%Y-%m")
+        for tag in tags:
+            b = buckets.setdefault((period, tag.id), {"period": period, "tag_id": tag.id, "tag_name": tag.name, "color": tag.color, "sort": tag.sort_order,
+                                                      "count": 0, "guests": 0, **{k: ZERO for k in TAG_KEYS}})
+            b["count"] += 1
+            b["guests"] += v.guest_count
+            for k in TAG_KEYS:
+                b[k] += s[k]
+    rows = sorted(buckets.values(), key=lambda b: (b["period"], b["sort"], b["tag_id"]))
+    out = [{**{k: (str(v) if isinstance(v, Decimal) else v) for k, v in b.items() if k != "sort"}} for b in rows]
+    totals = {"count": sum(b["count"] for b in rows), "guests": sum(b["guests"] for b in rows), **{k: str(sum((b[k] for b in rows), ZERO)) for k in TAG_KEYS}}
+    return {"from": f.isoformat(), "to": t.isoformat(), "group_by": group_by, "rows": out, "totals": totals, "tagged_slips": tagged_slips, "note": TAG_NOTE}
+
+
+ITEM_NOTE = (
+    "会計が確定した商品の明細だけを数えます（取消した明細・未会計の明細は含みません）。日付は会計の営業日です。"
+    "キャスト別は、明細の担当（バック対象）に計上します。担当が複数（折半）のときは、割合の指定ならその割合で、"
+    "金額の指定（手で配分したバック）なら人数で均等に割って（円未満切り捨て）各キャストに計上します。"
+)
+NO_CAST = 0  # 担当なし（お客様の注文など）
+
+
+def split_line_for_casts(amount: Decimal, quantity: Decimal, targets: list[tuple[int, str, Decimal]]) -> dict[int, tuple[Decimal, Decimal]]:
+    """
+    商品の明細 1 行を、担当のキャストに配分する（集計用。バックの金額とは別）。
+    targets: [(employee_id, share_type, share_value)]。戻り値: {employee_id: (金額, 数量)}。
+      percent: 金額・数量 × 割合       fixed（手で配分）: 金額 ÷ 人数（円未満切り捨て）、数量 ÷ 人数   例: 10,000 円を 3 人 → 3,333 円ずつ
+    """
+    if not targets:
+        return {NO_CAST: (D(amount), D(quantity))}
+    q2 = Decimal("0.01")
+    out: dict[int, tuple[Decimal, Decimal]] = {}
+    n = len(targets)
+    for eid, share_type, value in targets:
+        if share_type == "percent":
+            a = round_yen(D(amount) * D(value) / 100, "floor")
+            q = (D(quantity) * D(value) / 100).quantize(q2)
+        else:
+            a = round_yen(D(amount) / n, "floor")
+            q = (D(quantity) / n).quantize(q2)
+        pa, pq = out.get(eid, (ZERO, ZERO))
+        out[eid] = (pa + a, pq + q)
+    return out
+
+
+def item_report(store, f: date, t: date) -> dict:
+    """商品集計: 日付 × 商品の個数、キャスト × 商品の個数と金額。"""
+    from apps.sales.models import OrderLine
+
+    lines = (OrderLine.objects.filter(store=store, line_type="product", status="active", checkout__status="confirmed",
+                                      checkout__business_date__gte=f, checkout__business_date__lte=t)
+             .select_related("checkout", "product__category").prefetch_related("back_targets__employee").order_by("id"))
+    products: dict[tuple, dict] = {}
+    dates: set[str] = set()
+    casts: dict[int, dict] = {}
+    for l in lines:
+        d = l.checkout.business_date.isoformat()
+        dates.add(d)
+        key = (l.product_id, l.name)
+        p = products.setdefault(key, {"product_id": l.product_id, "name": l.name,
+                                      "category_name": l.product.category.name if l.product_id and l.product else "", "category_kind": l.category_kind,
+                                      "quantity": ZERO, "amount": ZERO, "by_date": {}})
+        p["quantity"] += l.quantity
+        p["amount"] += l.amount
+        p["by_date"][d] = p["by_date"].get(d, ZERO) + l.quantity
+        targets = [(bt.employee_id, bt.share_type, bt.share_value) for bt in l.back_targets.all()]
+        names = {bt.employee_id: bt.employee.display_name for bt in l.back_targets.all()}
+        for eid, (a, q) in split_line_for_casts(l.amount, l.quantity, targets).items():
+            c = casts.setdefault(eid, {"employee_id": eid or None, "employee_name": names.get(eid, "担当なし（お客様の注文など）"), "quantity": ZERO, "amount": ZERO, "items": {}})
+            c["quantity"] += q
+            c["amount"] += a
+            it = c["items"].setdefault(key, {"product_id": l.product_id, "name": l.name, "quantity": ZERO, "amount": ZERO})
+            it["quantity"] += q
+            it["amount"] += a
+    order = sorted(products.values(), key=lambda p: (-p["amount"], p["name"]))
+    product_rows = [{**{k: v for k, v in p.items() if k not in ("quantity", "amount", "by_date")}, "quantity": str(p["quantity"]), "amount": str(p["amount"]),
+                     "by_date": {d: str(q) for d, q in p["by_date"].items()}} for p in order]
+    cast_rows = []
+    for c in sorted(casts.values(), key=lambda c: (c["employee_id"] is None, -c["amount"])):
+        cast_rows.append({"employee_id": c["employee_id"], "employee_name": c["employee_name"], "quantity": str(c["quantity"]), "amount": str(c["amount"]),
+                          "items": [{**it, "quantity": str(it["quantity"]), "amount": str(it["amount"])} for it in sorted(c["items"].values(), key=lambda i: -i["amount"])]})
+    return {
+        "from": f.isoformat(), "to": t.isoformat(), "dates": sorted(dates), "products": product_rows, "casts": cast_rows,
+        "totals": {"quantity": str(sum((p["quantity"] for p in products.values()), ZERO)), "amount": str(sum((p["amount"] for p in products.values()), ZERO)),
+                   "by_date": {d: str(sum((p["by_date"].get(d, ZERO) for p in products.values()), ZERO)) for d in sorted(dates)}},
+        "note": ITEM_NOTE,
+    }

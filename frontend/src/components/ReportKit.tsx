@@ -38,6 +38,8 @@ export const REPORT_LINKS: ReportLink[] = [
   { href: "/reports/monthly", label: "収支（月次）", caps: ["dashboard.view"], note: "1 行 = 1 営業日。売上・女子売上・人件費・入出金・粗利。日付を押すと営業日報へ" },
   { href: "/reports/daily", label: "営業日報（日次）", caps: ["dashboard.view"], note: "当日・累計・1 営業日あたりの平均、現金管理、入出金、その日の伝票" },
   { href: "/reports/slips", label: "伝票一覧", caps: ["sales.view"], note: "期間・支払方法・値引き・取消で絞り込み。伝票ごとのキャスト別の売上小計" },
+  { href: "/reports/tags", label: "タグ集計", caps: ["sales.view"], note: "タグごとの件数・客数・小計・現金・カード・売掛・販売額。タグ別・日別・月別" },
+  { href: "/reports/items", label: "商品集計", caps: ["sales.view"], note: "日付 × 商品の個数、キャスト × 商品の個数と金額（折半は配分して計上）" },
   { href: "/reports/cash", label: "レジ精算（月間）", caps: ["dashboard.view"], note: "営業日ごとの釣銭・現金売上・入出金・理論現金・実際の現金・過不足・預金" },
   { href: "/reports/cast", label: "キャスト集計", caps: ["payroll.view_all"], note: "キャストごとの売上（呼び・同伴）と報酬（時間報酬・バック・日払い・残り）。名前から報酬支払明細へ" },
   { href: "/reports/staff", label: "スタッフ集計", caps: ["payroll.view_all"], note: "スタッフごとの報酬（時間報酬・調整・日払い・残り）" },
