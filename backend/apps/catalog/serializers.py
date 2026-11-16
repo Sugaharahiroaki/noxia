@@ -55,5 +55,13 @@ class ProductSerializer(serializers.ModelSerializer):
 class TableSerializer(serializers.ModelSerializer):
     class Meta:
         model = Table
-        fields = ["id", "name", "capacity", "sort_order", "is_active"]
+        fields = ["id", "name", "capacity", "sort_order", "is_active", "color", "kind"]
         read_only_fields = ["id"]
+
+    def validate_color(self, value):
+        import re
+
+        value = (value or "").strip()
+        if value and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            raise serializers.ValidationError("色は #RRGGBB の形式で指定してください。")
+        return value

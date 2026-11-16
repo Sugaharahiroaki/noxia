@@ -415,7 +415,7 @@ export default function CheckoutPage() {
                     <button
                       key={l.id}
                       className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left"
-                      style={{ background: on ? "#17223a" : "var(--color-panel2)", border: `2px solid ${on ? "var(--color-accent)" : "var(--color-border)"}` }}
+                      style={{ background: on ? "var(--color-panel3)" : "var(--color-panel2)", border: `2px solid ${on ? "var(--color-accent)" : "var(--color-border)"}` }}
                       onClick={() => {
                         const next = new Set(selected);
                         if (on) next.delete(l.id);

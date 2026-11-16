@@ -211,7 +211,8 @@ class Command(BaseCommand):
         for p in products:
             Product.objects.create(store=store, **{k: (Decimal(v) if k in ("price", "cost_price") and v is not None else v) for k, v in p.items()})
         for i in range(1, 7 if code.endswith("honten") else 5):
-            Table.objects.create(store=store, name=f"{i}卓", capacity=4, sort_order=i)
+            # 【仮設定】営業枠の区分（ホールの並び順に使う）。色は既定のまま
+            Table.objects.create(store=store, name=f"{i}卓", capacity=4, sort_order=i, kind="BOX" if i <= 4 else "カウンター")
         supplier = Supplier.objects.create(store=store, name="酒販X（開発用）", contact="03-0000-0000", order_method="電話またはFAX（手動）")
         champagne = Product.objects.get(store=store, name="シャンパン（モエ）")
         tequila = Product.objects.get(store=store, name="テキーラショット")

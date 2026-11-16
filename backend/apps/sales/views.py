@@ -72,9 +72,24 @@ class FloorStateView(APIView):
         for v in visits:
             by_table.setdefault(v.table_id, []).append(VisitBriefSerializer(v, context=ctx).data)
         tables = [
-            {"id": t.id, "name": t.name, "capacity": t.capacity, "visits": by_table.get(t.id, [])}
+            {"id": t.id, "name": t.name, "capacity": t.capacity, "color": t.color, "kind": t.kind, "visits": by_table.get(t.id, [])}
             for t in Table.objects.filter(store=store, is_active=True)
         ]
+        # 当営業日の集計（ヘッダー用）。未精算 = 営業中伝票の見積合計、精算済 = 確定済み会計の合計（cash.day_summary の sales_total と同じ定義）
+        business_date = current_business_date(store)
+        unpaid_total = sum((D(x) for x in running.values()), ZERO)
+        paid_total = Checkout.objects.filter(store=store, business_date=business_date, status="confirmed").aggregate(s=Sum("total"))["s"] or ZERO
+        # 営業中の伝票に付いている従業員（担当・セットの担当・指名や同伴の対象）。待機キャストの判定に使う
+        engaged: set[int] = set()
+        for v in visits:
+            if v.primary_employee_id:
+                engaged.add(v.primary_employee_id)
+            for e in v.course_entries.all():
+                if e.is_active and e.employee_id:
+                    engaged.add(e.employee_id)
+            for l in v.lines.all():
+                if l.status == "active" and l.line_type != "product":
+                    engaged.update(bt.employee_id for bt in l.back_targets.all())
         alarm_list = []
         for v in visits:
             for e in v.course_entries.all():
@@ -89,12 +104,16 @@ class FloorStateView(APIView):
         day = current_open_day(store)
         return Response({
             "server_now": now.isoformat(),
-            "business_date": current_business_date(store).isoformat(),
+            "business_date": business_date.isoformat(),
             "business_day": {"id": day.id, "date": day.date.isoformat(), "status": day.status, "opening_float": str(day.opening_float)} if day else None,
             "alarm_mode": st.alarm_mode,
             "tables": tables,
             "alarms": alarm_list,
             "open_visit_count": len(visits),
+            "unpaid_total": str(unpaid_total),
+            "paid_total": str(paid_total),
+            "sales_total": str(unpaid_total + paid_total),
+            "engaged_employee_ids": sorted(engaged),
         })
 
 
@@ -338,6 +357,19 @@ class MoveTableView(APIView):
     def post(self, request, visit_id):
         visit = services.move_table(request.store, request.user, visit_id, request.data.get("table_id"))
         audit(request, "visit.move_table", target=visit, changes={"table": visit.table.name})
+        return _visit_response(request, visit_id)
+
+
+class ChangeEntryTimeView(APIView):
+    """開始時刻の訂正（終了予定も同じ分だけずれる。料金は変わらない）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    @idempotent
+    def post(self, request, visit_id, entry_id):
+        entry = services.change_entry_time(request.store, request.user, visit_id, entry_id, request.data.get("started_at"))
+        audit(request, "visit.change_time", target=entry.visit, changes={"entry_id": entry.id, "started_at": entry.started_at, "planned_end_at": entry.planned_end_at})
         return _visit_response(request, visit_id)
 
 

@@ -430,6 +430,56 @@ def move_table(store: Store, user, visit_id, table_id) -> Visit:
     return visit
 
 
+CHANGE_TIME_MAX_BACK_HOURS = 24
+
+
+@transaction.atomic
+def change_entry_time(store: Store, user, visit_id, entry_id, started_at) -> CourseEntry:
+    """
+    開始時刻の訂正（入店の登録が遅れた・早すぎたとき）。料金は変えない。
+    - 時間制: 終了予定を同じ分だけずらす（延長した分はそのまま残る）。
+    - 無制限: 開始時刻だけ変える（終了予定は無いまま）。
+    - 会計済み・終了済みのセット、会計済み／取消済みの伝票は変更できない。
+    """
+    from django.utils.dateparse import parse_datetime
+
+    visit = _lock_visit(visit_id, store)
+    _require_open(visit)
+    entry = CourseEntry.objects.select_for_update().filter(id=entry_id, visit=visit).first()
+    if entry is None:
+        raise ApiError("not_found", "対象のコースが見つかりません。", status=404)
+    if not entry.is_active:
+        raise ApiError("entry_closed", "会計済み（または終了済み）のセットの時間は変更できません。", status=409)
+    new_start = parse_datetime(started_at) if isinstance(started_at, str) else started_at
+    if new_start is None:
+        raise ApiError("validation_error", "開始時刻を指定してください。")
+    if timezone.is_naive(new_start):
+        new_start = timezone.make_aware(new_start, timezone.get_current_timezone())
+    new_start = new_start.replace(second=0, microsecond=0)
+    now = timezone.now()
+    if new_start > now:
+        raise ApiError("validation_error", "開始時刻に未来の時刻は指定できません。")
+    if new_start < now - timedelta(hours=CHANGE_TIME_MAX_BACK_HOURS):
+        raise ApiError("validation_error", f"開始時刻は {CHANGE_TIME_MAX_BACK_HOURS} 時間前までの範囲で指定してください。")
+    old_start = entry.started_at
+    if new_start == old_start:
+        return entry
+    from_end = entry.planned_end_at
+    to_end = None if from_end is None else from_end + (new_start - old_start)
+    was_first = visit.opened_at == old_start
+    entry.started_at = new_start
+    entry.planned_end_at = to_end
+    entry.save(update_fields=["started_at", "planned_end_at", "updated_at"])
+    fmt = lambda d: timezone.localtime(d).strftime("%H:%M")  # noqa: E731
+    CourseEvent.objects.create(course_entry=entry, kind="change_time", performed_by=user, from_planned_end_at=from_end, to_planned_end_at=to_end,
+                               note=f"開始 {fmt(old_start)} → {fmt(new_start)}")
+    if was_first:
+        # 伝票の経過時間は入店時刻から数えるので、最初のセットの開始を直したら入店時刻もそろえる（営業日は変えない）
+        visit.opened_at = new_start
+        visit.save(update_fields=["opened_at", "updated_at"])
+    return entry
+
+
 @transaction.atomic
 def cancel_visit(store: Store, user, visit_id, reason: str) -> Visit:
     visit = _lock_visit(visit_id, store)

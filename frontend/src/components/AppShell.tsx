@@ -10,6 +10,12 @@ import { useSession } from "@/lib/session";
 import type { FloorAlarm, FloorState } from "@/lib/types";
 import { computeAlarm, syncServerClock, useNow } from "@/lib/useServerClock";
 import { CourseActionDialog, type CourseActionKind } from "./CourseActionDialog";
+import { PosHeader } from "./PosHeader";
+
+/** POS テーマ・POS ヘッダーにする画面（ホール・卓・注文・会計・POS 設定）。経理・管理の画面は今の見た目のまま */
+export function isPosPath(pathname: string): boolean {
+  return pathname === "/floor" || pathname.startsWith("/visits") || pathname.startsWith("/settings/pos");
+}
 import { ToastProvider, useToast } from "./Toast";
 
 type NavItem = { href: string; label: string; caps?: string[]; anyCaps?: string[]; group: "営業" | "管理" | "経理" | "設定"; freeeHandles?: boolean };
@@ -121,10 +127,38 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   const ctx = useMemo(() => ({ state: floor, error: floorError, reload: reloadFloor }), [floor, floorError, reloadFloor]);
   const onFloor = pathname === "/floor";
+  const pos = canFloor && isPosPath(pathname);
+
+  // POS の画面では、画面の外側（引っ張ったときに見える余白）も同じ色にする
+  useEffect(() => {
+    document.body.classList.toggle("pos-body", pos);
+    return () => document.body.classList.remove("pos-body");
+  }, [pos]);
+
+  const userName = me?.user.display_name || me?.user.username;
+  const doLogout = async () => {
+    await logout();
+    router.replace("/login");
+  };
 
   return (
     <FloorContext.Provider value={ctx}>
-      <div className="min-h-screen flex flex-col">
+      <div className={`min-h-screen flex flex-col ${pos ? "pos-theme" : ""}`}>
+        {pos ? (
+          <PosHeader
+            floor={floor}
+            pathname={pathname}
+            menuOpen={menuOpen}
+            onToggleMenu={() => setMenuOpen((v) => !v)}
+            notice={
+              !online ? (
+                <span className="badge badge-danger whitespace-nowrap">オフライン</span>
+              ) : floorError ? (
+                <span className="badge badge-danger whitespace-nowrap">接続できません</span>
+              ) : null
+            }
+          />
+        ) : (
         <header className="sticky top-0 z-40 flex items-center gap-2 px-3 h-[68px]" style={{ background: "var(--color-panel)", borderBottom: "1px solid var(--color-border)" }}>
           {canFloor && (
             <Link href="/floor" className={`btn btn-lg whitespace-nowrap shrink-0 ${onFloor ? "btn-primary" : ""}`} style={{ minHeight: 54 }}>
@@ -165,23 +199,34 @@ function ShellInner({ children }: { children: React.ReactNode }) {
               {me?.user.display_name || me?.user.username}
               {store && <span className="ml-1 hidden lg:inline">({ROLE_LABELS[store.role] ?? store.role})</span>}
             </span>
-            <button
-              className="btn btn-sm btn-ghost whitespace-nowrap shrink-0"
-              onClick={async () => {
-                await logout();
-                router.replace("/login");
-              }}
-            >
+            <button className="btn btn-sm btn-ghost whitespace-nowrap shrink-0" onClick={doLogout}>
               ログアウト
             </button>
           </div>
         </header>
+        )}
 
-        {canFloor && floor && <AlarmBanner alarms={floor.alarms} mode={floor.alarm_mode} onChanged={reloadFloor} />}
+        {canFloor && floor && <AlarmBanner alarms={floor.alarms} mode={floor.alarm_mode} onChanged={reloadFloor} top={pos ? 64 : 68} />}
 
         <div className="flex flex-1">
           {menuOpen && (
-            <nav className="w-72 shrink-0 p-3 space-y-4 overflow-y-auto" style={{ background: "var(--color-panel)", borderRight: "1px solid var(--color-border)" }} aria-label="主メニュー">
+            <nav
+              className={`w-72 shrink-0 p-3 space-y-4 overflow-y-auto ${pos ? "fixed left-0 bottom-0 z-40" : ""}`}
+              style={{ background: "var(--color-panel)", borderRight: "1px solid var(--color-border)", ...(pos ? { top: 64, boxShadow: "4px 0 16px rgba(0,0,0,0.25)" } : {}) }}
+              aria-label="主メニュー"
+            >
+              {pos && (
+                <div className="card-2 space-y-2">
+                  <div className="font-bold">{store?.name}</div>
+                  <div className="text-sm" style={{ color: "var(--color-muted)" }}>
+                    {userName}
+                    {store && `（${ROLE_LABELS[store.role] ?? store.role}）`}
+                  </div>
+                  <button className="btn btn-sm w-full" onClick={doLogout}>
+                    ログアウト
+                  </button>
+                </div>
+              )}
               {groups.map((g) => {
                 const items = nav.filter((n) => n.group === g);
                 if (!items.length) return null;
@@ -246,7 +291,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 }
 
 /** 終了時間の通知バナー（どの画面でも上部に表示。閉じても卓一覧の超過表示は残る） */
-function AlarmBanner({ alarms, mode, onChanged }: { alarms: FloorAlarm[]; mode: "10" | "5" | "both"; onChanged: () => Promise<void> }) {
+function AlarmBanner({ alarms, mode, onChanged, top = 68 }: { alarms: FloorAlarm[]; mode: "10" | "5" | "both"; onChanged: () => Promise<void>; top?: number }) {
   const now = useNow();
   const router = useRouter();
   const toast = useToast();
@@ -264,7 +309,7 @@ function AlarmBanner({ alarms, mode, onChanged }: { alarms: FloorAlarm[]; mode: 
   const visible = live.filter((a) => !dismissed[`${a.entry_id}:${a.level}`]);
   if (!visible.length && !action) return null;
   const sorted = [...visible].sort((a, b) => a.remaining_seconds - b.remaining_seconds);
-  const top = sorted[0];
+  const first = sorted[0];
 
   const levelText = (l: FloorAlarm["level"]) => (l === "overdue" ? "時間終了・対応待ち" : l === "warn5" ? "確認してください" : "まもなく終了");
   const levelCls = (l: FloorAlarm["level"]) => (l === "overdue" ? "alarm-overdue" : l === "warn5" ? "alarm-warn5" : "alarm-warn10");
@@ -300,9 +345,9 @@ function AlarmBanner({ alarms, mode, onChanged }: { alarms: FloorAlarm[]; mode: 
 
   return (
     <>
-      {top && (
-        <div className={`sticky top-[68px] z-30 px-3 py-2 border-b ${levelCls(top.level)}`} style={{ borderColor: "var(--color-border)" }} role="alert" aria-live="polite">
-          {row(top, true)}
+      {first && (
+        <div className={`sticky z-30 px-3 py-2 border-b ${levelCls(first.level)}`} style={{ borderColor: "var(--color-border)", top }} role="alert" aria-live="polite">
+          {row(first, true)}
           {sorted.length > 1 && (
             <button className="btn btn-sm mt-2" onClick={() => setListOpen((v) => !v)}>
               ほかに {sorted.length - 1} 件 {listOpen ? "▲ 閉じる" : "▼ 表示"}

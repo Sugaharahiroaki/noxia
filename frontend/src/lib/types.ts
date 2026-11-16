@@ -62,7 +62,7 @@ export type Product = {
   note: string;
 };
 
-export type Table = { id: number; name: string; capacity: number; sort_order: number; is_active: boolean };
+export type Table = { id: number; name: string; capacity: number; sort_order: number; is_active: boolean; color: string; kind: string };
 
 export type StoreSettings = {
   settings_note: string;
@@ -304,10 +304,18 @@ export type FloorState = {
   business_date: string;
   business_day: { id: number; date: string; status: string; opening_float: Money } | null;
   alarm_mode: "10" | "5" | "both";
-  tables: { id: number; name: string; capacity: number; visits: VisitBrief[] }[];
+  tables: FloorTable[];
   alarms: FloorAlarm[];
   open_visit_count: number;
+  /** 当営業日の集計（サーバー計算）。未精算＝営業中伝票の合計、精算済＝確定済み会計の合計 */
+  unpaid_total: Money;
+  paid_total: Money;
+  sales_total: Money;
+  /** 営業中の伝票に付いている従業員（担当・指名・同伴）。待機キャストの判定に使う */
+  engaged_employee_ids: number[];
 };
+
+export type FloorTable = { id: number; name: string; capacity: number; color: string; kind: string; visits: VisitBrief[] };
 
 export type Handwrite = {
   checkout_id: number;

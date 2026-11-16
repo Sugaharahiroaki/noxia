@@ -103,6 +103,9 @@ class Table(TimestampedModel):
     capacity = models.PositiveSmallIntegerField("定員", default=4)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    # ホールの卓カードの色（空 = 既定の色。"#RRGGBB"）と、営業枠の区分（BOX・カウンター・出前 など。店舗が自由に決める。空 = 区分なし）
+    color = models.CharField("卓の色", max_length=9, blank=True, default="")
+    kind = models.CharField("営業枠の区分", max_length=30, blank=True, default="")
 
     class Meta:
         ordering = ["store_id", "sort_order", "id"]

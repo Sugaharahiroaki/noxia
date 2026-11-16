@@ -11,6 +11,7 @@ urlpatterns = [
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/change-unlimited", views.ChangeUnlimitedView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/unlimited-preview", views.UnlimitedPreviewView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/extend-preview", views.ExtendPreviewView.as_view()),
+    path("visits/<int:visit_id>/course-entries/<int:entry_id>/change-time", views.ChangeEntryTimeView.as_view()),
     path("visits/<int:visit_id>/lines", views.VisitLinesView.as_view()),
     path("visits/<int:visit_id>/lines/batch", views.VisitLinesBatchView.as_view()),
     path("visits/<int:visit_id>/lines/cancel-batch", views.LinesCancelBatchView.as_view()),
