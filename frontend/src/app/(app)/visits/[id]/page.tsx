@@ -595,6 +595,14 @@ function ExtendPanel({ visitId, entry, showName, refreshKey, onPick, onUnlimited
       </div>
     );
   }
+  if (entry.present_count === 0) {
+    return (
+      <div className="card-2" style={{ color: "var(--color-muted)" }}>
+        {showName && <span className="font-bold mr-2">{entry.label || entry.course_name}</span>}
+        在席のお客様がいないため、延長はありません。
+      </div>
+    );
+  }
   return (
     <div className="space-y-1" role="group" aria-label={`${entry.label || entry.course_name} の延長`}>
       {showName && <div className="font-bold">{entry.label || entry.course_name}</div>}
