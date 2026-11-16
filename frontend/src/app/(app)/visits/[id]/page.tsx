@@ -340,6 +340,7 @@ export default function VisitDetailPage() {
           <button className="btn w-full" onClick={() => setMore(true)}>
             指名・同伴・値引き・席移動など
           </button>
+          {settings.data && <PricingInfo st={settings.data} />}
         </div>
       </div>
 
@@ -512,6 +513,9 @@ export default function VisitDetailPage() {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button className="btn btn-xl" style={{ minWidth: 120 }} onClick={() => router.push(`/visits/${visit.id}/bill`)}>
+            明細
+          </button>
           <button className="btn btn-xl btn-primary" style={{ minWidth: 150 }} onClick={() => router.push(`/visits/${visit.id}/order`)}>
             注文
           </button>
@@ -524,6 +528,31 @@ export default function VisitDetailPage() {
       {/* 出勤していない人を選んだときの確認（上の選択画面より手前に出る） */}
       {shiftGuard}
     </div>
+  );
+}
+
+const ROUND_LABEL: Record<string, string> = { floor: "切り捨て", ceil: "切り上げ", half_up: "四捨五入" };
+const SC_TARGET_LABEL: Record<string, string> = { all: "全明細", course_only: "セット・延長のみ", products_only: "商品のみ" };
+
+/**
+ * いまの店舗の料金計算の設定（読み取り専用）。卓ごとの率の変更・カード用の別金額は出さない（UNIFIED_PLAN 6 章 Q1・Q2）。
+ * 変更は設定画面（権限と再認証が必要）で行う。
+ */
+function PricingInfo({ st }: { st: StoreSettings }) {
+  return (
+    <section className="card text-sm" style={{ padding: "0.6rem 0.8rem" }} aria-label="料金計算の設定">
+      <h2 className="font-bold mb-1">料金計算（店舗の設定・この画面では変更できません）</h2>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+        <dt style={{ color: "var(--color-muted)" }}>サービス料</dt>
+        <dd className="num">{st.service_charge_enabled ? `${Number(st.service_charge_rate)}%（${SC_TARGET_LABEL[st.service_charge_target] ?? st.service_charge_target}）` : "なし"}</dd>
+        <dt style={{ color: "var(--color-muted)" }}>消費税</dt>
+        <dd className="num">
+          {Number(st.default_tax_rate)}%（{st.prices_include_tax ? "内税" : "外税"}・{ROUND_LABEL[st.tax_rounding] ?? st.tax_rounding}）
+        </dd>
+        <dt style={{ color: "var(--color-muted)" }}>合計の丸め</dt>
+        <dd className="num">{st.total_rounding_unit > 1 ? `${st.total_rounding_unit}円単位で${ROUND_LABEL[st.total_rounding_mode] ?? st.total_rounding_mode}` : "なし（1円単位）"}</dd>
+      </dl>
+    </section>
   );
 }
 

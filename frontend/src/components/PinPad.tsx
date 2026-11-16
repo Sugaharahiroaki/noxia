@@ -15,13 +15,11 @@ export function PinPad({ onComplete, disabled, resetKey }: { onComplete: (pin: s
   }, [resetKey]);
 
   function press(d: string) {
-    if (disabled) return;
-    setPin((p) => {
-      if (p.length >= 4) return p;
-      const next = p + d;
-      if (next.length === 4) setTimeout(() => onComplete(next), 0);
-      return next;
-    });
+    if (disabled || pin.length >= 4) return;
+    // 送信の予約は状態更新の関数の外で行う（更新の関数は開発モードで 2 回呼ばれるため、中で予約すると暗証番号が 2 回送られる）
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) setTimeout(() => onComplete(next), 0);
   }
   function back() {
     if (!disabled) setPin((p) => p.slice(0, -1));

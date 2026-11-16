@@ -341,7 +341,7 @@ export default function CheckoutPage() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn btn-xl" onClick={() => router.push(`/visits/${visit.id}`)}>
-          ← 伝票へ
+          ← 卓詳細
         </button>
         <h1 className="text-3xl font-bold">{visit.table_name} のお会計</h1>
         <span className="text-lg" style={{ color: "var(--color-muted)" }}>
