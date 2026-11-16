@@ -12,6 +12,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from apps.core.ids import new_public_id
 from apps.core.models import Store, TimestampedModel
 
 
@@ -26,6 +27,8 @@ class Visit(TimestampedModel):
 
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="visits")
     business_date = models.DateField()
+    # 外に見せる伝票 ID（連番にしないランダムな英数字。画面・CSV・集計に出す）。slip_number は店舗内の通し番号（内部用）
+    public_id = models.CharField("伝票ID", max_length=16, unique=True, default=new_public_id, editable=False)
     slip_number = models.PositiveIntegerField("伝票番号")
     table = models.ForeignKey("catalog.Table", on_delete=models.PROTECT, related_name="visits")
     status = models.CharField(max_length=20, choices=VisitStatus.choices, default=VisitStatus.OPEN)
@@ -233,6 +236,8 @@ class Checkout(TimestampedModel):
 
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="checkouts")
     visit = models.ForeignKey(Visit, on_delete=models.PROTECT, related_name="checkouts")
+    # 外に見せる会計 ID（連番にしないランダムな英数字）。number は店舗内の通し番号（内部用）
+    public_id = models.CharField("会計ID", max_length=16, unique=True, default=new_public_id, editable=False)
     number = models.PositiveIntegerField("会計番号")
     kind = models.CharField(max_length=10, default="full")  # full / partial
     status = models.CharField(max_length=20, choices=CheckoutStatus.choices, default=CheckoutStatus.CONFIRMED)

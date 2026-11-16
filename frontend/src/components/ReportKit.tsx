@@ -17,6 +17,12 @@ export function amt(value: string | number | null | undefined): string {
   return (n < 0 ? "−" : "") + Math.round(Math.abs(n)).toLocaleString("ja-JP");
 }
 
+/** 伝票 ID・会計 ID の表示（4 文字ごとに区切る。例: K7QM-2XRA-9BHT） */
+export function fmtId(value: string | null | undefined): string {
+  if (!value) return "--";
+  return value.match(/.{1,4}/g)?.join("-") ?? value;
+}
+
 /** 件数・人数など（0 は「--」）。小数は 1 桁まで */
 export function cnt(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") return "--";
@@ -28,7 +34,26 @@ export function cnt(value: string | number | null | undefined): string {
 export type ReportLink = { href: string; label: string; caps?: string[]; note?: string };
 
 /** 集計画面の一覧（フェーズごとに足す） */
-export const REPORT_LINKS: ReportLink[] = [{ href: "/reports/slips", label: "伝票一覧", caps: ["sales.view"], note: "期間・支払方法・値引き・取消で絞り込み。伝票ごとのキャスト別の売上小計" }];
+export const REPORT_LINKS: ReportLink[] = [
+  { href: "/reports/monthly", label: "収支（月次）", caps: ["dashboard.view"], note: "1 行 = 1 営業日。売上・女子売上・人件費・入出金・粗利。日付を押すと営業日報へ" },
+  { href: "/reports/daily", label: "営業日報（日次）", caps: ["dashboard.view"], note: "当日・累計・1 営業日あたりの平均、現金管理、入出金、その日の伝票" },
+  { href: "/reports/slips", label: "伝票一覧", caps: ["sales.view"], note: "期間・支払方法・値引き・取消で絞り込み。伝票ごとのキャスト別の売上小計" },
+  { href: "/reports/cash", label: "レジ精算（月間）", caps: ["dashboard.view"], note: "営業日ごとの釣銭・現金売上・入出金・理論現金・実際の現金・過不足・預金" },
+];
+
+/** 割合（%）。null は「--」 */
+export function pct(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "--";
+  return `${Number(value).toFixed(2)}%`;
+}
+
+const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+/** 2026-11-17 → 17（火） */
+export function dayLabel(dateStr: string): { day: number; weekday: string; weekend: boolean } {
+  const d = new Date(`${dateStr}T00:00:00+09:00`);
+  const w = new Date(d.getTime() + 9 * 3600 * 1000).getUTCDay();
+  return { day: Number(dateStr.slice(8, 10)), weekday: WEEKDAYS[w], weekend: w === 0 || w === 6 };
+}
 
 export function useReportLinks(): ReportLink[] {
   const { can } = useSession();

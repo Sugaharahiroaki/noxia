@@ -6,6 +6,7 @@ import { DateRangeBar, useDateRange } from "@/components/DateRange";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Stat, type SaveState } from "@/components/ui";
 import { PinPad } from "@/components/PinPad";
 import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtDate, fmtTime, LINE_TYPE_LABELS, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { Checkout, Receivable } from "@/lib/types";
@@ -90,8 +91,8 @@ export default function SalesPage() {
               <thead>
                 <tr>
                   <th>営業日</th>
-                  <th>会計#</th>
-                  <th>伝票#</th>
+                  <th>会計ID</th>
+                  <th>伝票ID</th>
                   <th>卓</th>
                   <th>確定</th>
                   <th>請求額</th>
@@ -104,8 +105,8 @@ export default function SalesPage() {
                 {hist.data?.checkouts.map((c) => (
                   <tr key={c.id} style={{ opacity: c.status === "voided" ? 0.55 : 1 }}>
                     <td>{fmtDate(c.business_date)}</td>
-                    <td>{c.number}</td>
-                    <td>{c.visit_slip_number}</td>
+                    <td style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>{fmtId(c.public_id)}</td>
+                    <td style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>{fmtId(c.visit_public_id)}</td>
                     <td>{c.visit_table_name}</td>
                     <td>{fmtTime(c.confirmed_at)}</td>
                     <td className="font-bold">{yen(c.total)}</td>

@@ -23,6 +23,7 @@ from apps.cash.models import BusinessDay, CashMovement
 from apps.core.audit import audit
 from apps.core.business_date import business_date_now, current_business_date
 from apps.core.exceptions import ApiError
+from apps.core.ids import format_public_id
 from apps.core.models import Company, OperatorAccessLog, Store
 from apps.core.money import D, ZERO
 from apps.core.permissions import (
@@ -266,13 +267,13 @@ class ExportView(APIView):
         tag = f"{store.code}_{f.isoformat()}_{t.isoformat()}"
         if kind == "sales":
             qs = Checkout.objects.filter(store=store, business_date__gte=f, business_date__lte=t).select_related("visit__table").order_by("confirmed_at")
-            rows = [[c.business_date, c.number, c.visit.slip_number, c.visit.table.name, c.kind, c.status, c.subtotal, c.discount_total, c.service_charge,
+            rows = [[c.business_date, format_public_id(c.visit.public_id), format_public_id(c.public_id), c.number, c.visit.slip_number, c.visit.table.name, c.kind, c.status, c.subtotal, c.discount_total, c.service_charge,
                      c.tax_total, c.rounding_adjustment, c.total, c.total_excl_tax, c.confirmed_at.isoformat(), c.void_reason] for c in qs]
-            return _csv_response(request, f"sales_{tag}.csv", ["営業日", "会計番号", "伝票番号", "卓", "種別", "状態", "明細合計", "値引き", "サービス料", "税額", "端数調整", "請求額", "税抜金額", "確定日時", "取消理由"], rows, "export.sales")
+            return _csv_response(request, f"sales_{tag}.csv", ["営業日", "伝票ID", "会計ID", "会計番号", "伝票番号", "卓", "種別", "状態", "明細合計", "値引き", "サービス料", "税額", "端数調整", "請求額", "税抜金額", "確定日時", "取消理由"], rows, "export.sales")
         if kind == "payments":
-            qs = Payment.objects.filter(store=store, business_date__gte=f, business_date__lte=t).select_related("checkout").order_by("paid_at")
-            rows = [[p.business_date, p.checkout.number, p.method, p.amount, p.tendered, p.change_amount, p.status, p.paid_at.isoformat()] for p in qs]
-            return _csv_response(request, f"payments_{tag}.csv", ["営業日", "会計番号", "方法", "充当額", "預り額", "釣銭", "状態", "日時"], rows, "export.payments")
+            qs = Payment.objects.filter(store=store, business_date__gte=f, business_date__lte=t).select_related("checkout__visit").order_by("paid_at")
+            rows = [[p.business_date, format_public_id(p.checkout.visit.public_id), format_public_id(p.checkout.public_id), p.checkout.number, p.method, p.amount, p.tendered, p.change_amount, p.status, p.paid_at.isoformat()] for p in qs]
+            return _csv_response(request, f"payments_{tag}.csv", ["営業日", "伝票ID", "会計ID", "会計番号", "方法", "充当額", "預り額", "釣銭", "状態", "日時"], rows, "export.payments")
         if kind == "cash":
             days = BusinessDay.objects.filter(store=store, date__gte=f, date__lte=t).order_by("date")
             rows = [[d.date, d.status, d.opening_float, d.cash_sales, d.card_sales, d.receivable_sales, d.cash_in_other, d.cash_out_expense, d.cash_out_daily_pay,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { RequireCaps } from "@/components/common";
-import { amt, cnt, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, fmtId, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { fmtDate, fmtTime } from "@/lib/format";
 import type { SlipDetail } from "@/lib/types_reports";
@@ -27,7 +27,7 @@ function Inner() {
   return (
     <div>
       <PageHeader
-        title={`伝票 #${d.slip_number}（${d.table_name}）`}
+        title={`伝票 ${fmtId(d.public_id)}（${d.table_name}）`}
         subtitle={
           <>
             営業日 {fmtDate(d.business_date)} ・ 入店 {fmtTime(d.opened_at)} − 退店 {d.closed_at ? fmtTime(d.closed_at) : "--"}
@@ -109,11 +109,11 @@ function Inner() {
               <Cell label="お釣り" value={amt(d.change)} />
               <Cell label="返金" value={amt(d.refunds)} />
             </dl>
-            {d.checkouts.length > 1 && (
+            {d.checkouts.length > 0 && (
               <ul className="text-sm mt-2" style={{ color: "var(--color-muted)" }}>
                 {d.checkouts.map((c) => (
                   <li key={c.id}>
-                    会計#{c.number}（{c.status_label}・{c.kind === "partial" ? "分割" : "全体"}）{fmtTime(c.confirmed_at)} {amt(c.total)} 円 … {c.payments.map((p) => `${p.method_label} ${amt(p.amount)}`).join("、")}
+                    会計ID {fmtId(c.public_id)}（{c.status_label}・{c.kind === "partial" ? "分割" : "全体"}）{fmtTime(c.confirmed_at)} {amt(c.total)} 円 … {c.payments.map((p) => `${p.method_label} ${amt(p.amount)}`).join("、")}
                   </li>
                 ))}
               </ul>

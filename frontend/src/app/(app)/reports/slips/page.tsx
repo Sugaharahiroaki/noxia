@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { RequireCaps } from "@/components/common";
 import { DateRangeBar, useDateRange } from "@/components/DateRange";
-import { amt, cnt, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, fmtId, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { useToast } from "@/components/Toast";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
@@ -62,7 +62,7 @@ function Inner() {
             <ReportTable label="伝票一覧">
               <thead>
                 <tr>
-                  <th>伝票</th>
+                  <th>伝票ID</th>
                   <th>営業日</th>
                   <th>卓</th>
                   <th>入店</th>
@@ -101,8 +101,8 @@ function Inner() {
                 {d.rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <Link href={`/reports/slips/${r.id}`} className="underline font-semibold">
-                        #{r.slip_number}
+                      <Link href={`/reports/slips/${r.id}`} className="underline font-semibold num" style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>
+                        {fmtId(r.public_id)}
                       </Link>
                     </td>
                     <td>{fmtDate(r.business_date)}</td>

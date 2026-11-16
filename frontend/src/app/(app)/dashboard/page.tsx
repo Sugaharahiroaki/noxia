@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Empty, ErrorBox, PageHeader, SaveStatus, Spinner, Stat, type SaveState } from "@/components/ui";
+import { DashboardKpi } from "@/components/DashboardKpi";
 import { downloadFile } from "@/lib/api";
 import { addDays, fmtDate, fmtMinutes, monthStart, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
@@ -138,6 +139,7 @@ export default function DashboardPage() {
           </>
         }
       />
+      <DashboardKpi />
       <ErrorBox error={daily.error || breakdown.error} onRetry={() => { daily.reload(false); breakdown.reload(false); }} />
       {daily.loading && <Spinner />}
 

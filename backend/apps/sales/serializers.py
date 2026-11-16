@@ -127,7 +127,7 @@ class VisitSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Visit
-        fields = ["id", "business_date", "slip_number", "table", "table_name", "status", "status_label", "opened_at", "closed_at",
+        fields = ["id", "public_id", "business_date", "slip_number", "table", "table_name", "status", "status_label", "opened_at", "closed_at",
                   "guest_count", "customer", "customer_name", "customer_display", "primary_employee", "primary_employee_name", "note",
                   "cancel_reason", "course_entries", "lines", "guests", "tags", "present_count", "checkouts", "created_at"]
 
@@ -159,7 +159,7 @@ class VisitBriefSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Visit
-        fields = ["id", "business_date", "slip_number", "table", "table_name", "status", "opened_at", "guest_count", "customer_display",
+        fields = ["id", "public_id", "business_date", "slip_number", "table", "table_name", "status", "opened_at", "guest_count", "customer_display",
                   "primary_employee_name", "note", "course_entries", "line_count", "running_total", "tags", "present_count"]
 
     def get_customer_display(self, obj):
@@ -201,7 +201,7 @@ class CheckoutBriefSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Checkout
-        fields = ["id", "number", "kind", "status", "business_date", "confirmed_at", "total", "payments"]
+        fields = ["id", "public_id", "number", "kind", "status", "business_date", "confirmed_at", "total", "payments"]
 
 
 class CheckoutSerializer(serializers.ModelSerializer):
@@ -209,6 +209,7 @@ class CheckoutSerializer(serializers.ModelSerializer):
     refunds = RefundSerializer(many=True, read_only=True)
     lines = OrderLineSerializer(many=True, read_only=True)
     visit_slip_number = serializers.IntegerField(source="visit.slip_number", read_only=True)
+    visit_public_id = serializers.CharField(source="visit.public_id", read_only=True)
     visit_table_name = serializers.CharField(source="visit.table.name", read_only=True)
     confirmed_by_name = serializers.SerializerMethodField()
     voided_by_name = serializers.SerializerMethodField()
@@ -216,7 +217,7 @@ class CheckoutSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Checkout
-        fields = ["id", "visit", "visit_slip_number", "visit_table_name", "number", "kind", "status", "status_label", "business_date", "confirmed_at",
+        fields = ["id", "public_id", "visit", "visit_public_id", "visit_slip_number", "visit_table_name", "number", "kind", "status", "status_label", "business_date", "confirmed_at",
                   "confirmed_by_name", "subtotal", "discount_total", "service_charge", "tax_total", "tax_breakdown", "total_before_rounding",
                   "rounding_adjustment", "total", "total_excl_tax", "breakdown", "settings_snapshot", "void_reason", "voided_at", "voided_by_name",
                   "note", "payments", "refunds", "lines"]

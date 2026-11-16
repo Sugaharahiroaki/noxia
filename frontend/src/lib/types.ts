@@ -234,6 +234,8 @@ export type Payment = {
 
 export type CheckoutBrief = {
   id: number;
+  /** 会計 ID（連番にしないランダムな英数字） */
+  public_id: string;
   number: number;
   kind: "full" | "partial";
   status: "confirmed" | "voided";
@@ -260,6 +262,8 @@ export type Refund = {
 
 export type Checkout = CheckoutBrief & {
   visit: number;
+  /** 伝票 ID（連番にしないランダムな英数字） */
+  visit_public_id: string;
   visit_slip_number: number;
   visit_table_name: string;
   status_label: string;
@@ -284,6 +288,8 @@ export type Checkout = CheckoutBrief & {
 
 export type Visit = {
   id: number;
+  /** 伝票 ID（連番にしないランダムな英数字） */
+  public_id: string;
   business_date: string;
   slip_number: number;
   table: number;
