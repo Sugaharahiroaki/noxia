@@ -1,8 +1,12 @@
 from django.urls import path
+from rest_framework.routers import SimpleRouter
 
 from . import views
 
-urlpatterns = [
+router = SimpleRouter(trailing_slash=False)
+router.register("store/tags", views.TagViewSet, basename="tag")
+
+urlpatterns = router.urls + [
     path("floor/state", views.FloorStateView.as_view()),
     path("visits", views.VisitListView.as_view()),
     path("visits/preview", views.VisitPreviewView.as_view()),
@@ -13,6 +17,9 @@ urlpatterns = [
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/unlimited-preview", views.UnlimitedPreviewView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/extend-preview", views.ExtendPreviewView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/change-time", views.ChangeEntryTimeView.as_view()),
+    path("visits/<int:visit_id>/course-entries/<int:entry_id>/extend-options", views.ExtendOptionsView.as_view()),
+    path("visits/<int:visit_id>/guests/<int:guest_id>/leave", views.GuestLeaveView.as_view()),
+    path("visits/<int:visit_id>/tags", views.VisitTagsView.as_view()),
     path("visits/<int:visit_id>/lines", views.VisitLinesView.as_view()),
     path("visits/<int:visit_id>/lines/batch", views.VisitLinesBatchView.as_view()),
     path("visits/<int:visit_id>/lines/cancel-batch", views.LinesCancelBatchView.as_view()),

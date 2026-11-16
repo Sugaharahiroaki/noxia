@@ -274,6 +274,10 @@ textarea.input {
 body.pos-body {
   background: #f1e8d2;
 }
+/* POS の画面は下端に金額と操作のバーがあるので、通知はその上に出す（ボタンを隠さない） */
+body.pos-body .toast {
+  bottom: calc(104px + env(safe-area-inset-bottom));
+}
 .pos-theme {
   --color-bg: #f1e8d2;
   --color-panel: #fffaf0;

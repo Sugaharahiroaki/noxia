@@ -111,6 +111,35 @@ class VisitGuest(TimestampedModel):
         indexes = [models.Index(fields=["store", "visit", "status"])]
 
 
+class Tag(TimestampedModel):
+    """伝票に付けるタグ（「呼び」など。店舗ごとのマスタ）。顧客の属性とは別物。"""
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="tags")
+    name = models.CharField("タグ名", max_length=30)
+    color = models.CharField("色（#RRGGBB。空 = 既定）", max_length=9, blank=True, default="")
+    show_on_floor = models.BooleanField("ホールの卓カードに出す", default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["store_id", "sort_order", "id"]
+        constraints = [models.UniqueConstraint(fields=["store", "name"], name="uniq_tag_name_per_store")]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class VisitTag(models.Model):
+    visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name="visit_tags")
+    tag = models.ForeignKey(Tag, on_delete=models.PROTECT, related_name="visit_tags")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["tag__sort_order", "tag_id"]
+        constraints = [models.UniqueConstraint(fields=["visit", "tag"], name="uniq_tag_per_visit")]
+
+
 class CourseEvent(models.Model):
     """延長・無制限変更・席移動などの操作記録（誰がいつ）。"""
 
@@ -161,6 +190,8 @@ class OrderLine(TimestampedModel):
     amount = models.DecimalField("金額（単価×数量。値引きは負）", max_digits=12, decimal_places=2)
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2)
     tax_included = models.BooleanField(default=True)
+    # 延長明細が延ばした分数（取消で終了予定を戻すのに使う）。null の延長明細（古いデータ）は CourseEntry.extension_minutes を使う
+    extension_minutes = models.PositiveIntegerField(null=True, blank=True)
     category_kind = models.CharField(max_length=20, blank=True)
     category_id_snapshot = models.BigIntegerField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=LineStatus.choices, default=LineStatus.ACTIVE)

@@ -38,7 +38,7 @@ export default function AddCoursePage() {
       setSave({ kind: "saved" });
       await reloadFloor();
       toast.show({ message: `${visit.data?.table_name ?? ""} に ${guests}名 合流しました` });
-      router.replace("/floor");
+      router.replace(`/visits/${id}`);
     } catch (e) {
       setSave({ kind: "error", error: e });
     }

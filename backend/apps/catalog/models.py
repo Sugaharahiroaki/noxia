@@ -39,6 +39,21 @@ class Course(TimestampedModel):
         return self.name
 
 
+class CourseExtensionOption(TimestampedModel):
+    """
+    延長の候補（30 分・60 分 など）。コースに 1 件も無ければ、Course.extension_price・extension_minutes を 1 件の候補として扱う。
+    料金は延長した時点の値を明細に保存する（ここを変えても過去の明細は変わらない）。
+    """
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="extension_options")
+    minutes = models.PositiveIntegerField("延長する分数")
+    price = models.DecimalField("延長料金", max_digits=12, decimal_places=2)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["course_id", "sort_order", "minutes", "id"]
+
+
 class CategoryKind(models.TextChoices):
     DRINK = "drink", "ドリンク"
     CAST_DRINK = "cast_drink", "キャストドリンク"

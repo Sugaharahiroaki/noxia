@@ -40,6 +40,7 @@ export type Course = {
   is_unlimited: boolean;
   /** 入店時の入口の区分（セット構成）。空 = 区分なし */
   kind: string;
+  extension_options: { id?: number; minutes: number; price: Money; sort_order?: number }[];
 };
 
 export type Category = { id: number; name: string; kind: string; sort_order: number; is_active: boolean };
@@ -151,6 +152,24 @@ export type CourseEntry = {
   is_active: boolean;
   alarm: Alarm | null;
   events?: CourseEvent[];
+  /** 在席人数（客の行が無い伝票ではセットの人数と同じ） */
+  present_count: number;
+};
+
+export type Tag = { id: number; name: string; color: string; show_on_floor: boolean; sort_order: number; is_active: boolean };
+export type VisitTagInfo = { id: number; name: string; color: string; show_on_floor: boolean };
+
+/** 延長の候補 1 件の見込み（GET extend-options）。option_id が null なら従来の延長 */
+export type ExtendOption = {
+  option_id: number | null;
+  amount: Money;
+  unit_price: Money;
+  minutes: number;
+  from_planned_end_at: string;
+  to_planned_end_at: string;
+  guest_count: number;
+  table_name: string;
+  label: string;
 };
 
 export type BackTarget = { employee: number; employee_name: string; share_type: "percent" | "fixed"; share_value: Money };
@@ -168,6 +187,8 @@ export type OrderLine = {
   amount: Money;
   tax_rate: Money;
   tax_included: boolean;
+  /** 延長明細が延ばした分数（古い明細は null） */
+  extension_minutes: number | null;
   category_kind: string;
   status: "active" | "cancelled";
   cancel_reason: string;
@@ -281,6 +302,9 @@ export type Visit = {
   lines: OrderLine[];
   /** 客の行（入店ウィザードで客ごとに指定したとき。無い伝票は空） */
   guests: VisitGuest[];
+  tags: VisitTagInfo[];
+  /** 在席人数。guest_count は来店した人数（退店しても減らない） */
+  present_count: number;
   checkouts: CheckoutBrief[];
   created_at: string;
   quote?: Quote;
@@ -326,6 +350,9 @@ export type VisitBrief = {
   course_entries: CourseEntry[];
   line_count: number;
   running_total: Money | null;
+  /** ホールに出すタグだけ */
+  tags: VisitTagInfo[];
+  present_count: number;
 };
 
 export type FloorState = {

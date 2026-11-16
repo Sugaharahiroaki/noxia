@@ -46,6 +46,9 @@ class CourseViewSet(_CatalogViewSet):
     serializer_class = CourseSerializer
     audit_prefix = "catalog.course"
 
+    def get_queryset(self):
+        return super().get_queryset().prefetch_related("extension_options")
+
 
 class CategoryViewSet(_CatalogViewSet):
     model = Category

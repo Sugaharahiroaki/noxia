@@ -20,7 +20,8 @@ from django.utils import timezone
 
 from apps.accounting.models import AccountingAccessGrant, CastContract, StoreTaxProfile, TaxPayer, WithholdingRule
 from apps.accounting.rules_data import ensure_default_rules
-from apps.catalog.models import Category, Course, Product, Table
+from apps.catalog.models import Category, Course, CourseExtensionOption, Product, Table
+from apps.sales.models import Tag
 from apps.core.models import Company, CompanyMembership, Store, StoreMembership, StoreSettings, User
 from apps.customers.models import BottleKeep, Customer
 from apps.inventory.models import StockMovement, Supplier, SupplierProduct
@@ -183,7 +184,12 @@ class Command(BaseCommand):
         # 【仮設定】kind は入店時の入口の区分（セット構成）
         unlimited = Course.objects.create(store=store, name="飲み放題・時間無制限", price=Decimal(3500), duration_minutes=None, extension_price=Decimal(0), sort_order=1, kind="飲み放題")
         Course.objects.create(store=store, name="飲み放題・1時間", price=Decimal(2500), duration_minutes=60, extension_price=Decimal(2500), extension_minutes=60, sort_order=2, kind="飲み放題")
-        Course.objects.create(store=store, name="セット60分", price=Decimal(3500), duration_minutes=60, extension_price=Decimal(3500), extension_minutes=60, sort_order=3, kind="セット")
+        set60 = Course.objects.create(store=store, name="セット60分", price=Decimal(3500), duration_minutes=60, extension_price=Decimal(3500), extension_minutes=60, sort_order=3, kind="セット")
+        # 【仮設定】延長の候補（30 分・60 分）と伝票タグ
+        CourseExtensionOption.objects.create(course=set60, minutes=30, price=Decimal(2000), sort_order=1)
+        CourseExtensionOption.objects.create(course=set60, minutes=60, price=Decimal(3500), sort_order=2)
+        for i, (tag_name, color, on_floor) in enumerate([("呼び", "#d9534f", True), ("新規", "#1f6fd0", True), ("常連", "#1a8a52", True), ("要確認", "#8a6d3b", False)]):
+            Tag.objects.create(store=store, name=tag_name, color=color, show_on_floor=on_floor, sort_order=i)
         StoreSettings.objects.create(
             store=store, settings_note=SETTINGS_NOTE,
             price_basis="per_person", prices_include_tax=True, default_tax_rate=Decimal("10.00"),

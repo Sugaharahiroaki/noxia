@@ -244,15 +244,106 @@ def add_course_entry(store: Store, user, visit_id, data: dict) -> CourseEntry:
     course = Course.objects.filter(store=store, id=data.get("course_id"), is_active=True).first()
     if course is None:
         raise ApiError("validation_error", "この店舗で利用できないコースが指定されました。")
+    has_guests = visit.guests.exists()
+    guests_in = _parse_guests(store, st, data.get("guests"), [data])
     entry = _add_entry(visit, st, course, data, user, default_started_at=timezone.now())
     visit.guest_count = sum(ce.guest_count for ce in visit.course_entries.filter(is_active=True))
     visit.save(update_fields=["guest_count"])
+    if has_guests or guests_in:
+        # 客の行で人数を数えている伝票は、途中合流の人にも客の行を作る（指定が無ければ人数ぶんの空の行）
+        if not guests_in:
+            guests_in = [{"entry_index": 0, "label": "", "employee": None, "designation": ""} for _ in range(entry.guest_count)]
+        last = visit.guests.order_by("-seq").values_list("seq", flat=True).first() or 0
+        _create_guests(visit, st, user, guests_in, [entry], start_seq=last + 1)
     return entry
+
+
+def entry_present_count(entry: CourseEntry) -> int:
+    """セットの在席人数。客の行があるセットは在席の行の数、無いセット（従来の伝票）はセットの人数。"""
+    rows = list(entry.guests.all())
+    if not rows:
+        return entry.guest_count
+    return sum(1 for g in rows if g.status == "present")
+
+
+def visit_present_count(visit: Visit) -> int:
+    rows = list(visit.guests.all())
+    if not rows:
+        return visit.guest_count
+    return sum(1 for g in rows if g.status == "present")
+
+
+def extension_candidates(entry: CourseEntry) -> list[dict]:
+    """延長の候補 [{option_id, minutes, price}]。コースに候補が無ければ、セットに保存した延長料金・分数の 1 件（option_id=None）。"""
+    options = list(entry.course.extension_options.all())
+    if not options:
+        return [{"option_id": None, "minutes": entry.extension_minutes or 60, "price": D(entry.extension_price)}]
+    return [{"option_id": o.id, "minutes": o.minutes, "price": D(o.price)} for o in options]
+
+
+def resolve_extension(entry: CourseEntry, option_id=None) -> dict:
+    """option_id を省いたら従来どおり（セットに保存した延長料金・分数）。指定したら、そのコースの候補に限る。"""
+    if option_id in (None, ""):
+        return {"option_id": None, "minutes": entry.extension_minutes or 60, "price": D(entry.extension_price)}
+    for c in extension_candidates(entry):
+        if c["option_id"] is not None and str(c["option_id"]) == str(option_id):
+            return c
+    raise ApiError("validation_error", "このコースで選べない延長が指定されました。")
+
+
+@transaction.atomic
+def leave_guest(store: Store, user, visit_id, guest_id):
+    """
+    客を 1 人退店にする（ほかの客は在席のまま）。
+    開始済みのセット・延長の料金は減らさない。退店後の延長は在席人数で計算する（UNIFIED_PLAN 6 章 Q3 の扱い）。
+    最後の 1 人は退店にできない（会計するか、伝票を削除する）。
+    """
+    from .models import VisitGuest
+
+    visit = _lock_visit(visit_id, store)
+    _require_open(visit)
+    guest = VisitGuest.objects.select_for_update().filter(id=guest_id, visit=visit).first()
+    if guest is None:
+        raise ApiError("not_found", "お客様が見つかりません。", status=404)
+    if guest.status != "present":
+        raise ApiError("already_left", "このお客様はすでに退店しています。", status=409)
+    if visit.guests.filter(status="present").count() <= 1:
+        raise ApiError("last_guest", "最後の 1 人は退店にできません。お帰りのときは会計を、入力ミスのときは伝票の削除をしてください。", status=409)
+    guest.status = "left"
+    guest.left_at = timezone.now()
+    guest.save(update_fields=["status", "left_at", "updated_at"])
+    return guest
+
+
+@transaction.atomic
+def set_visit_tags(store: Store, user, visit_id, tag_ids) -> Visit:
+    """伝票のタグを、渡した一覧に入れ替える（この店舗の有効なタグだけ）。"""
+    from .models import Tag, VisitTag
+
+    visit = _lock_visit(visit_id, store)
+    _require_open(visit)
+    if not isinstance(tag_ids, list):
+        raise ApiError("validation_error", "タグの指定が正しくありません。")
+    try:
+        wanted = {int(x) for x in tag_ids}
+    except (TypeError, ValueError):
+        raise ApiError("validation_error", "タグの指定が正しくありません。")
+    tags = list(Tag.objects.filter(store=store, is_active=True, id__in=wanted))
+    if len(tags) != len(wanted):
+        raise ApiError("validation_error", "この店舗で利用できないタグが指定されました。")
+    current = {vt.tag_id: vt for vt in visit.visit_tags.all()}
+    for tid, vt in current.items():
+        if tid not in wanted:
+            vt.delete()
+    for t in tags:
+        if t.id not in current:
+            VisitTag.objects.create(visit=visit, tag=t, created_by=user)
+    return visit
 
 
 # --- 延長・無制限へ変更 --------------------------------------------------------
 @transaction.atomic
-def extend_entry(store: Store, user, visit_id, entry_id) -> tuple[CourseEntry, OrderLine]:
+def extend_entry(store: Store, user, visit_id, entry_id, option_id=None) -> tuple[CourseEntry, OrderLine]:
     visit = _lock_visit(visit_id, store)
     _require_open(visit)
     entry = CourseEntry.objects.select_for_update().filter(id=entry_id, visit=visit, is_active=True).first()
@@ -261,16 +352,21 @@ def extend_entry(store: Store, user, visit_id, entry_id) -> tuple[CourseEntry, O
     if entry.is_unlimited or entry.planned_end_at is None:
         raise ApiError("not_extendable", "時間無制限のコースは延長できません。", status=409)
     st = store_settings(store)
-    minutes = entry.extension_minutes or 60
+    cand = resolve_extension(entry, option_id)
+    minutes = cand["minutes"]
+    present = entry_present_count(entry)
+    if present < 1:
+        raise ApiError("no_present_guest", "このセットに在席のお客様がいないため延長できません。", status=409)
     from_end = entry.planned_end_at
     # 延長は元の終了予定時刻から加算する（操作時刻ではない）
     to_end = from_end + timedelta(minutes=minutes)
-    amount = course_amount(st, entry.extension_price, entry.guest_count)
+    # 人数は在席人数（客の行が無い従来の伝票はセットの人数のまま）
+    amount = course_amount(st, cand["price"], present)
     line = OrderLine.objects.create(
         visit=visit, store=store, line_type=LineType.EXTENSION, course_entry=entry,
-        name=f"延長 {minutes}分" + (f"（{entry.label}）" if entry.label else ""), unit_price=entry.extension_price,
-        quantity=Decimal(entry.guest_count if st.price_basis == "per_person" else 1), amount=amount,
-        tax_rate=entry.course.tax_rate, tax_included=st.prices_include_tax, category_kind="course", created_by=user,
+        name=f"延長 {minutes}分" + (f"（{entry.label}）" if entry.label else ""), unit_price=cand["price"],
+        quantity=Decimal(present if st.price_basis == "per_person" else 1), amount=amount,
+        tax_rate=entry.course.tax_rate, tax_included=st.prices_include_tax, category_kind="course", extension_minutes=minutes, created_by=user,
     )
     entry.planned_end_at = to_end
     entry.extension_count += 1
@@ -481,7 +577,8 @@ def cancel_line(store: Store, user, visit_id, line_id, reason: str) -> OrderLine
     if line.line_type == LineType.EXTENSION and line.course_entry_id:
         entry = line.course_entry
         if entry.planned_end_at is not None and entry.extension_count > 0:
-            entry.planned_end_at -= timedelta(minutes=entry.extension_minutes or 60)
+            # 延長した分数は明細に残してある（古い明細は null → セットの延長分数）
+            entry.planned_end_at -= timedelta(minutes=line.extension_minutes or entry.extension_minutes or 60)
             entry.extension_count -= 1
             entry.save(update_fields=["planned_end_at", "extension_count"])
             CourseEvent.objects.create(course_entry=entry, kind="extend_cancel", performed_by=user, to_planned_end_at=entry.planned_end_at, note=reason)

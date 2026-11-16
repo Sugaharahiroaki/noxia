@@ -21,11 +21,13 @@ from apps.core.permissions import CAP_FLOOR, CAP_SALES_VIEW, CAP_SALES_VOID, Sto
 
 from . import services
 from .alarms import alarm_state
-from .models import FEE_LINE_TYPES, Checkout, CourseEntry, OrderLine, Receivable, Visit
+from apps.catalog.views import _CatalogViewSet
+
+from .models import FEE_LINE_TYPES, Checkout, CourseEntry, OrderLine, Receivable, Tag, Visit
 from .pricing import compute_totals, line_inputs_from_orderlines
 from .serializers import (
     CheckoutSerializer, CourseEntrySerializer, OrderLineSerializer, ReceivableCollectionSerializer, ReceivableSerializer,
-    RefundSerializer, VisitBriefSerializer, VisitSerializer,
+    RefundSerializer, TagSerializer, VisitBriefSerializer, VisitSerializer,
 )
 
 
@@ -44,9 +46,9 @@ def _alarms_for(entries, now, mode) -> dict:
 
 def _visit_qs(store):
     return Visit.objects.filter(store=store).select_related("table", "customer", "primary_employee").prefetch_related(
-        Prefetch("course_entries", queryset=CourseEntry.objects.select_related("employee", "course").prefetch_related("events")),
+        Prefetch("course_entries", queryset=CourseEntry.objects.select_related("employee", "course").prefetch_related("events", "guests", "course__extension_options")),
         Prefetch("lines", queryset=OrderLine.objects.select_related("cancelled_by").prefetch_related("back_targets__employee")),
-        "checkouts__payments", "guests__employee",
+        "checkouts__payments", "guests__employee", "visit_tags__tag",
     )
 
 
@@ -144,6 +146,14 @@ class VisitListView(APIView):
         return _visit_response(request, visit.id, status=201)
 
 
+class TagViewSet(_CatalogViewSet):
+    """伝票タグのマスタ（store/tags）。権限の作法は商品・コース・卓と同じ（読む: settings.view、書く: catalog.edit。削除は停止）。"""
+
+    model = Tag
+    serializer_class = TagSerializer
+    audit_prefix = "sales.tag"
+
+
 class VisitPreviewView(APIView):
     """入店ウィザードの金額表示（保存しない）。セット・指名・同伴を open_visit と同じ規則で見積もる。"""
 
@@ -198,7 +208,7 @@ class ExtendView(APIView):
 
     @idempotent
     def post(self, request, visit_id, entry_id):
-        entry, line = services.extend_entry(request.store, request.user, visit_id, entry_id)
+        entry, line = services.extend_entry(request.store, request.user, visit_id, entry_id, request.data.get("option_id"))
         audit(request, "visit.extend", target=entry.visit, changes={"entry_id": entry.id, "planned_end_at": entry.planned_end_at, "amount": line.amount})
         resp = _visit_response(request, visit_id)
         resp.data["created_line_id"] = line.id
@@ -220,16 +230,68 @@ class ExtendPreviewView(APIView):
         if entry.is_unlimited or entry.planned_end_at is None:
             raise ApiError("not_extendable", "時間無制限のコースは延長できません。", status=409)
         st = _settings(request.store)
-        minutes = entry.extension_minutes or 60
-        return Response({
-            "amount": str(services.course_amount(st, entry.extension_price, entry.guest_count)),
-            "minutes": minutes,
-            "from_planned_end_at": timezone.localtime(entry.planned_end_at).isoformat(),
-            "to_planned_end_at": timezone.localtime(entry.planned_end_at + timedelta(minutes=minutes)).isoformat(),
-            "guest_count": entry.guest_count,
-            "table_name": entry.visit.table.name,
-            "label": entry.label,
-        })
+        cand = services.resolve_extension(entry, request.query_params.get("option_id"))
+        return Response(_extension_row(st, entry, cand))
+
+
+def _extension_row(st, entry, cand: dict) -> dict:
+    """延長 1 候補の見込み（料金・新しい終了予定）。人数は在席人数。"""
+    from datetime import timedelta
+
+    minutes = cand["minutes"]
+    present = services.entry_present_count(entry)
+    return {
+        "option_id": cand["option_id"],
+        "amount": str(services.course_amount(st, cand["price"], present)),
+        "unit_price": str(cand["price"]),
+        "minutes": minutes,
+        "from_planned_end_at": timezone.localtime(entry.planned_end_at).isoformat(),
+        "to_planned_end_at": timezone.localtime(entry.planned_end_at + timedelta(minutes=minutes)).isoformat(),
+        "guest_count": present,
+        "table_name": entry.visit.table.name,
+        "label": entry.label,
+    }
+
+
+class ExtendOptionsView(APIView):
+    """延長の候補ごとの見込み金額（卓詳細の右列）。候補が無いコースは従来の 1 件を返す。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    def get(self, request, visit_id, entry_id):
+        entry = CourseEntry.objects.filter(id=entry_id, visit_id=visit_id, store=request.store, is_active=True).select_related("visit__table", "course").first()
+        if entry is None:
+            raise ApiError("not_found", "対象のコースが見つかりません。", status=404)
+        if entry.is_unlimited or entry.planned_end_at is None:
+            return Response({"options": []})
+        st = _settings(request.store)
+        return Response({"options": [_extension_row(st, entry, c) for c in services.extension_candidates(entry)]})
+
+
+class GuestLeaveView(APIView):
+    """客を 1 人退店にする（料金は変えない）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    @idempotent
+    def post(self, request, visit_id, guest_id):
+        guest = services.leave_guest(request.store, request.user, visit_id, guest_id)
+        audit(request, "visit.guest_leave", target=guest.visit, changes={"guest_id": guest.id, "seq": guest.seq})
+        return _visit_response(request, visit_id)
+
+
+class VisitTagsView(APIView):
+    """伝票のタグの入れ替え。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    def put(self, request, visit_id):
+        visit = services.set_visit_tags(request.store, request.user, visit_id, request.data.get("tag_ids"))
+        audit(request, "visit.tags", target=visit, changes={"tag_ids": sorted(visit.visit_tags.values_list("tag_id", flat=True))})
+        return _visit_response(request, visit_id)
 
 
 class ChangeUnlimitedView(APIView):

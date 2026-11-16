@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Checkout, CourseEntry, CourseEvent, OrderLine, OrderLineBackTarget, Payment, Receivable, ReceivableCollection, Refund, Visit, VisitGuest
+from .models import Checkout, CourseEntry, CourseEvent, OrderLine, OrderLineBackTarget, Payment, Receivable, ReceivableCollection, Refund, Tag, Visit, VisitGuest
 
 
 class BackTargetSerializer(serializers.ModelSerializer):
@@ -21,7 +21,7 @@ class OrderLineSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderLine
         fields = ["id", "visit", "line_type", "line_type_label", "course_entry", "product", "name", "unit_price", "quantity", "amount",
-                  "tax_rate", "tax_included", "category_kind", "status", "cancel_reason", "cancelled_by_name", "cancelled_at",
+                  "tax_rate", "tax_included", "extension_minutes", "category_kind", "status", "cancel_reason", "cancelled_by_name", "cancelled_at",
                   "discount_reason", "checkout", "note", "back_targets", "created_at"]
 
     def get_cancelled_by_name(self, obj):
@@ -43,15 +43,58 @@ class CourseEntrySerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.display_name", read_only=True, default=None)
     events = CourseEventSerializer(many=True, read_only=True)
     alarm = serializers.SerializerMethodField()
+    present_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CourseEntry
         fields = ["id", "visit", "label", "guest_count", "course", "course_name", "course_price", "extension_price", "extension_minutes",
                   "started_at", "planned_end_at", "is_unlimited", "extension_count", "ended_at", "employee", "employee_name", "is_active",
-                  "alarm", "events"]
+                  "alarm", "events", "present_count"]
+
+    def get_present_count(self, obj):
+        return _present_count(obj)
 
     def get_alarm(self, obj):
         return self.context.get("alarms", {}).get(obj.id)
+
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ["id", "name", "color", "show_on_floor", "sort_order", "is_active"]
+        read_only_fields = ["id"]
+
+    def validate_color(self, value):
+        import re
+
+        value = (value or "").strip()
+        if value and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            raise serializers.ValidationError("色は #RRGGBB の形式で指定してください。")
+        return value
+
+    def validate_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("タグ名を入力してください。")
+        store = self.context.get("store")
+        qs = Tag.objects.filter(store=store, name=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if store is not None and qs.exists():
+            raise serializers.ValidationError("同じ名前のタグがあります。")
+        return value
+
+
+def _visit_tags(obj, floor_only=False):
+    return [
+        {"id": vt.tag_id, "name": vt.tag.name, "color": vt.tag.color, "show_on_floor": vt.tag.show_on_floor}
+        for vt in obj.visit_tags.all() if not floor_only or vt.tag.show_on_floor
+    ]
+
+
+def _present_count(obj) -> int:
+    rows = list(obj.guests.all())
+    return sum(1 for g in rows if g.status == "present") if rows else obj.guest_count
 
 
 class VisitGuestSerializer(serializers.ModelSerializer):
@@ -71,14 +114,22 @@ class VisitSerializer(serializers.ModelSerializer):
     course_entries = CourseEntrySerializer(many=True, read_only=True)
     lines = OrderLineSerializer(many=True, read_only=True)
     guests = VisitGuestSerializer(many=True, read_only=True)
+    tags = serializers.SerializerMethodField()
+    present_count = serializers.SerializerMethodField()
     checkouts = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    def get_tags(self, obj):
+        return _visit_tags(obj)
+
+    def get_present_count(self, obj):
+        return _present_count(obj)
 
     class Meta:
         model = Visit
         fields = ["id", "business_date", "slip_number", "table", "table_name", "status", "status_label", "opened_at", "closed_at",
                   "guest_count", "customer", "customer_name", "customer_display", "primary_employee", "primary_employee_name", "note",
-                  "cancel_reason", "course_entries", "lines", "guests", "checkouts", "created_at"]
+                  "cancel_reason", "course_entries", "lines", "guests", "tags", "present_count", "checkouts", "created_at"]
 
     def get_customer_display(self, obj):
         if obj.customer_id and obj.customer:
@@ -96,11 +147,20 @@ class VisitBriefSerializer(serializers.ModelSerializer):
     course_entries = CourseEntrySerializer(many=True, read_only=True)
     line_count = serializers.SerializerMethodField()
     running_total = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    present_count = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        # ホールの卓カード用: 「ホールに出す」タグだけ
+        return _visit_tags(obj, floor_only=True)
+
+    def get_present_count(self, obj):
+        return _present_count(obj)
 
     class Meta:
         model = Visit
         fields = ["id", "business_date", "slip_number", "table", "table_name", "status", "opened_at", "guest_count", "customer_display",
-                  "primary_employee_name", "note", "course_entries", "line_count", "running_total"]
+                  "primary_employee_name", "note", "course_entries", "line_count", "running_total", "tags", "present_count"]
 
     def get_customer_display(self, obj):
         if obj.customer_id and obj.customer:

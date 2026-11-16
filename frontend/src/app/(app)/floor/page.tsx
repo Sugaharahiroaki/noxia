@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFloor } from "@/components/AppShell";
 import { OpenRegisterCard } from "@/components/OpenRegister";
 import { useToast } from "@/components/Toast";
+import { TagChip } from "@/components/TagPicker";
 import { Empty, ErrorBox, Spinner } from "@/components/ui";
 import { VisitActionMenu } from "@/components/VisitActionMenu";
 import { fmtDate, fmtTime, yen } from "@/lib/format";
@@ -88,7 +89,7 @@ export default function FloorPage() {
   const mode: Mode = state?.alarm_mode ?? "both";
   const registerOpen = !!state?.business_day;
   const allVisits = state?.tables.flatMap((t) => t.visits) ?? [];
-  const guests = allVisits.reduce((s, v) => s + v.guest_count, 0);
+  const guests = allVisits.reduce((s, v) => s + v.present_count, 0);
   const showKinds = groups.length > 1;
   const menuTable = menu ? state?.tables.find((t) => t.id === menu.tableId) : null;
   const menuVisit = menu ? menuTable?.visits.find((v) => v.id === menu.visitId) : null;
@@ -158,11 +159,11 @@ export default function FloorPage() {
                     style={stripe}
                     {...bind({ visitId: v.id, tableId: t.id })}
                     onClick={guardClick(() => router.push(`/visits/${v.id}`))}
-                    aria-label={`${t.name} 伝票${v.slip_number} 使用中 ${v.guest_count}名 ${remain.text}`}
+                    aria-label={`${t.name} 伝票${v.slip_number} 使用中 ${v.present_count}名 ${remain.text}`}
                   >
                     <div className="flex items-start justify-between gap-1 w-full">
                       <span className="text-2xl font-bold leading-tight">{t.name}</span>
-                      <span className="text-base font-bold num whitespace-nowrap">使用中 {v.guest_count}名</span>
+                      <span className="text-base font-bold num whitespace-nowrap">使用中 {v.present_count}名</span>
                     </div>
                     <div className="flex items-baseline justify-between gap-1 w-full">
                       <span className="text-3xl font-bold num leading-tight" style={{ color: remain.over ? "var(--color-danger)" : undefined }}>
@@ -178,6 +179,13 @@ export default function FloorPage() {
                       <span className="text-sm truncate min-w-0">
                         {level ? (
                           <span className={`badge ${LEVEL_BADGE[level]}`}>⏰ {LEVEL_TEXT[level]}</span>
+                        ) : v.tags.length > 0 ? (
+                          <span className="inline-flex gap-1">
+                            {v.tags.slice(0, 2).map((tg) => (
+                              <TagChip key={tg.id} tag={tg} small />
+                            ))}
+                            {v.tags.length > 2 && <span className="text-xs">＋{v.tags.length - 2}</span>}
+                          </span>
                         ) : (
                           v.customer_display || (v.course_entries.filter((e) => e.is_active).length > 1 ? `${v.course_entries.filter((e) => e.is_active).length}セット` : "")
                         )}
@@ -208,7 +216,7 @@ export default function FloorPage() {
                           aria-label={`${t.name} 伝票${v.slip_number} 使用中 ${v.guest_count}名 ${remain.text}`}
                         >
                           <span className="font-bold num" style={{ color: remain.over ? "var(--color-danger)" : undefined }}>
-                            {v.guest_count}名 {showElapsed ? `経過 ${fmtElapsed(v.opened_at, now)}` : remain.text}
+                            {v.present_count}名 {showElapsed ? `経過 ${fmtElapsed(v.opened_at, now)}` : remain.text}
                             {remain.over && " ⚠"}
                           </span>
                           <span className="font-bold num">{yen(v.running_total)}</span>
