@@ -51,6 +51,8 @@ export type Product = {
   category_name: string;
   category_kind: string;
   name: string;
+  /** 注文画面に出す短い名前（空なら商品名） */
+  short_name: string;
   price: Money;
   tax_rate: Money;
   is_active: boolean;

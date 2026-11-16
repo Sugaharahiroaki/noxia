@@ -87,6 +87,8 @@ class Product(TimestampedModel):
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="products")
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products")
     name = models.CharField("商品名", max_length=100)
+    # 注文画面で使う短い名前（空 = 商品名をそのまま使う）。伝票の明細には商品名を保存する
+    short_name = models.CharField("略称", max_length=30, blank=True, default="")
     price = models.DecimalField("販売価格", max_digits=12, decimal_places=2)
     tax_rate = models.DecimalField("税率(%)", max_digits=5, decimal_places=2, default=Decimal("10.00"))
     is_active = models.BooleanField("販売中", default=True)

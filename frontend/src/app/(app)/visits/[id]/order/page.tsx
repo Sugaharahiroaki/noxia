@@ -214,8 +214,8 @@ export default function OrderPage() {
               const inCart = rows.filter((r) => r.productId === p.id).reduce((s, r) => s + r.qty, 0);
               return (
                 <button key={p.id} className={`w-full rounded-xl px-3 flex items-center justify-between gap-2 text-left ${on ? "pos-selected" : ""}`} style={{ minHeight: 56, ...(on ? {} : { background: "var(--color-panel2)", border: "1px solid var(--color-border)" }) }} onClick={() => setDraft((d) => ({ ...d, cat, productId: p.id }))} aria-pressed={on}>
-                  <span className="font-bold leading-tight">
-                    {p.name}
+                  <span className="font-bold leading-tight" title={p.name}>
+                    {p.short_name || p.name}
                     {inCart > 0 && <span className="badge badge-ok ml-2 num">{inCart}</span>}
                   </span>
                   <span className="num whitespace-nowrap">{yen(p.price)}</span>

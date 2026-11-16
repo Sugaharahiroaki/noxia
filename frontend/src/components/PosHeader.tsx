@@ -12,7 +12,7 @@ import { isOnShift, SHIFT_LABEL } from "./ShiftGuard";
 import { Empty, ErrorBox, Modal, Spinner } from "./ui";
 
 /** POS の設定画面の場所（ヘッダーの「設定」） */
-export const POS_SETTINGS_HREF = "/settings/store";
+export const POS_SETTINGS_HREF = "/settings/pos";
 
 const WEEK = ["日", "月", "火", "水", "木", "金", "土"];
 

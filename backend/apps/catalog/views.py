@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.api import StoreScopedViewSet
 from apps.core.audit import audit
 from apps.core.exceptions import ApiError
+from apps.core.idempotency import idempotent
 from apps.core.permissions import CAP_CATALOG_EDIT, CAP_SETTINGS_VIEW
 
-from .models import Category, Course, Product, Table
+from .models import Category, Course, CourseExtensionOption, Product, Table
 from .serializers import CategorySerializer, CourseSerializer, ProductSerializer, TableSerializer
 
 
@@ -48,6 +50,30 @@ class CourseViewSet(_CatalogViewSet):
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related("extension_options")
+
+    @action(detail=True, methods=["post"])
+    @idempotent
+    def copy(self, request, pk=None):
+        """セット構成の複製（延長の候補も一緒に）。名前は「◯◯（コピー）」。料金などは複製後に編集する。"""
+        from django.db import transaction
+
+        src = self.get_object()
+        with transaction.atomic():
+            options = list(src.extension_options.all())
+            base = f"{src.name}（コピー）"[:80]
+            name, n = base, 2
+            while Course.objects.filter(store=src.store, name=name).exists():
+                name = f"{base[:76]}{n}"
+                n += 1
+            dup = Course.objects.create(
+                store=src.store, name=name, price=src.price, duration_minutes=src.duration_minutes, extension_price=src.extension_price,
+                extension_minutes=src.extension_minutes, tax_rate=src.tax_rate, is_active=src.is_active, sort_order=src.sort_order + 1,
+                note=src.note, kind=src.kind,
+            )
+            for o in options:
+                CourseExtensionOption.objects.create(course=dup, minutes=o.minutes, price=o.price, sort_order=o.sort_order)
+        audit(request, "catalog.course.copy", target=dup, changes={"from": src.id, "name": dup.name})
+        return Response(self.get_serializer(self.get_queryset().get(pk=dup.pk)).data, status=201)
 
 
 class CategoryViewSet(_CatalogViewSet):
