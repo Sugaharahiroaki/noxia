@@ -104,7 +104,10 @@ class RuleResolutionTests(BackBase):
         self.assertEqual(self.entries(self.product_line(v, highball))[0].amount, Decimal("100"))             # kind 10%
 
     def test_effective_dates(self):
-        today = timezone.localdate()
+        # ルールの適用日は営業日で判定される。暦の日付を使うと、深夜 0 時〜営業日切替までの間だけ 1 日ずれて落ちる
+        from apps.core.business_date import business_date_now
+
+        today = business_date_now(self.store)
         self.rule(target_type="category_kind", category_kind="cast_drink", value=Decimal(50), effective_from=today + timedelta(days=1))
         v = self.visit()
         self.assertEqual(self.entries(self.product_line(v, self.p["cast_drink"])), [])

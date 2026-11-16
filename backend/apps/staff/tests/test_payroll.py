@@ -87,7 +87,7 @@ class ShiftComputationTests(PayrollBase):
         self.assertEqual(st.wage_amount, Decimal("6000"))
         self.assertEqual(st.gross_amount, Decimal("6000"))
         self.assertEqual(st.balance_amount, Decimal("6000"))
-        WageSetting.objects.create(employee=self.cast1, store=self.store, hourly_wage=Decimal(3000), effective_from=self.today - timedelta(days=100))
+        WageSetting.objects.create(employee=self.cast1, store=self.store, hourly_wage=Decimal(3000), effective_from=self.today - timedelta(days=50))  # 既定の時給（暦の日付の 100 日前）より後の遡及設定。深夜でも順序が変わらない日数にする
         self.assertEqual(payroll.compute_statement(self.store, self.cast1, self.today, self.today)["wage_amount"], "12000")  # 遡及設定は再計算に効く
         st.refresh_from_db()
         self.assertEqual(st.wage_amount, Decimal("6000"))  # 締め済みは固定
