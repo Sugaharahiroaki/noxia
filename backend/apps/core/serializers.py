@@ -42,6 +42,16 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
     def get_void_pin_set(self, obj) -> bool:
         return bool(obj.void_pin_hash)
 
+    def validate_cast_sales_split_mode(self, value):
+        if value not in ("equal", "full_each"):
+            raise serializers.ValidationError("キャスト売上の分け方は equal か full_each を指定してください。")
+        return value
+
+    def validate_nomination_count_mode(self, value):
+        if value not in ("per_slip", "per_set"):
+            raise serializers.ValidationError("指名回数の数え方は per_slip か per_set を指定してください。")
+        return value
+
     def validate_default_unlimited_course(self, course):
         if course is None:
             return course

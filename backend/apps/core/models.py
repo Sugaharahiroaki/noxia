@@ -156,6 +156,12 @@ class StoreSettings(TimestampedModel):
     douhan_fee = models.DecimalField("同伴料", max_digits=12, decimal_places=2, null=True, blank=True)
     jounai_fee = models.DecimalField("場内指名料", max_digits=12, decimal_places=2, null=True, blank=True)
 
+    # 集計（管理用の集計画面だけに効く。会計・バック・報酬の計算には使わない）
+    # 1 つの伝票に指名（同伴）のキャストが複数いるとき、伝票の小計・本計をどう分けるか。equal = 均等割り（仮）、full_each = 全員に全額
+    cast_sales_split_mode = models.CharField("キャスト売上の分け方", max_length=20, default="equal")
+    # 指名回数の数え方。per_slip = 1 伝票 1 回、per_set = 伝票内のセット数ぶん
+    nomination_count_mode = models.CharField("指名回数の数え方", max_length=20, default="per_slip")
+
     # アラーム
     alarm_mode = models.CharField(max_length=10, choices=AlarmMode.choices, default=AlarmMode.BOTH)
 

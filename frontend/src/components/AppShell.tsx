@@ -32,6 +32,7 @@ const NAV: NavItem[] = [
   { href: "/inventory", label: "商品・在庫・棚卸し", caps: ["inventory.view"], group: "管理" },
   { href: "/purchasing", label: "仕入先・発注", caps: ["inventory.view"], group: "管理" },
   { href: "/dashboard", label: "経営ダッシュボード", caps: ["dashboard.view"], group: "管理" },
+  { href: "/reports", label: "集計（伝票・収支・キャスト）", caps: ["sales.view"], group: "管理" },
   { href: "/receipts", label: "領収書・経費登録", caps: ["expenses.submit"], group: "営業" },
   { href: "/accounting/dashboard", label: "会計ダッシュボード", caps: ["accounting.view"], group: "経理" },
   { href: "/accounting/expenses", label: "経費・領収書管理", anyCaps: ["expenses.approve", "accounting.view"], group: "経理" },

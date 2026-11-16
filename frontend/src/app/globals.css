@@ -242,6 +242,49 @@ textarea.input {
   border-bottom: 1px solid var(--color-border);
 }
 
+/* 集計の表（管理用）: 金額は右寄せ、合計行は先頭で強調、横に長い表は先頭の列を固定 */
+.report-table {
+  white-space: nowrap;
+  font-size: 0.95rem;
+}
+.report-table th,
+.report-table td {
+  padding: 0.45rem 0.6rem;
+  vertical-align: middle;
+}
+.report-table .r {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.report-table .c {
+  text-align: center;
+}
+.report-table tr.total-row td {
+  font-weight: 700;
+  background: var(--color-panel2);
+  border-bottom: 2px solid var(--color-edge);
+}
+.report-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-panel);
+  z-index: 1;
+}
+.report-table .group-head th {
+  text-align: center;
+  border-left: 1px solid var(--color-border);
+}
+.report-table .sticky-col {
+  position: sticky;
+  left: 0;
+  background: var(--color-panel);
+  z-index: 2;
+  border-right: 1px solid var(--color-border);
+}
+.report-table tr.total-row .sticky-col {
+  background: var(--color-panel2);
+}
+
 /* アラーム段階（色＋文字で示す） */
 .alarm-warn10 {
   background: rgba(243, 200, 75, 0.16);
