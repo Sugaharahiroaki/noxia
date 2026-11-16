@@ -208,6 +208,7 @@ class Command(BaseCommand):
             dict(category=cats["drink"], name="ハイボール", price=700, sort_order=2),
             dict(category=cats["drink"], name="ソフトドリンク", price=600, sort_order=3),
             dict(category=cats["cast_drink"], name="キャストドリンク", price=1500, sort_order=1),
+            dict(category=cats["cast_drink"], name="レディースドリンク", price=1000, sort_order=3),  # 【仮設定】受入シナリオ用の 1,000 円のキャストドリンク
             dict(category=cats["cast_drink"], name="キャストシャンパングラス", price=3000, sort_order=2),
             dict(category=cats["bottle"], name="シャンパン（モエ）", price=30000, sort_order=1, stock_mode="bottle", reorder_point=2, min_stock=4, cost_price=9000, is_bottle_keepable=True),
             dict(category=cats["bottle"], name="シャンパン（ドンペリ）", price=80000, sort_order=2, stock_mode="bottle", reorder_point=1, min_stock=2, cost_price=28000, is_bottle_keepable=True),

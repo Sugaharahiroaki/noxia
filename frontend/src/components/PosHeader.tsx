@@ -200,5 +200,5 @@ function OrderPickDialog({ floor, onClose }: { floor: FloorState | null; onClose
 
 /** 卓の注文画面の場所 */
 export function orderHref(visitId: number): string {
-  return `/visits/${visitId}`;
+  return `/visits/${visitId}/order`;
 }
