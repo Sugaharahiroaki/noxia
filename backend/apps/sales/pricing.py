@@ -21,7 +21,7 @@ from apps.core.money import D, ZERO, percent_of, round_yen, tax_from_included, t
 
 COURSE_TYPES = {"course_set", "extension", "course_change"}
 PRODUCT_TYPES = {"product"}
-FEE_TYPES = {"nomination", "douhan"}
+FEE_TYPES = {"nomination", "jounai", "douhan"}
 
 
 @dataclass

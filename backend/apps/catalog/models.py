@@ -24,6 +24,8 @@ class Course(TimestampedModel):
     is_active = models.BooleanField("販売中", default=True)
     sort_order = models.PositiveIntegerField(default=0)
     note = models.CharField(max_length=200, blank=True)
+    # 入店時の入口の区分（セット構成。例: 男性セット・店内フード・出前。店舗が自由に決める。空 = 区分なし）
+    kind = models.CharField("入店時の区分", max_length=30, blank=True, default="")
 
     class Meta:
         ordering = ["store_id", "sort_order", "id"]

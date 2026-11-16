@@ -33,7 +33,7 @@ type BackRule = {
   note: string;
 };
 
-const TARGET_LABELS: Record<string, string> = { all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品", nomination: "指名", douhan: "同伴" };
+const TARGET_LABELS: Record<string, string> = { all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品", nomination: "本指名", jounai: "場内指名", douhan: "同伴" };
 const KIND_LABELS: Record<string, string> = { drink: "ドリンク", cast_drink: "キャストドリンク", bottle: "ボトル", shot: "ショット", food: "フード", other: "その他" };
 
 export default function PricingPage() {
@@ -265,10 +265,13 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
         </div>
       </section>
       <section className="card space-y-3">
-        <h2 className="font-bold">指名料・同伴料（お客様への請求額。バックは別に設定）</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="指名料（円・空欄なら未設定＝登録不可）">
+        <h2 className="font-bold">本指名料・場内指名料・同伴料（お客様への請求額。バックは別に設定）</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Field label="本指名料（円・空欄なら未設定＝登録不可）">
             <input className="input" inputMode="numeric" value={f.nomination_fee ?? ""} onChange={(e) => set({ nomination_fee: e.target.value ? e.target.value.replace(/[^\d]/g, "") : null })} disabled={!canEdit} />
+          </Field>
+          <Field label="場内指名料（円・空欄なら未設定＝登録不可）">
+            <input className="input" inputMode="numeric" value={f.jounai_fee ?? ""} onChange={(e) => set({ jounai_fee: e.target.value ? e.target.value.replace(/[^\d]/g, "") : null })} disabled={!canEdit} />
           </Field>
           <Field label="同伴料（円・空欄なら未設定＝登録不可）">
             <input className="input" inputMode="numeric" value={f.douhan_fee ?? ""} onChange={(e) => set({ douhan_fee: e.target.value ? e.target.value.replace(/[^\d]/g, "") : null })} disabled={!canEdit} />
@@ -284,7 +287,7 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
               const body = {
                 default_unlimited_course: f.default_unlimited_course, unlimited_change_mode: f.unlimited_change_mode, unlimited_change_price: f.unlimited_change_price || null,
                 unlimited_change_after_ext_mode: f.unlimited_change_after_ext_mode, unlimited_change_after_ext_price: f.unlimited_change_after_ext_price || null,
-                nomination_fee: f.nomination_fee || null, douhan_fee: f.douhan_fee || null,
+                nomination_fee: f.nomination_fee || null, douhan_fee: f.douhan_fee || null, jounai_fee: f.jounai_fee || null,
               };
               const d = await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body }));
               setF(d);

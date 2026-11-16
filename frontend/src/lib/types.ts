@@ -38,6 +38,8 @@ export type Course = {
   sort_order: number;
   note: string;
   is_unlimited: boolean;
+  /** 入店時の入口の区分（セット構成）。空 = 区分なし */
+  kind: string;
 };
 
 export type Category = { id: number; name: string; kind: string; sort_order: number; is_active: boolean };
@@ -86,6 +88,7 @@ export type StoreSettings = {
   default_unlimited_course_name: string | null;
   nomination_fee: Money | null;
   douhan_fee: Money | null;
+  jounai_fee: Money | null;
   alarm_mode: "10" | "5" | "both";
   business_day_switch_time: string;
   default_opening_float: Money;
@@ -155,7 +158,7 @@ export type BackTarget = { employee: number; employee_name: string; share_type: 
 export type OrderLine = {
   id: number;
   visit: number;
-  line_type: "course_set" | "extension" | "course_change" | "nomination" | "douhan" | "product" | "discount";
+  line_type: "course_set" | "extension" | "course_change" | "nomination" | "jounai" | "douhan" | "product" | "discount";
   line_type_label: string;
   course_entry: number | null;
   product: number | null;
@@ -276,10 +279,36 @@ export type Visit = {
   cancel_reason: string;
   course_entries: CourseEntry[];
   lines: OrderLine[];
+  /** 客の行（入店ウィザードで客ごとに指定したとき。無い伝票は空） */
+  guests: VisitGuest[];
   checkouts: CheckoutBrief[];
   created_at: string;
   quote?: Quote;
   server_now?: string;
+};
+
+export type Designation = "" | "nomination" | "jounai" | "douhan";
+
+export type VisitGuest = {
+  id: number;
+  seq: number;
+  label: string;
+  course_entry: number | null;
+  employee: number | null;
+  employee_name: string | null;
+  designation: Designation;
+  fee_line: number | null;
+  status: "present" | "left";
+  status_label: string;
+  joined_at: string;
+  left_at: string | null;
+};
+
+/** 入店前の見積（POST /api/visits/preview。保存しない） */
+export type VisitPreview = {
+  lines: { line_type: string; name: string; unit_price: Money; quantity: number; amount: Money; duration_minutes?: number | null }[];
+  quote: Quote;
+  guest_count: number;
 };
 
 export type VisitBrief = {

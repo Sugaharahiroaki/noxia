@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("floor/state", views.FloorStateView.as_view()),
     path("visits", views.VisitListView.as_view()),
+    path("visits/preview", views.VisitPreviewView.as_view()),
     path("visits/<int:visit_id>", views.VisitDetailView.as_view()),
     path("visits/<int:visit_id>/course-entries", views.VisitCourseEntriesView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/extend", views.ExtendView.as_view()),

@@ -72,6 +72,8 @@ def _matches(rule: BackRule, line) -> bool:
     lt = line.line_type
     if lt == "nomination":
         return rule.target_type == BackTargetType.NOMINATION
+    if lt == "jounai":
+        return rule.target_type == BackTargetType.JOUNAI
     if lt == "douhan":
         return rule.target_type == BackTargetType.DOUHAN
     if lt != "product":
@@ -122,7 +124,7 @@ def create_entries_for_line(line, *, user, business_date, default_timing: str, n
     now = now or timezone.now()
     entries = []
     store = line.store
-    kind = line.line_type if line.line_type in ("nomination", "douhan") else "product"
+    kind = line.line_type if line.line_type in ("nomination", "jounai", "douhan") else "product"
     for target in line.back_targets.select_related("employee"):
         rule = find_rule(store, target.employee, line, business_date)
         if rule is None:
@@ -149,7 +151,7 @@ def settle_entries_for_checkout(checkout, lines, *, user, discount_ratio: Decima
     """
     now = now or timezone.now()
     for line in lines:
-        if line.line_type not in ("product", "nomination", "douhan"):
+        if line.line_type not in ("product", "nomination", "jounai", "douhan"):
             continue
         live = list(_live_entries(line).select_related("rule", "employee"))
         if not live and line.back_targets.exists():

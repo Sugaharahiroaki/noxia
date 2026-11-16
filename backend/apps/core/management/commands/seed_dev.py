@@ -180,8 +180,10 @@ class Command(BaseCommand):
 
     def _store(self, company, name, code, *, service_charge: bool, receivable: bool) -> Store:
         store = Store.objects.create(company=company, name=name, code=code, is_demo=True, webhook_token=secrets.token_urlsafe(24))
-        unlimited = Course.objects.create(store=store, name="飲み放題・時間無制限", price=Decimal(3500), duration_minutes=None, extension_price=Decimal(0), sort_order=1)
-        Course.objects.create(store=store, name="飲み放題・1時間", price=Decimal(2500), duration_minutes=60, extension_price=Decimal(2500), extension_minutes=60, sort_order=2)
+        # 【仮設定】kind は入店時の入口の区分（セット構成）
+        unlimited = Course.objects.create(store=store, name="飲み放題・時間無制限", price=Decimal(3500), duration_minutes=None, extension_price=Decimal(0), sort_order=1, kind="飲み放題")
+        Course.objects.create(store=store, name="飲み放題・1時間", price=Decimal(2500), duration_minutes=60, extension_price=Decimal(2500), extension_minutes=60, sort_order=2, kind="飲み放題")
+        Course.objects.create(store=store, name="セット60分", price=Decimal(3500), duration_minutes=60, extension_price=Decimal(3500), extension_minutes=60, sort_order=3, kind="セット")
         StoreSettings.objects.create(
             store=store, settings_note=SETTINGS_NOTE,
             price_basis="per_person", prices_include_tax=True, default_tax_rate=Decimal("10.00"),
@@ -189,7 +191,7 @@ class Command(BaseCommand):
             unlimited_change_mode="fixed", unlimited_change_price=Decimal(1000),  # 【仮設定】例として差額1,000円
             unlimited_change_after_ext_mode="same_as_change",
             default_unlimited_course=unlimited,
-            nomination_fee=Decimal(1000), douhan_fee=Decimal(2000),  # 【仮設定】
+            nomination_fee=Decimal(1000), douhan_fee=Decimal(2000), jounai_fee=Decimal(1000),  # 【仮設定】
             alarm_mode="both", default_opening_float=Decimal(50000), receivable_allowed=receivable,
         )
         cats = {}

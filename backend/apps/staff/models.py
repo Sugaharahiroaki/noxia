@@ -68,7 +68,8 @@ class BackTargetType(models.TextChoices):
     CATEGORY_KIND = "category_kind", "カテゴリ種別（ドリンク／ボトル等）"
     CATEGORY = "category", "カテゴリ"
     PRODUCT = "product", "商品"
-    NOMINATION = "nomination", "指名"
+    NOMINATION = "nomination", "本指名"
+    JOUNAI = "jounai", "場内指名"
     DOUHAN = "douhan", "同伴"
 
 
@@ -119,6 +120,7 @@ class BackRule(TimestampedModel):
             BackTargetType.CATEGORY_KIND: 2,
             BackTargetType.ALL_PRODUCTS: 1,
             BackTargetType.NOMINATION: 4,
+            BackTargetType.JOUNAI: 4,
             BackTargetType.DOUHAN: 4,
         }.get(self.target_type, 0)
 

@@ -102,17 +102,111 @@ def open_visit(store: Store, user, data: dict) -> Visit:
 
         customer = get_customer_for_store(store, data["customer_id"])
     guest_count = sum(int(e.get("guest_count") or 1) for e in entries_in)
+    guests_in = _parse_guests(store, st, data.get("guests"), entries_in)
     visit = Visit.objects.create(
         store=store, business_date=day.date, slip_number=allocate_number(store, "next_slip_number"), table=table,
         opened_at=opened_at, guest_count=guest_count, customer=customer, customer_name=(data.get("customer_name") or "")[:80],
         primary_employee=primary, note=(data.get("note") or "")[:300], created_by=user,
     )
+    entries = []
     for e in entries_in:
         course = Course.objects.filter(store=store, id=e.get("course_id"), is_active=True).first()
         if course is None:
             raise ApiError("validation_error", "この店舗で利用できないコースが指定されました。")
-        _add_entry(visit, st, course, e, user, default_started_at=opened_at)
+        entries.append(_add_entry(visit, st, course, e, user, default_started_at=opened_at))
+    _create_guests(visit, st, user, guests_in, entries, start_seq=1)
     return visit
+
+
+GUEST_DESIGNATIONS = ("", "nomination", "jounai", "douhan")
+
+
+def _parse_guests(store: Store, st, raw, entries_in: list) -> list[dict]:
+    """
+    客ごとの指定 [{label?, employee_id?, designation?, entry_index?}] を検証する。None / 空なら客の行を作らない（従来の動き）。
+    指定するなら全員分（各セットの人数ぶん）を渡す。料金が未設定の指定は、伝票を作る前に拒否する。
+    """
+    if not raw:
+        return []
+    if not isinstance(raw, list):
+        raise ApiError("validation_error", "お客様の指定の形式が正しくありません。")
+    counts = [int(e.get("guest_count") or 1) for e in entries_in]
+    used = [0] * len(counts)
+    out = []
+    for g in raw:
+        if not isinstance(g, dict):
+            raise ApiError("validation_error", "お客様の指定の形式が正しくありません。")
+        try:
+            idx = int(g.get("entry_index") or 0)
+        except (TypeError, ValueError):
+            raise ApiError("validation_error", "お客様のセットの指定が正しくありません。")
+        if idx < 0 or idx >= len(counts):
+            raise ApiError("validation_error", "お客様のセットの指定が正しくありません。")
+        used[idx] += 1
+        designation = g.get("designation") or ""
+        if designation not in GUEST_DESIGNATIONS:
+            raise ApiError("validation_error", "本指名・場内・同伴の指定が正しくありません。")
+        emp = _employee_in_store(store, g.get("employee_id"))
+        if designation:
+            if emp is None:
+                raise ApiError("validation_error", "本指名・場内・同伴は、キャストを選んでから指定してください。")
+            fee_setting(st, designation)  # 未設定なら fee_unset
+        out.append({"entry_index": idx, "label": (g.get("label") or "")[:60], "employee": emp, "designation": designation})
+    if used != counts:
+        raise ApiError("validation_error", "お客様の指定の人数が、セットの人数と合っていません。")
+    return out
+
+
+def _create_guests(visit: Visit, st, user, guests_in: list[dict], entries: list, *, start_seq: int) -> list:
+    from .models import VisitGuest
+
+    created = []
+    seq = start_seq
+    for g in guests_in:
+        entry = entries[g["entry_index"]]
+        fee_line = _create_fee_line(visit, st, user, g["designation"], g["employee"]) if g["designation"] else None
+        created.append(VisitGuest.objects.create(
+            visit=visit, store=visit.store, seq=seq, label=g["label"], course_entry=entry, employee=g["employee"],
+            designation=g["designation"], fee_line=fee_line, joined_at=entry.started_at,
+        ))
+        seq += 1
+    return created
+
+
+def preview_visit(store: Store, data: dict) -> dict:
+    """
+    入店ウィザードの金額表示用。保存せずに、open_visit と同じ規則でセット・指名・同伴の明細を組み立てて見積もる。
+    画面はこの値をそのまま出す（画面で掛け算しない）。
+    """
+    from apps.catalog.models import Course
+
+    from .pricing import LineInput
+
+    st = store_settings(store)
+    entries_in = data.get("entries") or []
+    if not entries_in:
+        raise ApiError("validation_error", "コースを1つ以上選択してください。")
+    lines = []
+    inputs = []
+    for e in entries_in:
+        course = Course.objects.filter(store=store, id=e.get("course_id"), is_active=True).first()
+        if course is None:
+            raise ApiError("validation_error", "この店舗で利用できないコースが指定されました。")
+        n = int(e.get("guest_count") or 1)
+        if n < 1:
+            raise ApiError("validation_error", "人数は1以上で入力してください。")
+        amount = course_amount(st, course.price, n)
+        qty = n if st.price_basis == "per_person" else 1
+        lines.append({"line_type": "course_set", "name": course.name, "unit_price": str(course.price), "quantity": qty, "amount": str(amount),
+                      "duration_minutes": course.duration_minutes})
+        inputs.append(LineInput(id=None, line_type="course_set", amount=amount, tax_rate=D(course.tax_rate), tax_included=st.prices_include_tax))
+    for g in _parse_guests(store, st, data.get("guests"), entries_in):
+        if not g["designation"]:
+            continue
+        fee, label, line_type = fee_setting(st, g["designation"])
+        lines.append({"line_type": str(line_type), "name": f"{label}（{g['employee'].display_name}）", "unit_price": str(fee), "quantity": 1, "amount": str(D(fee))})
+        inputs.append(LineInput(id=None, line_type=str(line_type), amount=D(fee), tax_rate=D(st.default_tax_rate), tax_included=st.prices_include_tax))
+    return {"lines": lines, "quote": compute_totals(inputs, st).as_dict(), "guest_count": sum(int(e.get("guest_count") or 1) for e in entries_in)}
 
 
 def _add_entry(visit: Visit, st, course, e: dict, user, default_started_at) -> CourseEntry:
@@ -303,27 +397,35 @@ def add_fee_line(store: Store, user, visit_id, kind: str, data: dict) -> OrderLi
     visit = _lock_visit(visit_id, store)
     _require_open(visit)
     st = store_settings(store)
-    if kind == "nomination":
-        fee = st.nomination_fee
-        label = "指名料"
-        line_type = LineType.NOMINATION
-    elif kind == "douhan":
-        fee = st.douhan_fee
-        label = "同伴料"
-        line_type = LineType.DOUHAN
-    else:
-        raise ApiError("validation_error", "種別が不正です。")
-    if fee is None:
-        raise ApiError("fee_unset", f"{label}が店舗設定で未設定です。設定してから登録してください。", status=409)
     emp = _employee_in_store(store, data.get("employee_id"))
     if emp is None:
         raise ApiError("validation_error", "対象の従業員を選択してください。")
     qty = D(data.get("quantity") or 1)
     if qty <= 0:
         raise ApiError("validation_error", "数量は1以上で入力してください。")
+    return _create_fee_line(visit, st, user, kind, emp, qty)
+
+
+def fee_setting(st, kind: str):
+    """指名・同伴の（料金, 表示名, 明細種別）。料金が未設定（None）なら ApiError（0 円扱いにしない）。"""
+    table = {
+        "nomination": (st.nomination_fee, "指名料", LineType.NOMINATION),
+        "jounai": (st.jounai_fee, "場内指名料", LineType.JOUNAI),
+        "douhan": (st.douhan_fee, "同伴料", LineType.DOUHAN),
+    }
+    if kind not in table:
+        raise ApiError("validation_error", "種別が不正です。")
+    fee, label, line_type = table[kind]
+    if fee is None:
+        raise ApiError("fee_unset", f"{label}が店舗設定で未設定です。設定してから登録してください。", status=409)
+    return fee, label, line_type
+
+
+def _create_fee_line(visit: Visit, st, user, kind: str, emp: Employee, qty: Decimal = Decimal("1")) -> OrderLine:
+    fee, label, line_type = fee_setting(st, kind)
     amount = D(fee) * qty
     line = OrderLine.objects.create(
-        visit=visit, store=store, line_type=line_type, name=f"{label}（{emp.display_name}）", unit_price=fee, quantity=qty,
+        visit=visit, store=visit.store, line_type=line_type, name=f"{label}（{emp.display_name}）", unit_price=fee, quantity=qty,
         amount=amount, tax_rate=st.default_tax_rate, tax_included=st.prices_include_tax, category_kind=kind, created_by=user,
     )
     _save_targets(line, [{"employee": emp, "share_type": "percent", "share_value": Decimal("100")}])
@@ -403,7 +505,7 @@ def set_back_targets(store: Store, user, visit_id, line_id, raw_targets) -> Orde
         raise ApiError("not_found", "明細が見つかりません。", status=404)
     if line.checkout_id is not None:
         raise ApiError("line_checked_out", "会計済みの明細の担当は変更できません。", status=409)
-    if line.line_type not in (LineType.PRODUCT, LineType.NOMINATION, LineType.DOUHAN):
+    if line.line_type not in (LineType.PRODUCT, LineType.NOMINATION, LineType.JOUNAI, LineType.DOUHAN):
         raise ApiError("validation_error", "この明細はバック対象を設定できません。")
     targets = _parse_targets(store, raw_targets, line.amount)
     backs_svc.reverse_entries_for_line(line, user=user, reason="担当変更")

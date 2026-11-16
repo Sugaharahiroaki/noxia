@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Checkout, CourseEntry, CourseEvent, OrderLine, OrderLineBackTarget, Payment, Receivable, ReceivableCollection, Refund, Visit
+from .models import Checkout, CourseEntry, CourseEvent, OrderLine, OrderLineBackTarget, Payment, Receivable, ReceivableCollection, Refund, Visit, VisitGuest
 
 
 class BackTargetSerializer(serializers.ModelSerializer):
@@ -54,12 +54,23 @@ class CourseEntrySerializer(serializers.ModelSerializer):
         return self.context.get("alarms", {}).get(obj.id)
 
 
+class VisitGuestSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.display_name", read_only=True, default=None)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = VisitGuest
+        fields = ["id", "seq", "label", "course_entry", "employee", "employee_name", "designation", "fee_line", "status", "status_label",
+                  "joined_at", "left_at"]
+
+
 class VisitSerializer(serializers.ModelSerializer):
     table_name = serializers.CharField(source="table.name", read_only=True)
     customer_display = serializers.SerializerMethodField()
     primary_employee_name = serializers.CharField(source="primary_employee.display_name", read_only=True, default=None)
     course_entries = CourseEntrySerializer(many=True, read_only=True)
     lines = OrderLineSerializer(many=True, read_only=True)
+    guests = VisitGuestSerializer(many=True, read_only=True)
     checkouts = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
 
@@ -67,7 +78,7 @@ class VisitSerializer(serializers.ModelSerializer):
         model = Visit
         fields = ["id", "business_date", "slip_number", "table", "table_name", "status", "status_label", "opened_at", "closed_at",
                   "guest_count", "customer", "customer_name", "customer_display", "primary_employee", "primary_employee_name", "note",
-                  "cancel_reason", "course_entries", "lines", "checkouts", "created_at"]
+                  "cancel_reason", "course_entries", "lines", "guests", "checkouts", "created_at"]
 
     def get_customer_display(self, obj):
         if obj.customer_id and obj.customer:

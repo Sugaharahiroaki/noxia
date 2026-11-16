@@ -154,6 +154,7 @@ class StoreSettings(TimestampedModel):
     # 指名・同伴（null = 未設定。未設定のまま登録しようとするとエラー）
     nomination_fee = models.DecimalField("指名料", max_digits=12, decimal_places=2, null=True, blank=True)
     douhan_fee = models.DecimalField("同伴料", max_digits=12, decimal_places=2, null=True, blank=True)
+    jounai_fee = models.DecimalField("場内指名料", max_digits=12, decimal_places=2, null=True, blank=True)
 
     # アラーム
     alarm_mode = models.CharField(max_length=10, choices=AlarmMode.choices, default=AlarmMode.BOTH)

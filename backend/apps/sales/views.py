@@ -21,7 +21,7 @@ from apps.core.permissions import CAP_FLOOR, CAP_SALES_VIEW, CAP_SALES_VOID, Sto
 
 from . import services
 from .alarms import alarm_state
-from .models import Checkout, CourseEntry, OrderLine, Receivable, Visit
+from .models import FEE_LINE_TYPES, Checkout, CourseEntry, OrderLine, Receivable, Visit
 from .pricing import compute_totals, line_inputs_from_orderlines
 from .serializers import (
     CheckoutSerializer, CourseEntrySerializer, OrderLineSerializer, ReceivableCollectionSerializer, ReceivableSerializer,
@@ -46,7 +46,7 @@ def _visit_qs(store):
     return Visit.objects.filter(store=store).select_related("table", "customer", "primary_employee").prefetch_related(
         Prefetch("course_entries", queryset=CourseEntry.objects.select_related("employee", "course").prefetch_related("events")),
         Prefetch("lines", queryset=OrderLine.objects.select_related("cancelled_by").prefetch_related("back_targets__employee")),
-        "checkouts__payments",
+        "checkouts__payments", "guests__employee",
     )
 
 
@@ -87,6 +87,7 @@ class FloorStateView(APIView):
             for e in v.course_entries.all():
                 if e.is_active and e.employee_id:
                     engaged.add(e.employee_id)
+            engaged.update(g.employee_id for g in v.guests.all() if g.employee_id and g.status == "present")
             for l in v.lines.all():
                 if l.status == "active" and l.line_type != "product":
                     engaged.update(bt.employee_id for bt in l.back_targets.all())
@@ -141,6 +142,16 @@ class VisitListView(APIView):
         visit = services.open_visit(request.store, request.user, request.data)
         audit(request, "visit.open", target=visit, changes={"table": visit.table.name, "guest_count": visit.guest_count})
         return _visit_response(request, visit.id, status=201)
+
+
+class VisitPreviewView(APIView):
+    """入店ウィザードの金額表示（保存しない）。セット・指名・同伴を open_visit と同じ規則で見積もる。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    def post(self, request):
+        return Response(services.preview_visit(request.store, request.data))
 
 
 class VisitDetailView(APIView):
@@ -259,7 +270,7 @@ class VisitLinesView(APIView):
         kind = request.data.get("kind") or "product"
         if kind == "product":
             line = services.add_product_line(request.store, request.user, visit_id, request.data)
-        elif kind in ("nomination", "douhan"):
+        elif kind in FEE_LINE_TYPES:
             line = services.add_fee_line(request.store, request.user, visit_id, kind, request.data)
         elif kind == "discount":
             line = services.add_discount(request.store, request.user, visit_id, request.data)
@@ -276,7 +287,7 @@ def _add_line(request, visit_id, item: dict):
     kind = item.get("kind") or "product"
     if kind == "product":
         return services.add_product_line(request.store, request.user, visit_id, item)
-    if kind in ("nomination", "douhan"):
+    if kind in FEE_LINE_TYPES:
         return services.add_fee_line(request.store, request.user, visit_id, kind, item)
     if kind == "discount":
         return services.add_discount(request.store, request.user, visit_id, item)

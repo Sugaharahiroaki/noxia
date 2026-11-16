@@ -13,7 +13,7 @@ class CourseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = ["id", "name", "price", "duration_minutes", "extension_price", "extension_minutes", "tax_rate",
-                  "is_active", "sort_order", "note", "is_unlimited"]
+                  "is_active", "sort_order", "note", "is_unlimited", "kind"]
         read_only_fields = ["id"]
 
     def validate(self, attrs):
