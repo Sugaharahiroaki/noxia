@@ -144,8 +144,8 @@ class StoreMembershipSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StoreMembership
-        fields = ["id", "user", "store", "store_name", "role", "is_active", "created_at"]
-        read_only_fields = ["id", "user", "store_name", "created_at"]
+        fields = ["id", "user", "store", "store_name", "role", "is_active", "is_tablet", "created_at"]
+        read_only_fields = ["id", "user", "store_name", "is_tablet", "created_at"]  # is_tablet は店舗設定の「タブレット」で変える
 
 
 class InvitationSerializer(serializers.ModelSerializer):

@@ -23,13 +23,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#0f1116",
+  themeColor: "#f1e8d2",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body>
+      {/* 全画面を店舗タブレットと同じ明るい配色（クリーム＋金）にする。PC の管理・経理の画面も同じ */}
+      <body className="pos-theme">
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

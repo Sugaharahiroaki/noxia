@@ -161,6 +161,8 @@ class StoreSettings(TimestampedModel):
     cast_sales_split_mode = models.CharField("キャスト売上の分け方", max_length=20, default="equal")
     # 指名回数の数え方。per_slip = 1 伝票 1 回、per_set = 伝票内のセット数ぶん
     nomination_count_mode = models.CharField("指名回数の数え方", max_length=20, default="per_slip")
+    # 店舗タブレット用アカウントに出す画面（apps/core/tablet.py のキー）。空 = 既定（営業の画面だけ）
+    tablet_menu = models.JSONField("タブレットに出す画面", default=list, blank=True)
     # お客様分析のランク。[{"label": "S", "min_visits": 20}, ...]（直近 3 か月の来店回数がこの回数以上）。空 = ランクを出さない
     customer_rank_thresholds = models.JSONField("お客様のランクのしきい値", default=list, blank=True)
 
@@ -241,6 +243,8 @@ class StoreMembership(TimestampedModel):
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="memberships")
     role = models.CharField(max_length=20, choices=StoreRole.choices, default=StoreRole.STAFF)
     is_active = models.BooleanField(default=True)
+    # 店舗タブレット用のアカウント。メニューは店舗設定で決めた画面（既定は営業の画面）だけになる（apps/core/tablet.py）
+    is_tablet = models.BooleanField("店舗タブレット用", default=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "store"], name="uniq_store_membership")]

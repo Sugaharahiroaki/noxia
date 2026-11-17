@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { fmtTime, ROLE_LABELS, yen } from "@/lib/format";
 import { fmtRemainShort, undoLines } from "@/lib/pos";
 import { useSession } from "@/lib/session";
+import { useTabletMenu } from "@/lib/tablet";
 import { TermsProvider } from "@/lib/terms";
 import type { FloorAlarm, FloorState } from "@/lib/types";
 import { computeAlarm, syncServerClock, useNow } from "@/lib/useServerClock";
@@ -84,6 +85,16 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const [online, setOnline] = useState(true);
 
   const canFloor = can("floor.operate");
+  // 店舗タブレット用アカウント: 店舗設定で選んだ画面だけ（管理・経理・設定は PC から）
+  const tabletMenu = useTabletMenu();
+  const toast = useToast();
+  const redirectedFor = useRef<string | null>(null);  // 同じ URL で何度も戻さない（通知 → 再描画 → また戻す、の繰り返しを防ぐ）
+  useEffect(() => {
+    if (!tabletMenu.tablet || tabletMenu.allowsPath(pathname) || redirectedFor.current === pathname) return;
+    redirectedFor.current = pathname;
+    toast.show({ message: "この画面はパソコンから操作してください", tone: "info" });
+    router.replace(tabletMenu.allows("/floor") ? "/floor" : "/select-store");
+  }, [pathname, tabletMenu, router, toast]);
 
   const reloadFloor = useCallback(async () => {
     if (!canFloor) return;
@@ -125,7 +136,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   // 申告方法が freee の事業者では、銀行照合・固定資産・年間決算・確定申告は freee 側で行うのでメニューに出さない
   const freeeFiling = store?.taxpayer?.filing_method === "freee";
-  const nav = NAV.filter((n) => (n.caps ? can(...n.caps) : true) && (n.anyCaps ? n.anyCaps.some((c) => can(c)) : true) && !(n.freeeHandles && freeeFiling));
+  const nav = NAV.filter((n) => (n.caps ? can(...n.caps) : true) && (n.anyCaps ? n.anyCaps.some((c) => can(c)) : true) && !(n.freeeHandles && freeeFiling) && tabletMenu.allows(n.href));
   const groups: NavItem["group"][] = ["営業", "管理", "経理", "設定"];
   const platform = me?.user.is_platform_operator;
   const ownerCompanies = me?.companies.filter((c) => c.role === "owner" || c.role === "admin" || c.role === "operator") ?? [];
@@ -148,7 +159,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <FloorContext.Provider value={ctx}>
-      <div className={`min-h-screen flex flex-col ${pos ? "pos-theme" : ""}`}>
+      <div className="min-h-screen flex flex-col">
         {pos ? (
           <PosHeader
             floor={floor}
@@ -165,17 +176,17 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           />
         ) : (
         <header className="sticky top-0 z-40 flex items-center gap-2 px-3 h-[68px]" style={{ background: "var(--color-panel)", borderBottom: "1px solid var(--color-border)" }}>
-          {canFloor && (
+          {canFloor && tabletMenu.allows("/floor") && (
             <Link href="/floor" className={`btn btn-lg whitespace-nowrap shrink-0 ${onFloor ? "btn-primary" : ""}`} style={{ minHeight: 54 }}>
               卓一覧
             </Link>
           )}
-          {can("attendance.manage") && (
+          {can("attendance.manage") && tabletMenu.allows("/attendance") && (
             <Link href="/attendance" className={`btn btn-lg whitespace-nowrap shrink-0 ${pathname === "/attendance" ? "btn-primary" : ""}`} style={{ minHeight: 54 }}>
               出勤・お渡し
             </Link>
           )}
-          {can("expenses.submit") && (
+          {can("expenses.submit") && tabletMenu.allows("/receipts") && (
             <Link href="/receipts/new" className={`btn btn-lg whitespace-nowrap shrink-0 ${pathname.startsWith("/receipts") ? "btn-primary" : ""}`} style={{ minHeight: 54 }} aria-label="領収書を撮る" title="領収書を撮る">
               📷<span className="hidden xl:inline ml-1">領収書</span>
             </Link>
@@ -257,7 +268,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   </div>
                 );
               })}
-              {(ownerCompanies.length > 0 || platform) && (
+              {!tabletMenu.tablet && (ownerCompanies.length > 0 || platform) && (
                 <div>
                   <div className="text-sm font-semibold mb-1 px-2" style={{ color: "var(--color-muted)" }}>
                     会社・運営
@@ -274,18 +285,20 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   )}
                 </div>
               )}
-              <div>
-                <button
-                  className="btn w-full"
-                  onClick={async () => {
-                    await setStore(null);
-                    setMenuOpen(false);
-                    router.push("/select-store");
-                  }}
-                >
-                  店舗を切り替える
-                </button>
-              </div>
+              {(!tabletMenu.tablet || (me?.stores.length ?? 0) > 1) && (
+                <div>
+                  <button
+                    className="btn w-full"
+                    onClick={async () => {
+                      await setStore(null);
+                      setMenuOpen(false);
+                      router.push("/select-store");
+                    }}
+                  >
+                    店舗を切り替える
+                  </button>
+                </div>
+              )}
             </nav>
           )}
           <main className="flex-1 p-3 md:p-4 min-w-0">{children}</main>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { TabletSettingsTab } from "@/components/TabletSettings";
 import { TerminalSettingsTab } from "@/components/TerminalSettings";
 import { Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Toggle, type SaveState } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -37,7 +38,7 @@ export default function StoreSettingsPage() {
   const tables = useLoad<Table[]>("/api/store/tables");
   const [form, setForm] = useState<StoreSettings | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
-  const [tab, setTab] = useState<"settings" | "tables" | "terminal" | "roles" | "audit">("settings");
+  const [tab, setTab] = useState<"settings" | "tables" | "terminal" | "tablet" | "roles" | "audit">("settings");
   const canEdit = can("settings.edit");
 
   useEffect(() => {
@@ -68,9 +69,9 @@ export default function StoreSettingsPage() {
         actions={
           <>
             <SaveStatus state={save} />
-            {(["settings", "tables", "terminal", "roles", "audit"] as const).filter((t) => t !== "audit" || can("audit.view")).map((t) => (
+            {(["settings", "tables", "terminal", "tablet", "roles", "audit"] as const).filter((t) => t !== "audit" || can("audit.view")).map((t) => (
               <button key={t} className={`btn btn-sm ${tab === t ? "btn-primary" : ""}`} onClick={() => setTab(t)}>
-                {{ settings: "営業ルール", tables: "卓", terminal: "カード端末", roles: "権限", audit: "操作履歴" }[t]}
+                {{ settings: "営業ルール", tables: "卓", terminal: "カード端末", tablet: "タブレット", roles: "権限", audit: "操作履歴" }[t]}
               </button>
             ))}
           </>
@@ -198,6 +199,7 @@ export default function StoreSettingsPage() {
       {tab === "tables" && <TablesTab tables={tables} canEdit={can("catalog.edit")} setSave={setSave} />}
 
       {tab === "terminal" && <TerminalSettingsTab />}
+      {tab === "tablet" && <TabletSettingsTab />}
 
       {tab === "roles" && (
         <div className="card scroll-x">

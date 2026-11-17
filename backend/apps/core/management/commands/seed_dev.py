@@ -80,7 +80,7 @@ class Command(BaseCommand):
         CompanyMembership.objects.create(user=owner_a, company=a, role="owner")
         manager_a1 = self._user("manager_a1", "A本店 店長")
         CompanyMembership.objects.create(user=manager_a1, company=a, role="member")
-        StoreMembership.objects.create(user=manager_a1, store=a1, role="manager")
+        StoreMembership.objects.create(user=manager_a1, store=a1, role="manager", is_tablet=True)  # 店舗タブレット用
         staff_a1 = self._user("staff_a1", "A本店 スタッフ")
         CompanyMembership.objects.create(user=staff_a1, company=a, role="member")
         StoreMembership.objects.create(user=staff_a1, store=a1, role="staff")

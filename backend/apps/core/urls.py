@@ -14,6 +14,7 @@ urlpatterns = [
     path("auth/accept-invite", views.AcceptInviteView.as_view()),
     path("store/settings", views.StoreSettingsView.as_view()),
     path("store/terms", views.StoreTermsView.as_view()),
+    path("store/tablet", views.StoreTabletView.as_view()),
     path("store/void-pin", views.StoreVoidPinView.as_view()),
     path("store/business-date", views.BusinessDateView.as_view()),
     path("audit/logs", views.AuditLogsView.as_view()),

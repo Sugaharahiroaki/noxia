@@ -677,7 +677,7 @@ function CloseWizard({ day, canPayout, onCancel, onFinished }: { day: BusinessDa
         <div className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-3">
-              <div className="rounded-2xl px-4 py-3" style={{ background: "#11141b", border: "3px solid var(--color-accent)" }}>
+              <div className="rounded-2xl px-4 py-3" style={{ background: "var(--color-panel)", border: "3px solid var(--color-accent)" }}>
                 <div className="text-lg" style={{ color: "var(--color-muted)" }}>
                   数えた現金の合計
                 </div>

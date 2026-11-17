@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { useTabletMenu } from "@/lib/tablet";
 import type { Employee, FloorState } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 import { useNow } from "@/lib/useServerClock";
@@ -40,6 +41,7 @@ export function PosHeader({
   notice?: React.ReactNode;
 }) {
   const { can } = useSession();
+  const tabletMenu = useTabletMenu();
   const now = useNow(15000);
   const clock = fmtClock(now);
   const [waiting, setWaiting] = useState(false);
@@ -87,7 +89,7 @@ export function PosHeader({
               待機キャスト
             </button>
           )}
-          {can("settings.view") && (
+          {can("settings.view") && tabletMenu.allows(POS_SETTINGS_HREF) && (
             <Link href={POS_SETTINGS_HREF} className="pos-bar-btn" aria-current={pathname.startsWith("/settings") ? "page" : undefined}>
               <span className="pos-bar-icon" aria-hidden>
                 ⚙

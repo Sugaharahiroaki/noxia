@@ -58,14 +58,20 @@ def _taxpayer_brief(store) -> dict | None:
 
 
 def me_payload(request) -> dict:
+    from . import tablet
+
     user = request.user
     stores = []
+    tablet_store_ids = set(StoreMembership.objects.filter(user=user, is_active=True, is_tablet=True).values_list("store_id", flat=True))
     for store in accessible_stores(user):
         try:
             access = resolve_store_access(user, store.id)
         except ApiError:
             continue
         stores.append({
+            # 店舗タブレット用のアカウントか、そのときに出す画面（画面側のメニューと移動の制限に使う）
+            "is_tablet": store.id in tablet_store_ids,
+            "tablet_menu": tablet.resolve_menu(store),
             "id": store.id,
             "name": store.name,
             "code": store.code,
@@ -603,3 +609,61 @@ class StoreTermsView(APIView):
         if changes:
             audit(request, "terms.reset", changes=changes)
         return Response({"terms": terms.term_list(request.store)})
+
+
+class StoreTabletView(APIView):
+    """
+    店舗タブレットの設定（PC から）: どのアカウントがタブレット用か、タブレットに出す画面。
+    読む: settings.view。変える: settings.edit（再認証）。表示の出し分けだけで、API の権限は役割のまま。
+    """
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SETTINGS_VIEW, write_caps=(CAP_SETTINGS_EDIT,))]
+
+    def _payload(self, store) -> dict:
+        from . import tablet
+
+        st = getattr(store, "settings", None)
+        saved = st.tablet_menu if st is not None and isinstance(st.tablet_menu, list) else []
+        members = [{
+            "id": sm.id, "user_id": sm.user_id, "username": sm.user.username, "display_name": sm.user.display_name,
+            "role": sm.role, "is_active": sm.is_active, "is_tablet": sm.is_tablet,
+        } for sm in StoreMembership.objects.filter(store=store).select_related("user").order_by("-is_tablet", "role", "id")]
+        return {"members": members, "items": tablet.items_json(), "menu": tablet.resolve_menu(store),
+                "default_menu": list(tablet.DEFAULT_TABLET_MENU), "is_default": not saved}
+
+    def get(self, request):
+        return Response(self._payload(request.store))
+
+    @transaction.atomic
+    def put(self, request):
+        """{tablet_membership_ids: [...]} でタブレット用の印を付け替える。{menu: [...]} で出す画面を変える（null か空 = 既定に戻す）。"""
+        from . import tablet
+
+        store = request.store
+        changes = {}
+        if "tablet_membership_ids" in request.data:
+            raw = request.data.get("tablet_membership_ids")
+            if not isinstance(raw, list) or not all(isinstance(x, int) for x in raw):
+                raise ApiError("validation_error", "タブレット用アカウントの一覧を指定してください。")
+            ids = set(raw)
+            own = set(StoreMembership.objects.filter(store=store).values_list("id", flat=True))
+            if ids - own:
+                raise ApiError("validation_error", "この店舗に配属されていないアカウントが含まれています。")
+            before = set(StoreMembership.objects.filter(store=store, is_tablet=True).values_list("id", flat=True))
+            StoreMembership.objects.filter(store=store, id__in=own - ids, is_tablet=True).update(is_tablet=False)
+            StoreMembership.objects.filter(store=store, id__in=ids, is_tablet=False).update(is_tablet=True)
+            if before != ids:
+                names = dict(StoreMembership.objects.filter(store=store, id__in=before | ids).values_list("id", "user__display_name"))
+                changes["tablet_accounts"] = {"before": sorted(names.get(i, str(i)) for i in before), "after": sorted(names.get(i, str(i)) for i in ids)}
+        if "menu" in request.data:
+            raw = request.data.get("menu")
+            menu = [] if raw in (None, []) else tablet.clean_menu(raw)
+            st, _ = StoreSettings.objects.get_or_create(store=store)
+            if st.tablet_menu != menu:
+                changes["tablet_menu"] = {"before": st.tablet_menu, "after": menu}
+                st.tablet_menu = menu
+                st.save(update_fields=["tablet_menu", "updated_at"])
+        if changes:
+            audit(request, "settings.tablet", target=store, changes=changes)
+        return Response(self._payload(store))

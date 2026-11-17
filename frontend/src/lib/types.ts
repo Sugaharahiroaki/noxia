@@ -12,6 +12,10 @@ export type StoreInfo = {
   role: string;
   caps: string[];
   read_only: boolean;
+  /** 店舗タブレット用のアカウントか。true ならメニューは tablet_menu の画面だけ（管理・経理・設定は PC から） */
+  is_tablet: boolean;
+  /** タブレットに出す画面（URL のキー。店舗設定の「タブレット」で決める） */
+  tablet_menu: string[];
   /** 店舗の事業者（会計設定で対応付けたもの）。申告方法で経理メニューを出し分ける */
   taxpayer?: { id: number; name: string; entity_type: "corporation" | "sole_proprietor"; filing_method: "" | "freee" | "nta_corner" } | null;
 };
