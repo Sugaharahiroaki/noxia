@@ -133,9 +133,9 @@ sudo apt -y install certbot python3-certbot-nginx && sudo certbot --nginx -d <�
 ```
 運営者アカウントの作成（最初の 1 回。`seed_dev` は本番では使えない）:
 ```bash
-cd /srv/noxia/current/backend
-sudo -u noxia /srv/noxia/venv/bin/python manage.py createsuperuser
-sudo -u noxia /srv/noxia/venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model as g; g().objects.filter(is_superuser=True).update(is_platform_operator=True)"
+# /srv/noxia は noxia だけが入れるので、noxia として移動してから実行する
+sudo -u noxia -H bash -c 'cd /srv/noxia/current/backend && /srv/noxia/venv/bin/python manage.py createsuperuser'
+sudo -u noxia -H bash -c 'cd /srv/noxia/current/backend && /srv/noxia/venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model as g; print(g().objects.filter(is_superuser=True).update(is_platform_operator=True))"'
 ```
 
 ## アプリアイコン・ロゴ
