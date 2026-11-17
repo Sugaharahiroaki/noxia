@@ -20,6 +20,7 @@ FORCE=0
 [[ "${1:-}" == "--force" ]] && FORCE=1
 
 log() { echo "[deploy] $*"; }
+cd "$APP"  # 呼び出し元の作業フォルダ（noxia が読めない場所のことがある）に依存しない
 
 # 二重起動を防ぐ（反映に 1 分以上かかっても、次の timer は何もせず終わる）
 if [[ -z "${NOXIA_DEPLOY_LOCKED:-}" ]]; then
@@ -65,7 +66,7 @@ ln -s "$APP/shared/.env" "$REL/backend/.env"
 
 # --- バックエンド ---
 log "Python の依存を入れています"
-uv pip install --quiet --python "$VENV/bin/python" -r "$REL/backend/requirements.txt"
+uv pip install --no-config --quiet --python "$VENV/bin/python" -r "$REL/backend/requirements.txt"
 cd "$REL/backend"
 "$VENV/bin/python" manage.py check --fail-level ERROR
 log "DB を更新しています（migrate）"

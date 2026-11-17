@@ -28,6 +28,8 @@ sudo -u noxia psql -d noxia -c 'select 1' >/dev/null || { echo "noxia ユーザ�
 
 step "フォルダとソースの取得"
 install -d -o noxia -g noxia -m 750 "$APP" "$APP/shared" "$APP/shared/media" "$APP/releases" "$APP/backups"
+# 以降の noxia としての実行が、ubuntu のホーム（noxia は読めない）を作業フォルダにしないように
+cd "$APP"
 if [[ -d "$APP/repo/.git" ]]; then
   sudo -u noxia git -C "$APP/repo" fetch --quiet origin "$BRANCH"
   sudo -u noxia git -C "$APP/repo" reset --quiet --hard "origin/$BRANCH"
@@ -39,7 +41,7 @@ step "Python 3.11 の環境"
 if [[ ! -x "$APP/venv/bin/python" ]]; then
   PY311=$(ls -d /opt/python/cpython-3.11.*-linux-x86_64-gnu 2>/dev/null | sort -V | tail -1)
   [[ -n "$PY311" ]] || { echo "Python 3.11 が見つかりません: sudo env UV_PYTHON_INSTALL_DIR=/opt/python uv python install 3.11"; exit 1; }
-  sudo -u noxia uv venv --quiet --python "$PY311/bin/python3.11" "$APP/venv"
+  sudo -u noxia uv venv --no-config --quiet --python "$PY311/bin/python3.11" "$APP/venv"
 fi
 "$APP/venv/bin/python" --version
 
