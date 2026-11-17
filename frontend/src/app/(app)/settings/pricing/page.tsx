@@ -6,6 +6,7 @@ import { Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Toggle,
 import { api } from "@/lib/api";
 import { fmtDate, fmtMinutes, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { useTx } from "@/lib/terms";
 import type { Category, Course, Employee, Product, StoreSettings } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
@@ -26,6 +27,9 @@ type BackRule = {
   include_discount: boolean;
   include_service_charge: boolean;
   rounding: string;
+  /** 対象が「指名伝票の小計」「同伴伝票の小計」のときだけ使う */
+  subtotal_basis: "subtotal" | "set_extension" | "total";
+  split_mode: "equal" | "full_each";
   confirm_timing: string;
   effective_from: string;
   effective_to: string | null;
@@ -34,6 +38,13 @@ type BackRule = {
 };
 
 const TARGET_LABELS: Record<string, string> = { all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品", nomination: "本指名", jounai: "場内指名", douhan: "同伴", nomination_subtotal: "指名伝票の小計（呼び売上バック）", douhan_subtotal: "同伴伝票の小計（同伴売上バック）" };
+const SUBTOTAL_TARGETS = ["nomination_subtotal", "douhan_subtotal"];
+const SUBTOTAL_BASIS_LABELS: Record<string, string> = {
+  set_extension: "セット料金＋延長だけ",
+  subtotal: "会計全体（TAX・サービス料の前）",
+  total: "会計全体（TAX・サービス料込みの請求額）",
+};
+const SPLIT_LABELS: Record<string, string> = { equal: "人数で均等に割る", full_each: "それぞれに全額" };
 const KIND_LABELS: Record<string, string> = { drink: "ドリンク", cast_drink: "キャストドリンク", bottle: "ボトル", shot: "ショット", food: "フード", other: "その他" };
 
 export default function PricingPage() {
@@ -305,6 +316,7 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
 }
 
 function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+  const tx = useTx();
   const rules = useLoad<BackRule[]>("/api/staff/back-rules");
   const employees = useLoad<Employee[]>("/api/staff/employees?active=1");
   const categories = useLoad<Category[]>("/api/store/categories");
@@ -312,7 +324,7 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
   const [editing, setEditing] = useState<BackRule | "new" | null>(null);
   const empty: Omit<BackRule, "id" | "employee_name" | "category_name" | "product_name"> = {
     employee: null, name: "", target_type: "category_kind", category_kind: "cast_drink", category: null, product: null, calc_type: "percent", value: "50", basis: "tax_included",
-    include_discount: true, include_service_charge: false, rounding: "floor", confirm_timing: "checkout", effective_from: new Date().toISOString().slice(0, 10), effective_to: null, is_active: true, note: "",
+    include_discount: true, include_service_charge: false, rounding: "floor", subtotal_basis: "subtotal", split_mode: "equal", confirm_timing: "checkout", effective_from: new Date().toISOString().slice(0, 10), effective_to: null, is_active: true, note: "",
   };
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
@@ -327,14 +339,21 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
     <tr style={{ opacity: r.is_active ? 1 : 0.5 }}>
       <td className="font-semibold">{r.name}</td>
       <td>
-        {TARGET_LABELS[r.target_type]}
+        {tx(TARGET_LABELS[r.target_type] ?? r.target_type)}
         {r.target_type === "category_kind" && `: ${KIND_LABELS[r.category_kind] ?? r.category_kind}`}
         {r.target_type === "category" && `: ${r.category_name}`}
         {r.target_type === "product" && `: ${r.product_name}`}
       </td>
-      <td className="num">{r.calc_type === "percent" ? `${Number(r.value)}%（${r.basis === "tax_excluded" ? "税抜" : "税込"}基準）` : yen(r.value)}</td>
+      <td className="num">
+        {r.calc_type === "percent"
+          ? SUBTOTAL_TARGETS.includes(r.target_type)
+            ? `${Number(r.value)}%（${SUBTOTAL_BASIS_LABELS[r.subtotal_basis] ?? r.subtotal_basis}）`
+            : `${Number(r.value)}%（${r.basis === "tax_excluded" ? "税抜" : "税込"}基準）`
+          : yen(r.value)}
+      </td>
       <td className="text-sm">
-        {r.include_discount ? "値引き反映" : "値引き無視"} / {r.include_service_charge ? "サ料含む" : "サ料除く"} / {{ floor: "切捨", ceil: "切上", half_up: "四捨五入" }[r.rounding]} / {{ order: "注文時", checkout: "会計時", payment: "入金時" }[r.confirm_timing]}
+        {r.include_discount ? "値引き反映" : "値引き無視"} /{" "}
+        {SUBTOTAL_TARGETS.includes(r.target_type) ? `複数人は${SPLIT_LABELS[r.split_mode] ?? r.split_mode}` : r.include_service_charge ? "サ料含む" : "サ料除く"} / {{ floor: "切捨", ceil: "切上", half_up: "四捨五入" }[r.rounding]} / {{ order: "注文時", checkout: "会計時", payment: "入金時" }[r.confirm_timing]}
       </td>
       <td className="num">
         {fmtDate(r.effective_from)}
@@ -450,7 +469,7 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
               <select className="input" value={form.target_type} onChange={(e) => setForm({ ...form, target_type: e.target.value })}>
                 {Object.entries(TARGET_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>
-                    {v}
+                    {tx(v)}
                   </option>
                 ))}
               </select>
@@ -499,14 +518,44 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
             <Field label={form.calc_type === "percent" ? "割合（%）" : "固定額（円）"}>
               <input className="input" inputMode="decimal" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} />
             </Field>
-            <Field label="計算基準">
-              <select className="input" value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })}>
-                <option value="tax_included">税込金額</option>
-                <option value="tax_excluded">税抜金額</option>
-              </select>
-            </Field>
-            <Toggle checked={form.include_discount} onChange={(v) => setForm({ ...form, include_discount: v })} label="値引きを反映（伝票の値引き割合を按分）" />
-            <Toggle checked={form.include_service_charge} onChange={(v) => setForm({ ...form, include_service_charge: v })} label="サービス料を含める" />
+            {SUBTOTAL_TARGETS.includes(form.target_type) ? (
+              <>
+                <Field label="バックの基準にする金額" hint="会計を確定したときの金額で計算します。">
+                  <select className="input" value={form.subtotal_basis} onChange={(e) => setForm({ ...form, subtotal_basis: e.target.value as BackRule["subtotal_basis"] })} aria-label="バックの基準にする金額">
+                    {Object.entries(SUBTOTAL_BASIS_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={tx("1 つの伝票で本指名のキャストが複数のとき")}>
+                  <select className="input" value={form.split_mode} onChange={(e) => setForm({ ...form, split_mode: e.target.value as BackRule["split_mode"] })} aria-label="複数人のときの分け方">
+                    {Object.entries(SPLIT_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Toggle
+                  checked={form.include_discount}
+                  onChange={(v) => setForm({ ...form, include_discount: v })}
+                  label={form.subtotal_basis === "total" ? "値引きを反映（請求額は常に値引き後）" : "値引きを反映（セット＋延長だけのときは割合で按分）"}
+                />
+              </>
+            ) : (
+              <>
+                <Field label="計算基準">
+                  <select className="input" value={form.basis} onChange={(e) => setForm({ ...form, basis: e.target.value })}>
+                    <option value="tax_included">税込金額</option>
+                    <option value="tax_excluded">税抜金額</option>
+                  </select>
+                </Field>
+                <Toggle checked={form.include_discount} onChange={(v) => setForm({ ...form, include_discount: v })} label="値引きを反映（伝票の値引き割合を按分）" />
+                <Toggle checked={form.include_service_charge} onChange={(v) => setForm({ ...form, include_service_charge: v })} label="サービス料を含める" />
+              </>
+            )}
             <Field label="端数処理">
               <select className="input" value={form.rounding} onChange={(e) => setForm({ ...form, rounding: e.target.value })}>
                 <option value="floor">切り捨て</option>

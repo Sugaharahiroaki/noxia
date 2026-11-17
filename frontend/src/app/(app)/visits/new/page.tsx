@@ -16,10 +16,15 @@ import { useLoad } from "@/lib/useLoad";
 type Step = "kind" | "count" | "guests" | "course";
 type GuestDraft = { employee: number | null; designation: Designation; courseId: number | null };
 
-const DESIGNATIONS: { key: Exclude<Designation, "">; label: string; fee: "nomination_fee" | "jounai_fee" | "douhan_fee" }[] = [
-  { key: "nomination", label: "本指名", fee: "nomination_fee" },
-  { key: "jounai", label: "場内", fee: "jounai_fee" },
-  { key: "douhan", label: "同伴", fee: "douhan_fee" },
+const DESIGNATIONS: {
+  key: Exclude<Designation, "">;
+  label: string;
+  fee: "nomination_fee" | "jounai_fee" | "douhan_fee";
+  enabled: "nomination_enabled" | "jounai_enabled" | "douhan_enabled";
+}[] = [
+  { key: "nomination", label: "本指名", fee: "nomination_fee", enabled: "nomination_enabled" },
+  { key: "jounai", label: "場内", fee: "jounai_fee", enabled: "jounai_enabled" },
+  { key: "douhan", label: "同伴", fee: "douhan_fee", enabled: "douhan_enabled" },
 ];
 const MAX_GUESTS = 30;
 
@@ -207,6 +212,8 @@ function NewVisitInner() {
   ];
   const stepIndex = steps.findIndex((s) => s.key === step);
   const fee = (d: (typeof DESIGNATIONS)[number]) => settings.data?.[d.fee] ?? null;
+  // 店舗設定で使わないことにした種類は出さない（POS 設定「指名・同伴」）
+  const designations = DESIGNATIONS.filter((d) => settings.data?.[d.enabled] !== false);
   const goBack = () => (stepIndex <= 0 ? router.push("/floor") : setStep(steps[stepIndex - 1].key));
   const goNext = () => setStep(steps[stepIndex + 1].key);
   const courseName = (id: number | null) => courses.data?.find((c) => c.id === id)?.name ?? "";
@@ -294,8 +301,8 @@ function NewVisitInner() {
                     <span className="text-xl font-bold">お客様{i + 1}</span>
                     <span className="text-lg">{emp ? emp.display_name : "キャストなし"}</span>
                   </button>
-                  <div className="grid grid-cols-3 gap-2 mt-1" role="group" aria-label={`お客様${i + 1} の指定`}>
-                    {DESIGNATIONS.map((d) => {
+                  <div className="grid gap-2 mt-1" style={{ gridTemplateColumns: `repeat(${Math.max(designations.length, 1)}, minmax(0, 1fr))` }} role="group" aria-label={`お客様${i + 1} の指定`}>
+                    {designations.map((d) => {
                       const f = fee(d);
                       const selected = g.designation === d.key;
                       return (
@@ -311,7 +318,7 @@ function NewVisitInner() {
                           <span>
                             <Tx>{d.label}</Tx>
                           </span>
-                          <span className="text-xs font-normal num">{f === null ? "料金未設定" : yen(f)}</span>
+                          <span className="text-xs font-normal num">{f === null ? "料金未設定" : Number(f) === 0 ? "料金なし" : yen(f)}</span>
                         </button>
                       );
                     })}

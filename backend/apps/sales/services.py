@@ -503,15 +503,25 @@ def add_fee_line(store: Store, user, visit_id, kind: str, data: dict) -> OrderLi
 
 
 def fee_setting(st, kind: str):
-    """指名・同伴の（料金, 表示名, 明細種別）。料金が未設定（None）なら ApiError（0 円扱いにしない）。"""
+    """
+    指名・同伴の（料金, 表示名, 明細種別）。使わない設定の種類と、料金が未設定（None）のものは ApiError（0 円扱いにしない）。
+    表示名は、店舗が名前を変えていればその名前（例: 本指名 → 呼び）。明細には取引時点の名前として保存される。
+    """
+    from apps.core import terms
+
     table = {
-        "nomination": (st.nomination_fee, "指名料", LineType.NOMINATION),
-        "jounai": (st.jounai_fee, "場内指名料", LineType.JOUNAI),
-        "douhan": (st.douhan_fee, "同伴料", LineType.DOUHAN),
+        "nomination": (st.nomination_fee, "指名料", LineType.NOMINATION, st.nomination_enabled),
+        "jounai": (st.jounai_fee, "場内指名料", LineType.JOUNAI, st.jounai_enabled),
+        "douhan": (st.douhan_fee, "同伴料", LineType.DOUHAN, st.douhan_enabled),
     }
     if kind not in table:
         raise ApiError("validation_error", "種別が不正です。")
-    fee, label, line_type = table[kind]
+    fee, label, line_type, enabled = table[kind]
+    renamed = terms.term_labels(st.store).get(kind)
+    if renamed and renamed != terms.TERMS[kind][0]:
+        label = renamed
+    if not enabled:
+        raise ApiError("designation_disabled", f"{label}は店舗設定で使わない設定になっています。", status=409)
     if fee is None:
         raise ApiError("fee_unset", f"{label}が店舗設定で未設定です。設定してから登録してください。", status=409)
     return fee, label, line_type

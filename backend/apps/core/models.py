@@ -160,6 +160,10 @@ class StoreSettings(TimestampedModel):
     nomination_fee = models.DecimalField("指名料", max_digits=12, decimal_places=2, null=True, blank=True)
     douhan_fee = models.DecimalField("同伴料", max_digits=12, decimal_places=2, null=True, blank=True)
     jounai_fee = models.DecimalField("場内指名料", max_digits=12, decimal_places=2, null=True, blank=True)
+    # 使う指名の種類（使わないものは入店・卓の画面に出さず、登録も拒否する）。名前は「名称変更」（TermOverride）で変える
+    nomination_enabled = models.BooleanField("本指名を使う", default=True)
+    jounai_enabled = models.BooleanField("場内指名を使う", default=True)
+    douhan_enabled = models.BooleanField("同伴を使う", default=True)
 
     # 集計（管理用の集計画面だけに効く。会計・バック・報酬の計算には使わない）
     # 1 つの伝票に指名（同伴）のキャストが複数いるとき、伝票の小計・本計をどう分けるか。equal = 均等割り（仮）、full_each = 全員に全額

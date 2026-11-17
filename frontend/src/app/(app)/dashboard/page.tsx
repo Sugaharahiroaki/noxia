@@ -6,6 +6,7 @@ import { DashboardKpi } from "@/components/DashboardKpi";
 import { downloadFile } from "@/lib/api";
 import { addDays, fmtDate, fmtMinutes, monthStart, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { Tx } from "@/lib/terms";
 import { useLoad } from "@/lib/useLoad";
 
 type Summary = {
@@ -241,7 +242,7 @@ export default function DashboardPage() {
                 <tbody>
                   {Object.entries(b.by_line_type).map(([k, v]) => (
                     <tr key={k}>
-                      <td>{LINE_TYPE_LABELS[k] ?? k}</td>
+                      <td><Tx>{LINE_TYPE_LABELS[k] ?? k}</Tx></td>
                       <td className="text-right">{yen(v.amount)}</td>
                       <td className="text-right text-xs" style={{ color: "var(--color-muted)" }}>
                         {v.count}件

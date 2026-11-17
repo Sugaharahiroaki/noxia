@@ -100,6 +100,10 @@ export type StoreSettings = {
   nomination_fee: Money | null;
   douhan_fee: Money | null;
   jounai_fee: Money | null;
+  /** 使う指名の種類（使わないものは入店・卓の画面に出さない） */
+  nomination_enabled: boolean;
+  jounai_enabled: boolean;
+  douhan_enabled: boolean;
   alarm_mode: "10" | "5" | "both";
   business_day_switch_time: string;
   default_opening_float: Money;

@@ -256,3 +256,119 @@ class ReportTests(Base):
         header2 = self.owner.get("/api/reports/people-cast.csv", {"month": self.month}).content.decode("utf-8-sig").splitlines()[0]
         self.assertIn("源泉所得税", header2)
         self.assertTrue(self.cast_report()["settings"]["withholding_enabled"])
+
+
+class SubtotalBackBasisTests(Base):
+    """呼び売上バックの基準（セット＋延長だけ／会計全体の TAX 前／TAX 込み）と、複数人のときの分け方。"""
+
+    def nominated_checkout(self, *casts, discount=None):
+        v = self.visit(guests=2)                                                  # セット 5,000
+        for c in casts:
+            services.add_fee_line(self.store, self.user, v.id, "nomination", {"employee_id": c.id})   # 指名料 1,000 ずつ
+        if discount:
+            services.add_discount(self.store, self.user, v.id, {"amount": str(discount), "reason": "サービス"})
+        return self.pay(v)
+
+    def back(self, co, emp):
+        return BackEntry.objects.get(checkout=co, kind="yobi_subtotal", employee=emp)
+
+    def test_set_and_extension_only(self):
+        self.rule(target_type="nomination_subtotal", value=D(10), subtotal_basis="set_extension")
+        co = self.nominated_checkout(self.cast1)                                  # 小計 6,000（うちセット 5,000）
+        b = self.back(co, self.cast1)
+        self.assertEqual((b.basis_amount, b.amount), (D(5000), D(500)))
+        self.assertEqual(b.rule_snapshot["subtotal_basis"], "set_extension")     # 取引時点のルールを残す
+
+    def test_set_and_extension_includes_extension(self):
+        self.rule(target_type="nomination_subtotal", value=D(10), subtotal_basis="set_extension")
+        v = self.visit(guests=1)
+        services.add_fee_line(self.store, self.user, v.id, "nomination", {"employee_id": self.cast1.id})
+        services.extend_entry(self.store, self.user, v.id, v.course_entries.first().id)
+        co = self.pay(v)
+        bd = co.breakdown
+        want = D(bd.get("course_set", 0)) + D(bd.get("extension", 0)) + D(bd.get("course_change", 0))
+        self.assertGreater(D(bd.get("extension", 0)), 0)
+        self.assertEqual(self.back(co, self.cast1).basis_amount, want)
+
+    def test_set_and_extension_prorates_discount(self):
+        self.rule(target_type="nomination_subtotal", value=D(10), subtotal_basis="set_extension", include_discount=True)
+        co = self.nominated_checkout(self.cast1, discount=1000)                  # セット 5,000、小計 6,000、値引き 1,000
+        self.assertEqual(self.back(co, self.cast1).basis_amount, D(4166))         # 5,000 − 5,000×1,000/6,000（切り捨て）
+
+    def test_total_including_tax_and_service(self):
+        self.rule(target_type="nomination_subtotal", value=D(10), subtotal_basis="total")
+        co = self.nominated_checkout(self.cast1)
+        b = self.back(co, self.cast1)
+        self.assertEqual(b.basis_amount, D(co.total))
+        self.assertEqual(b.amount, (D(co.total) / 10).quantize(D(1), rounding="ROUND_FLOOR"))
+
+    def test_full_each_vs_equal_split(self):
+        self.rule(target_type="nomination_subtotal", value=D(10), subtotal_basis="set_extension", split_mode="full_each")
+        co = self.nominated_checkout(self.cast1, self.cast2)
+        self.assertEqual([self.back(co, c).basis_amount for c in (self.cast1, self.cast2)], [D(5000), D(5000)])
+        BackRule.objects.update(split_mode="equal")
+        co2 = self.nominated_checkout(self.cast1, self.cast2)
+        self.assertEqual([self.back(co2, c).basis_amount for c in (self.cast1, self.cast2)], [D(2500), D(2500)])
+
+    def test_rule_api_accepts_and_validates_new_fields(self):
+        c = client_for(self.fx.users["owner"], self.store, reauth=True)
+        body = {"name": "呼びバック", "target_type": "nomination_subtotal", "calc_type": "percent", "value": "10",
+                "subtotal_basis": "set_extension", "split_mode": "full_each", "effective_from": str(PAST)}
+        r = c.post("/api/staff/back-rules", body, format="json", **key())
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual((r.json()["subtotal_basis"], r.json()["split_mode"]), ("set_extension", "full_each"))
+        self.assertEqual(c.post("/api/staff/back-rules", {**body, "subtotal_basis": "nope"}, format="json", **key()).status_code, 400)
+
+
+class DesignationSwitchTests(Base):
+    """使う指名の種類（店舗設定）と、名前の変更（本指名 → 呼び）、料金 0 円。"""
+
+    def test_disabled_designation_is_rejected(self):
+        self.fx.settings.jounai_fee = D(800)
+        self.fx.settings.jounai_enabled = False
+        self.fx.settings.save()
+        v = self.visit()
+        with self.assertRaises(Exception) as cm:
+            services.add_fee_line(self.store, self.user, v.id, "jounai", {"employee_id": self.cast1.id})
+        self.assertEqual(getattr(cm.exception, "code", None), "designation_disabled")
+        # 入店のときに付けようとしても拒否（伝票は作られない）
+        from apps.sales.models import Visit
+        before = Visit.objects.count()
+        with self.assertRaises(Exception):
+            services.open_visit(self.store, self.user, {"table_id": self.fx.tables[1].id, "entries": [{"guest_count": 1, "course_id": self.fx.hourly.id}],
+                                                        "guests": [{"employee_id": self.cast1.id, "designation": "jounai"}]})
+        self.assertEqual(Visit.objects.count(), before)
+
+    def test_renamed_and_zero_fee_nomination(self):
+        from apps.core.models import TermOverride
+        TermOverride.objects.create(store=self.store, key="nomination", label="呼び")
+        self.fx.settings.nomination_fee = D(0)
+        self.fx.settings.save()
+        v = self.visit()
+        line = services.add_fee_line(self.store, self.user, v.id, "nomination", {"employee_id": self.cast1.id})
+        self.assertTrue(line.name.startswith("呼び"), line.name)
+        self.assertEqual(line.unit_price, D(0))
+        self.assertEqual(services.quote(v)[0].subtotal, D(2500))                 # 会計は増えない
+
+    def test_settings_api_switches(self):
+        c = client_for(self.fx.users["owner"], self.store, reauth=True)
+        r = c.put("/api/store/settings", {"jounai_enabled": False, "nomination_enabled": True}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual((r.json()["jounai_enabled"], r.json()["nomination_enabled"], r.json()["douhan_enabled"]), (False, True, True))
+        # 別店舗の設定は変わらない
+        other = standard_fixture("s2", "c2")
+        other.settings.refresh_from_db()
+        self.assertTrue(other.settings.jounai_enabled)
+
+
+class NominationNamedYobiTests(Base):
+    """本指名を「呼び」と呼ぶ店: 指名の売上の呼び方（初期値「呼び」）と同じ名前を付けられる。ほかの重複は従来どおり拒否。"""
+
+    def test_nomination_can_be_named_yobi_but_other_duplicates_are_refused(self):
+        c = client_for(self.fx.users["owner"], self.store, reauth=True)
+        r = c.put("/api/store/terms", {"labels": {"nomination": "呼び"}}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        labels = {t["key"]: t["label"] for t in r.json()["terms"]}
+        self.assertEqual((labels["nomination"], labels["yobi"]), ("呼び", "呼び"))
+        self.assertEqual(c.put("/api/store/terms", {"labels": {"douhan": "呼び"}}, format="json").status_code, 400)
+        self.assertEqual(c.put("/api/store/terms", {"labels": {"jounai": "同伴"}}, format="json").status_code, 400)

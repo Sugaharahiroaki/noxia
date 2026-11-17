@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -395,7 +396,7 @@ export default function CheckoutPage() {
                   .filter(([k]) => k !== "discount")
                   .map(([k, v]) => (
                     <div key={k} className="flex justify-between">
-                      <span>{LINE_TYPE_LABELS[k] ?? k}</span>
+                      <span><Tx>{LINE_TYPE_LABELS[k] ?? k}</Tx></span>
                       <span>{yen(v)}</span>
                     </div>
                   ))}

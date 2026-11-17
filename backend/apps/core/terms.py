@@ -20,6 +20,8 @@ TERMS: dict[str, tuple[str, str]] = {
     "tag": ("タグ", "伝票に付ける目印"),
 }
 MAX_LABEL = 12
+# 同じ表示名を付けてよい組（本指名を「呼び」と呼ぶ店: 指名と、指名のある伝票の売上の呼び方が同じ言葉になる）
+SAME_NAME_ALLOWED = {"nomination", "yobi"}
 
 
 def term_labels(store) -> dict[str, str]:
@@ -62,8 +64,13 @@ def save_labels(store, labels: dict[str, str]) -> dict:
     after = dict(before)
     for key, label in labels.items():
         after[key] = label or TERMS[key][0]
-    if len(set(after.values())) != len(after):
-        raise ApiError("validation_error", "同じ名称を 2 つの用語に付けることはできません。")
+    # 例外: 本指名を「呼び」と呼ぶ店では、指名の売上の呼び方（初期値「呼び」）と同じ名前になってよい（同じものを指すため）
+    seen: dict[str, str] = {}
+    for key, label in after.items():
+        other = seen.get(label)
+        if other is not None and {other, key} != SAME_NAME_ALLOWED:
+            raise ApiError("validation_error", "同じ名称を 2 つの用語に付けることはできません。")
+        seen[label] = key
     for key, label in labels.items():
         if label:
             TermOverride.objects.update_or_create(store=store, key=key, defaults={"label": label})

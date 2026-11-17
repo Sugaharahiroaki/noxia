@@ -9,6 +9,7 @@ import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/
 import { fmtId } from "@/components/ReportKit";
 import { fmtDate, fmtTime, LINE_TYPE_LABELS, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { Tx } from "@/lib/terms";
 import type { Checkout, Receivable } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
@@ -219,7 +220,7 @@ export default function SalesPage() {
                 {detail.lines.map((l) => (
                   <div key={l.id} className="flex justify-between text-sm">
                     <span>
-                      <span className="badge mr-1">{LINE_TYPE_LABELS[l.line_type]}</span>
+                      <span className="badge mr-1"><Tx>{LINE_TYPE_LABELS[l.line_type] ?? l.line_type}</Tx></span>
                       {l.name}
                       {Number(l.quantity) !== 1 && ` ×${Number(l.quantity)}`}
                     </span>

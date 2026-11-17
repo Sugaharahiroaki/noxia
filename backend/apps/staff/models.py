@@ -86,6 +86,19 @@ class BackBasis(models.TextChoices):
     TAX_EXCLUDED = "tax_excluded", "税抜金額"
 
 
+class SubtotalBackBasis(models.TextChoices):
+    """伝票の小計に対するバック（呼び売上バック・同伴売上バック）の基準額。"""
+    SUBTOTAL = "subtotal", "会計全体（TAX・サービス料の前）"
+    SET_EXTENSION = "set_extension", "セット料金＋延長だけ"
+    TOTAL = "total", "会計全体（TAX・サービス料込みの請求額）"
+
+
+class SubtotalBackSplit(models.TextChoices):
+    """1 つの会計に対象のキャストが複数いるときの分け方。"""
+    EQUAL = "equal", "人数で均等に割る"
+    FULL_EACH = "full_each", "それぞれに全額"
+
+
 class BackRule(TimestampedModel):
     """
     バック設定。employee が null なら店舗共通ルール、指定ありなら個人別ルール。
@@ -105,6 +118,9 @@ class BackRule(TimestampedModel):
     include_discount = models.BooleanField("値引きを反映する（伝票の値引き割合を按分）", default=True)
     include_service_charge = models.BooleanField("サービス料を含める", default=False)
     rounding = models.CharField(max_length=10, choices=RoundingMode.choices, default=RoundingMode.FLOOR)
+    # 対象が「指名伝票の小計」「同伴伝票の小計」のときだけ使う（ほかの対象では無視）
+    subtotal_basis = models.CharField("基準額", max_length=20, choices=SubtotalBackBasis.choices, default=SubtotalBackBasis.SUBTOTAL)
+    split_mode = models.CharField("複数人のときの分け方", max_length=20, choices=SubtotalBackSplit.choices, default=SubtotalBackSplit.EQUAL)
     confirm_timing = models.CharField(max_length=20, choices=BackConfirmTiming.choices, default=BackConfirmTiming.CHECKOUT)
     effective_from = models.DateField()
     effective_to = models.DateField(null=True, blank=True)
@@ -144,6 +160,8 @@ class BackRule(TimestampedModel):
             "include_discount": self.include_discount,
             "include_service_charge": self.include_service_charge,
             "rounding": self.rounding,
+            "subtotal_basis": self.subtotal_basis,
+            "split_mode": self.split_mode,
             "confirm_timing": self.confirm_timing,
             "effective_from": self.effective_from.isoformat(),
         }

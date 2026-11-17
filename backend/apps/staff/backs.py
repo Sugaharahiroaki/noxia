@@ -17,7 +17,7 @@ from apps.core.business_date import business_date_now, current_business_date
 from apps.core.exceptions import ApiError
 from apps.core.money import D, ZERO, HUNDRED, percent_of, round_yen, tax_from_included
 
-from .models import BackCalcType, BackEntry, BackEntryStatus, BackRule, BackTargetType
+from .models import BackCalcType, BackEntry, BackEntryStatus, BackRule, BackTargetType, SubtotalBackBasis, SubtotalBackSplit
 
 
 def validate_targets(targets: list[dict], line_amount: Decimal) -> list[dict]:
@@ -193,11 +193,35 @@ def find_subtotal_rule(store, employee, target_type, on_date) -> BackRule | None
     return rules[0] if rules else None
 
 
+SET_EXTENSION_LINE_TYPES = ("course_set", "course_change", "extension")
+
+
+def subtotal_back_base(checkout, rule: BackRule) -> Decimal:
+    """
+    伝票の小計に対するバックの基準額（ルールの subtotal_basis）。金額は会計の確定時に保存した値（Checkout）から取る。
+      subtotal      = 会計の小計（TAX・サービス料の前）。「値引きを反映」なら値引き後
+      set_extension = セット＋延長（＋無制限への変更）の明細の合計。「値引きを反映」なら会計の値引きを小計の割合で按分して引く
+      total         = 請求額（TAX・サービス料・端数処理の後。値引きは常に反映済み）
+    """
+    subtotal = D(checkout.subtotal)
+    discount = D(checkout.discount_total)
+    if rule.subtotal_basis == SubtotalBackBasis.TOTAL:
+        return D(checkout.total)
+    if rule.subtotal_basis == SubtotalBackBasis.SET_EXTENSION:
+        bd = checkout.breakdown or {}
+        base = sum((D(bd.get(k) or 0) for k in SET_EXTENSION_LINE_TYPES), ZERO)
+        if rule.include_discount and subtotal > 0 and discount > 0:
+            base = round_yen(base - base * discount / subtotal, "floor")
+        return base
+    return subtotal - (discount if rule.include_discount else ZERO)
+
+
 def create_subtotal_entries(checkout, lines, *, user, has_receivable: bool = False, now=None) -> list[BackEntry]:
     """
     会計の確定時: この会計に入った 指名（本指名・場内）／同伴 の明細の対象の人に、会計の小計に対するバックを付ける。
     ルール（対象「指名伝票の小計」「同伴伝票の小計」）が無ければ何も作らない（既存の店舗の結果は変わらない）。
-      基準額 = 会計の小計（ルールが「値引きを反映」なら値引き後）。対象が複数人なら均等割り（円未満切り捨て・余りは先頭の人）。
+      基準額 = ルールの基準（会計全体の小計／セット＋延長／請求額。subtotal_back_base）。
+      対象が複数人なら、ルールの分け方で 均等割り（円未満切り捨て・余りは先頭の人）か、それぞれに全額。
       金額   = 基準額 × 率（%）。固定額のルールは 1 会計あたりの額。丸めはルールの設定。
     取消・返金・会計の削除は、会計に結び付いたエントリとして既存の処理（打消し／削除）に乗る。
     """
@@ -218,9 +242,12 @@ def create_subtotal_entries(checkout, lines, *, user, has_receivable: bool = Fal
             rule = find_subtotal_rule(store, emp, target_type, checkout.business_date)
             if rule is None:
                 continue
-            base = D(checkout.subtotal) - (D(checkout.discount_total) if rule.include_discount else ZERO)
-            each = round_yen(base / len(ids), "floor")
-            basis = each + (base - each * len(ids) if i == 0 else ZERO)
+            base = subtotal_back_base(checkout, rule)
+            if rule.split_mode == SubtotalBackSplit.FULL_EACH:
+                basis = base
+            else:
+                each = round_yen(base / len(ids), "floor")
+                basis = each + (base - each * len(ids) if i == 0 else ZERO)
             amount = round_yen(D(rule.value), rule.rounding) if rule.calc_type == BackCalcType.FIXED else round_yen(basis * D(rule.value) / HUNDRED, rule.rounding)
             timing = rule.confirm_timing or "checkout"
             pending = timing == "payment" and has_receivable

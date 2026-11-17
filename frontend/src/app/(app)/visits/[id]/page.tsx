@@ -22,6 +22,8 @@ import { computeAlarm, syncServerClock, useNow } from "@/lib/useServerClock";
 type BatchResult = Visit & { created_line_ids: number[] };
 type FeeKind = "nomination" | "jounai" | "douhan";
 const FEE_LABELS: Record<FeeKind, string> = { nomination: "本指名", jounai: "場内指名", douhan: "同伴" };
+/** 店舗設定で使わないことにした種類は出さない（POS 設定「指名・同伴」） */
+const FEE_ENABLED = { nomination: "nomination_enabled", jounai: "jounai_enabled", douhan: "douhan_enabled" } as const;
 const SET_TYPES = new Set(["course_set", "extension", "course_change"]);
 
 /**
@@ -303,7 +305,7 @@ export default function VisitDetailPage() {
                   onClick={() => l.checkout === null && setCancelTarget(l)}
                   disabled={l.checkout !== null}
                 >
-                  <span className="text-xs badge">{LINE_TYPE_LABELS[l.line_type]}</span>
+                  <span className="text-xs badge"><Tx>{LINE_TYPE_LABELS[l.line_type] ?? l.line_type}</Tx></span>
                   <span className="flex-1">
                     {l.name}
                     {Number(l.quantity) !== 1 && <span className="num"> ×{Number(l.quantity)}</span>}
@@ -385,7 +387,7 @@ export default function VisitDetailPage() {
       {more && (
         <Modal title="その他の操作" onClose={() => setMore(false)}>
           <div className="grid grid-cols-2 gap-3">
-            {(Object.keys(FEE_LABELS) as FeeKind[]).map((k) => (
+            {(Object.keys(FEE_LABELS) as FeeKind[]).filter((k) => settings.data?.[FEE_ENABLED[k]] !== false).map((k) => (
               <button key={k} className="btn btn-xl" onClick={() => { setMore(false); setFee(k); }}>
                 ＋ <Tx>{FEE_LABELS[k]}</Tx>
               </button>

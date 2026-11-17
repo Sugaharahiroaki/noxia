@@ -80,7 +80,7 @@ class BackRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = BackRule
         fields = ["id", "employee", "employee_name", "name", "target_type", "category_kind", "category", "category_name", "product", "product_name",
-                  "calc_type", "value", "basis", "include_discount", "include_service_charge", "rounding", "confirm_timing",
+                  "calc_type", "value", "basis", "include_discount", "include_service_charge", "rounding", "subtotal_basis", "split_mode", "confirm_timing",
                   "effective_from", "effective_to", "is_active", "note", "created_at"]
         read_only_fields = ["id", "created_at"]
 

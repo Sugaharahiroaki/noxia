@@ -8,6 +8,7 @@ import { Empty, ErrorBox, Spinner } from "@/components/ui";
 import { api, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
+import { useTerms } from "@/lib/terms";
 import type { Category, Course, StoreSettings } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
@@ -47,7 +48,8 @@ type MasterSection = {
   copy?: boolean;
 };
 type FormSection = { kind: "form"; key: string; label: string; intro: string; fields: FieldSpec[] };
-type Section = MasterSection | FormSection;
+type DesignationSection = { kind: "designations"; key: string; label: string };
+type Section = MasterSection | FormSection | DesignationSection;
 
 const COLORS = ["", "#d9534f", "#e8801a", "#c9a227", "#1a8a52", "#1f6fd0", "#6f42c1", "#8a6d3b", "#555555"];
 const ROUND: Option[] = [
@@ -162,17 +164,7 @@ const SECTIONS: Section[] = [
       { key: "sort_order", label: "並び順（小さい順）", type: "int" },
     ],
   },
-  {
-    kind: "form",
-    key: "fees",
-    label: "料金（指名・同伴）",
-    intro: "お客様に請求する金額です。空欄は「未設定」で、未設定のものは登録できません（0 円としては扱いません）。キャストへのバックは「時給・バック・料金」で設定します。",
-    fields: [
-      { key: "nomination_fee", label: "本指名料（円）", type: "moneyOrNull" },
-      { key: "jounai_fee", label: "場内指名料（円）", type: "moneyOrNull" },
-      { key: "douhan_fee", label: "同伴料（円）", type: "moneyOrNull" },
-    ],
-  },
+  { kind: "designations", key: "fees", label: "指名・同伴（種類・名前・料金）" },
   {
     kind: "form",
     key: "alarm",
@@ -294,6 +286,8 @@ function Inner() {
         </nav>
         {section.kind === "master" ? (
           <MasterEditor key={section.key} section={section} ctx={ctx} onCategoriesChanged={() => categories.reload()} pane={pane} />
+        ) : section.kind === "designations" ? (
+          <DesignationsEditor key={section.key} label={section.label} pane={pane} />
         ) : (
           <SettingsForm key={section.key} section={section} pane={pane} />
         )}
@@ -444,6 +438,156 @@ function MasterEditor({ section, ctx, onCategoriesChanged, pane }: { section: Ma
         )}
       </section>
     </div>
+  );
+}
+
+const DESIGNATION_ROWS = [
+  { key: "nomination", enabled: "nomination_enabled", fee: "nomination_fee", hint: "来店前から決まっている指名（例: 呼び）" },
+  { key: "jounai", enabled: "jounai_enabled", fee: "jounai_fee", hint: "来店後に席で受けた指名" },
+  { key: "douhan", enabled: "douhan_enabled", fee: "douhan_fee", hint: "キャストと一緒に来店" },
+] as const;
+type DesignationDraft = { enabled: boolean; name: string; fee: string };
+
+/**
+ * 指名・同伴: 使う種類（オンオフ）・画面に出す名前（名称変更）・お客様に請求する料金をまとめて設定する。
+ * 名前は「名称変更」と同じもの（店舗の TermOverride）。料金の空欄は未設定（登録できない）、0 は料金なし。
+ */
+function DesignationsEditor({ label, pane }: { label: string; pane: React.CSSProperties }) {
+  const { can, withReauth } = useSession();
+  const toast = useToast();
+  const terms = useTerms();
+  const canEdit = can("settings.edit");
+  const st = useLoad<StoreSettings>("/api/store/settings");
+  const [draft, setDraft] = useState<Record<string, DesignationDraft> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const termOf = (key: string) => terms.rows.find((r) => r.key === key);
+
+  useEffect(() => {
+    if (!st.data || terms.rows.length === 0) return;
+    const d = st.data;
+    setDraft(
+      Object.fromEntries(
+        DESIGNATION_ROWS.map((r) => [
+          r.key,
+          { enabled: d[r.enabled], name: termOf(r.key)?.overridden ? termOf(r.key)!.label : "", fee: d[r.fee] === null || d[r.fee] === undefined ? "" : String(Math.round(Number(d[r.fee]))) },
+        ]),
+      ),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st.data, terms.rows]);
+
+  async function save() {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {};
+      for (const r of DESIGNATION_ROWS) {
+        body[r.enabled] = draft[r.key].enabled;
+        body[r.fee] = draft[r.key].fee === "" ? null : draft[r.key].fee;
+      }
+      // 名前（名称変更。空欄 = 初期値に戻す。ほかの用語の変更はそのまま）を先に保存する。名前で断られたら料金・オンオフも保存しない
+      const labels: Record<string, string> = Object.fromEntries(terms.rows.filter((r) => r.overridden).map((r) => [r.key, r.label]));
+      for (const r of DESIGNATION_ROWS) labels[r.key] = draft[r.key].name.trim();
+      await withReauth(() => api("/api/store/terms", { method: "PUT", body: { labels } }));
+      const d = await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body }));
+      await terms.reload();
+      st.setData(d);
+      toast.show({ message: "指名・同伴の設定を保存しました" });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const set = (key: string, patch: Partial<DesignationDraft>) => setDraft((x) => (x ? { ...x, [key]: { ...x[key], ...patch } } : x));
+  return (
+    <section className="flex flex-col min-h-0" style={pane} aria-label={label}>
+      <h2 className="pos-bar px-3 py-1.5 font-bold text-base rounded-t-[12px]">{label}</h2>
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        <p style={{ color: "var(--color-muted)" }}>
+          使わない種類は入店・卓の画面に出しません。名前を変えると、POS と集計の画面がその名前になります（例: 本指名 → 呼び）。
+          料金はお客様に請求する金額で、空欄は「未設定」（登録できません）、0 は料金なし。キャストへのバック（呼び売上の何%など）は「時給・バック・料金」で設定します。
+        </p>
+        <ErrorBox error={st.error} onRetry={() => st.reload(false)} />
+        {(!draft || st.loading) && <Spinner />}
+        {!canEdit && <p className="badge badge-warn">見るだけです（変更には店舗設定の編集権限が必要です）</p>}
+        {draft &&
+          DESIGNATION_ROWS.map((r) => {
+            const t = termOf(r.key);
+            const d = draft[r.key];
+            const shown = d.name.trim() || t?.default || r.key;
+            return (
+              <div key={r.key} className="card-2 space-y-2" role="group" aria-label={`${t?.default ?? r.key} の設定`} style={{ opacity: d.enabled ? 1 : 0.7 }}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-lg font-bold" style={{ minWidth: 96 }}>
+                    {t?.default}
+                  </span>
+                  <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+                    {r.hint}
+                  </span>
+                </div>
+                <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr)" }}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={d.enabled}
+                    aria-label={`${t?.default} を使う`}
+                    disabled={!canEdit || busy}
+                    onClick={() => set(r.key, { enabled: !d.enabled })}
+                    className="flex items-center gap-3 px-3 rounded-xl text-left"
+                    style={{ minHeight: 52, background: "var(--color-panel)", border: "1px solid var(--color-border)" }}
+                  >
+                    <span className="relative inline-block h-7 w-12 rounded-full shrink-0" style={{ background: d.enabled ? "var(--color-ok)" : "var(--color-panel3)", border: "1px solid var(--color-border)" }}>
+                      <span className="absolute top-1 h-5 w-5 rounded-full bg-white" style={{ left: d.enabled ? 26 : 4, boxShadow: "0 1px 2px rgba(0,0,0,0.4)" }} />
+                    </span>
+                    <span>
+                      使う <span className="text-sm font-bold">（{d.enabled ? "はい" : "いいえ"}）</span>
+                    </span>
+                  </button>
+                  <label className="block">
+                    <span className="label" style={{ fontSize: "0.9rem" }}>
+                      画面に出す名前（空欄 = {t?.default}）
+                    </span>
+                    <input className="input" value={d.name} maxLength={12} placeholder={t?.default} disabled={!canEdit || busy} onChange={(e) => set(r.key, { name: e.target.value })} aria-label={`${t?.default} の名前`} />
+                  </label>
+                  <label className="block">
+                    <span className="label" style={{ fontSize: "0.9rem" }}>
+                      {shown}の料金（円）
+                    </span>
+                    <input
+                      className="input num"
+                      inputMode="numeric"
+                      value={d.fee}
+                      placeholder="未設定"
+                      disabled={!canEdit || busy}
+                      onChange={(e) => set(r.key, { fee: e.target.value.replace(/[^\d]/g, "") })}
+                      aria-label={`${t?.default} の料金`}
+                    />
+                  </label>
+                </div>
+                {d.enabled && d.fee === "" && (
+                  <p className="text-sm" style={{ color: "var(--color-warn, var(--color-danger))" }}>
+                    料金が未設定のため、このままでは登録できません。料金なしなら 0 を入れてください。
+                  </p>
+                )}
+              </div>
+            );
+          })}
+      </div>
+      <div className="p-2 border-t flex items-center gap-3" style={{ borderColor: "var(--color-border)" }}>
+        <span className="text-sm flex-1" style={{ color: error ? "var(--color-danger)" : "var(--color-muted)" }} role={error ? "alert" : undefined}>
+          {error ?? "保存のときにパスワードの再確認が出ることがあります。"}
+        </span>
+        {canEdit && (
+          <button className="btn btn-lg btn-primary" style={{ minWidth: 220 }} onClick={save} disabled={busy || !draft}>
+            {busy ? "保存中…" : "決定"}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 
