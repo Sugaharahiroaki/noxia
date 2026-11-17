@@ -1,0 +1,9 @@
+[Unit]
+Description=NOXIA: 1 分ごとに GitHub の main を確認する
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+
+[Install]
+WantedBy=timers.target

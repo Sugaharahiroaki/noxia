@@ -1,0 +1,12 @@
+[Unit]
+Description=NOXIA: GitHub の main を確認して、新しいコミットがあれば反映する
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=noxia
+Group=noxia
+Environment=NOXIA_BRANCH=main
+ExecStart=/bin/bash /srv/noxia/repo/deploy/deploy.sh
+TimeoutStartSec=20min

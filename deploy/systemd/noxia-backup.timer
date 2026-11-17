@@ -1,0 +1,9 @@
+[Unit]
+Description=NOXIA: 毎朝 7 時にバックアップ（営業の締めのあと）
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

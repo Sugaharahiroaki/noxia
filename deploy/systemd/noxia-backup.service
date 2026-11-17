@@ -1,0 +1,9 @@
+[Unit]
+Description=NOXIA: DB と添付ファイルのバックアップ（14 日分を残す）
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=noxia
+Group=noxia
+ExecStart=/bin/bash -c 'set -euo pipefail; d=/srv/noxia/backups; t=$(date +%%Y%%m%%d-%%H%%M); pg_dump --format=custom --no-owner --no-privileges --file="$d/noxia-$t.dump" noxia; tar -czf "$d/media-$t.tar.gz" -C /srv/noxia/shared media; find "$d" -type f -mtime +14 -delete; echo "[backup] $t OK"'

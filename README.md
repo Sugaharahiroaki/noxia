@@ -114,6 +114,30 @@ powershell -ExecutionPolicy Bypass -File scripts\restore-db.ps1 -File backups\xx
 ```
 `-DbUrl "postgresql://user:pass@host:5432/db"` で本番 DB も指定できます。本番では毎営業日の締め後に自動実行する運用を推奨します。
 
+## 本番サーバー（Ubuntu の VPS）と自動反映
+**GitHub の `main` に push すると、サーバーが 1 分以内に気づいて自動で反映する**（サーバーから取りに行く方式。GitHub に鍵を預けない）。
+仕組みは `deploy/`: `deploy.sh`（反映）、`setup-server.sh`（最初の準備）、`systemd/`（常駐サービス・タイマー）、`nginx/`。
+
+- 反映の流れ: `releases/日時-コミット` に展開 → 依存を入れる → `migrate` → Next.js をビルド → `current` を付け替えて再起動 → 応答を確認。
+  途中で失敗したら画面は前の版のまま。再起動後に応答しなければ前の版に戻す（**DB の migrate は戻らない**ので、列の削除などは 2 回に分けて出す）。
+  失敗したコミットは再試行しない。直して push するか、サーバーで `sudo -u noxia bash /srv/noxia/repo/deploy/deploy.sh --force`。
+- 反映の記録: `journalctl -u noxia-deploy -f`。アプリのログ: `journalctl -u noxia-backend -u noxia-frontend -u noxia-jobs -f`
+- バックアップ: 毎朝 7 時に DB と添付ファイルを `/srv/noxia/backups` に（14 日分）。サーバーの外への保管は別途。
+- 設定: `/srv/noxia/shared/.env`（`setup-server.sh` が秘密鍵を生成）。`DJANGO_SECRET_KEY` と `FIELD_ENCRYPTION_KEY_V1` は必ずサーバーの外にも控える。
+
+最初の準備（前提: PostgreSQL 17、DB とロール `noxia`、システムユーザー `noxia`、`/opt/python` の Python 3.11、uv、nginx、ufw で 80/443 許可）:
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Sugaharahiroaki/noxia/main/deploy/setup-server.sh
+sudo bash setup-server.sh <ドメイン>          # ドメインが無いお試しは IP アドレス（HTTP のみ）
+sudo apt -y install certbot python3-certbot-nginx && sudo certbot --nginx -d <ドメイン>   # HTTPS 化
+```
+運営者アカウントの作成（最初の 1 回。`seed_dev` は本番では使えない）:
+```bash
+cd /srv/noxia/current/backend
+sudo -u noxia /srv/noxia/venv/bin/python manage.py createsuperuser
+sudo -u noxia /srv/noxia/venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model as g; g().objects.filter(is_superuser=True).update(is_platform_operator=True)"
+```
+
 ## アプリアイコン・ロゴ
 `frontend/public/` に置いています。差し替えるときは同じファイル名・サイズで上書きしてください。
 | ファイル | 用途 |
