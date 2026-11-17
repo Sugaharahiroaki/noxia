@@ -11,8 +11,10 @@ import { useSession } from "./session";
  */
 /** キーを許可したときに、いっしょに開けるようにする画面（卓一覧 → 卓詳細・注文・会計 など） */
 const IMPLIED: Record<string, string[]> = {
-  "/floor": ["/visits"],
+  // 会計のあとの「手書き領収書の金額」（/checkouts/[id]/handwrite）で、領収書を渡した記録も付ける
+  "/floor": ["/visits", "/checkouts"],
   "/visits/new": ["/visits"],
+  "/sales": ["/checkouts"],
   "/receipts": ["/receipts"],
 };
 /** 常に開ける（ログイン・店舗選択） */

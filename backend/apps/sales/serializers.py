@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Checkout, CourseEntry, CourseEvent, OrderLine, OrderLineBackTarget, Payment, Receivable, ReceivableCollection, Refund, Tag, Visit, VisitGuest
+from .models import (
+    Checkout, CourseEntry, CourseEvent, OrderLine, OrderLineBackTarget, Payment, ReceiptIssue, Receivable, ReceivableCollection, Refund, Tag, Visit,
+    VisitGuest,
+)
+from .receipts import receipt_amount
 
 
 class BackTargetSerializer(serializers.ModelSerializer):
@@ -204,6 +208,23 @@ class CheckoutBriefSerializer(serializers.ModelSerializer):
         fields = ["id", "public_id", "number", "kind", "status", "business_date", "confirmed_at", "total", "payments"]
 
 
+class ReceiptIssueSerializer(serializers.ModelSerializer):
+    method_label = serializers.CharField(source="get_method_display", read_only=True)
+    issued_by_name = serializers.SerializerMethodField()
+    cancelled_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReceiptIssue
+        fields = ["id", "checkout", "method", "method_label", "amount", "addressee", "proviso", "reissue", "issued_at", "issued_by_name",
+                  "cancelled_at", "cancelled_by_name"]
+
+    def get_issued_by_name(self, obj):
+        return str(obj.issued_by) if obj.issued_by else ""
+
+    def get_cancelled_by_name(self, obj):
+        return str(obj.cancelled_by) if obj.cancelled_by else ""
+
+
 class CheckoutSerializer(serializers.ModelSerializer):
     payments = PaymentSerializer(many=True, read_only=True)
     refunds = RefundSerializer(many=True, read_only=True)
@@ -214,16 +235,22 @@ class CheckoutSerializer(serializers.ModelSerializer):
     confirmed_by_name = serializers.SerializerMethodField()
     voided_by_name = serializers.SerializerMethodField()
     status_label = serializers.CharField(source="get_status_display", read_only=True)
+    # 領収書: 領収額（現金＋カード）と発行の記録（取り消した記録も含む。古い順）
+    receipt_amount = serializers.SerializerMethodField()
+    receipt_issues = ReceiptIssueSerializer(many=True, read_only=True)
 
     class Meta:
         model = Checkout
         fields = ["id", "public_id", "visit", "visit_public_id", "visit_slip_number", "visit_table_name", "number", "kind", "status", "status_label", "business_date", "confirmed_at",
                   "confirmed_by_name", "subtotal", "discount_total", "service_charge", "tax_total", "tax_breakdown", "total_before_rounding",
                   "rounding_adjustment", "total", "total_excl_tax", "breakdown", "settings_snapshot", "void_reason", "voided_at", "voided_by_name",
-                  "note", "payments", "refunds", "lines"]
+                  "note", "payments", "refunds", "lines", "receipt_amount", "receipt_issues"]
 
     def get_confirmed_by_name(self, obj):
         return str(obj.confirmed_by) if obj.confirmed_by else ""
+
+    def get_receipt_amount(self, obj):
+        return str(receipt_amount(obj))
 
     def get_voided_by_name(self, obj):
         return str(obj.voided_by) if obj.voided_by else ""

@@ -19,14 +19,14 @@ from apps.core.money import D, ZERO
 from apps.core import void_pin
 from apps.core.permissions import CAP_FLOOR, CAP_SALES_VIEW, CAP_SALES_VOID, StoreCaps
 
-from . import services
+from . import receipts, services
 from .alarms import alarm_state
 from apps.catalog.views import _CatalogViewSet
 
-from .models import FEE_LINE_TYPES, Checkout, CourseEntry, OrderLine, Receivable, Tag, Visit
+from .models import FEE_LINE_TYPES, Checkout, CourseEntry, OrderLine, ReceiptIssue, Receivable, Tag, Visit
 from .pricing import compute_totals, line_inputs_from_orderlines
 from .serializers import (
-    CheckoutSerializer, CourseEntrySerializer, OrderLineSerializer, ReceivableCollectionSerializer, ReceivableSerializer,
+    CheckoutSerializer, CourseEntrySerializer, OrderLineSerializer, ReceiptIssueSerializer, ReceivableCollectionSerializer, ReceivableSerializer,
     RefundSerializer, TagSerializer, VisitBriefSerializer, VisitSerializer,
 )
 
@@ -487,7 +487,8 @@ class VisitCheckoutsView(APIView):
 
 def _checkout_qs(store):
     return Checkout.objects.filter(store=store).select_related("visit__table", "confirmed_by", "voided_by").prefetch_related(
-        "payments", "refunds", Prefetch("lines", queryset=OrderLine.objects.prefetch_related("back_targets__employee"))
+        "payments", "refunds", Prefetch("lines", queryset=OrderLine.objects.prefetch_related("back_targets__employee")),
+        Prefetch("receipt_issues", queryset=ReceiptIssue.objects.select_related("issued_by", "cancelled_by").order_by("issued_at", "id")),
     )
 
 
@@ -549,7 +550,42 @@ class CheckoutHandwriteView(APIView):
             "visit_total_all_checkouts": str(visit_total),
             "other_checkouts": [{"id": c.id, "number": c.number, "total": str(c.total)} for c in siblings],
             "lines": [{"name": l.name, "amount": str(l.amount), "line_type": l.line_type} for l in checkout.lines.all()],
+            # 領収書を渡した記録（2 回目からは「再発行」と書く）
+            "receipt_amount": str(receipts.receipt_amount(checkout)),
+            "receipt_issues": ReceiptIssueSerializer(checkout.receipt_issues.all(), many=True).data,
         })
+
+
+class CheckoutReceiptIssuesView(APIView):
+    """領収書を渡した記録を付ける（手書き）。2 回目からは再発行として記録する。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    @idempotent
+    def post(self, request, checkout_id):
+        issue = receipts.record_issue(request.store, request.user, checkout_id,
+                                      addressee=request.data.get("addressee") or "", proviso=request.data.get("proviso") or "")
+        audit(request, "receipt.issue", target=issue.checkout, changes={
+            "number": issue.checkout.number, "issued_via": issue.method, "amount": issue.amount, "addressee": issue.addressee,
+            "proviso": issue.proviso, "reissue": issue.reissue,
+        })
+        return Response(ReceiptIssueSerializer(issue).data, status=201)
+
+
+class ReceiptIssueCancelView(APIView):
+    """打ち間違えた領収書の記録を取り消す（行は残す）。会計の取消と同じ権限。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SALES_VOID)]
+
+    @idempotent
+    def post(self, request, issue_id):
+        issue = receipts.cancel_issue(request.store, request.user, issue_id)
+        audit(request, "receipt.issue.cancel", target=issue.checkout, changes={
+            "number": issue.checkout.number, "issued_via": issue.method, "amount": issue.amount, "reissue": issue.reissue,
+        })
+        return Response(ReceiptIssueSerializer(issue).data)
 
 
 class CheckoutDeleteView(APIView):

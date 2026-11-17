@@ -7,17 +7,21 @@ import { ConfirmDialog, Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, S
 import { PinPad } from "@/components/PinPad";
 import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { fmtId } from "@/components/ReportKit";
-import { fmtDate, fmtTime, LINE_TYPE_LABELS, todayJst, toInt, yen } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtTime, LINE_TYPE_LABELS, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { Tx } from "@/lib/terms";
 import type { Checkout, Receivable } from "@/lib/types";
+import { activeIssues, type ReceiptInfo, type ReceiptIssue } from "@/lib/types_receipt_issue";
 import { useLoad } from "@/lib/useLoad";
+
+/** 会計一覧の 1 行（会計＋領収書を渡した記録） */
+type Row = Checkout & ReceiptInfo;
 
 type History = {
   from: string;
   to: string;
   summary: { checkout_count: number; voided_count: number; total: string; cash: string; card: string; receivable: string; refunds: string; guest_count: number; avg_per_guest: string | null };
-  checkouts: Checkout[];
+  checkouts: Row[];
 };
 
 export default function SalesPage() {
@@ -28,8 +32,11 @@ export default function SalesPage() {
   const [tab, setTab] = useState<"checkouts" | "receivables">("checkouts");
   const hist = useLoad<History>(range ? `/api/sales/history?from=${from}&to=${to}` : null);
   const recv = useLoad<Receivable[]>(tab === "receivables" ? "/api/receivables" : null);
-  const [detail, setDetail] = useState<Checkout | null>(null);
-  const [voidTarget, setVoidTarget] = useState<Checkout | null>(null);
+  // 詳細は ID で持ち、一覧を読み直したら最新の内容（領収書の記録など）を出す
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const detail = hist.data?.checkouts.find((c) => c.id === detailId) ?? null;
+  const [cancelIssue, setCancelIssue] = useState<ReceiptIssue | null>(null);
+  const [voidTarget, setVoidTarget] = useState<Row | null>(null);
   const [refundTarget, setRefundTarget] = useState<Checkout | null>(null);
   const [collectTarget, setCollectTarget] = useState<Receivable | null>(null);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
@@ -99,6 +106,7 @@ export default function SalesPage() {
                   <th>請求額</th>
                   <th>支払</th>
                   <th>状態</th>
+                  <th>領収書</th>
                   <th></th>
                 </tr>
               </thead>
@@ -113,12 +121,15 @@ export default function SalesPage() {
                     <td className="font-bold">{yen(c.total)}</td>
                     <td>{c.payments.map((p) => `${p.method_label} ${yen(p.amount)}`).join(" / ")}</td>
                     <td>
-                      {c.status === "voided" ? <span className="badge badge-danger">取消</span> : <span className="badge badge-ok">確定</span>}
-                      {c.kind === "partial" && <span className="badge ml-1">分割</span>}
-                      {c.refunds.length > 0 && <span className="badge badge-warn ml-1">返金あり</span>}
+                      {c.status === "voided" ? <span className="badge badge-danger whitespace-nowrap">取消</span> : <span className="badge badge-ok whitespace-nowrap">確定</span>}
+                      {c.kind === "partial" && <span className="badge ml-1 whitespace-nowrap">分割</span>}
+                      {c.refunds.length > 0 && <span className="badge badge-warn ml-1 whitespace-nowrap">返金あり</span>}
+                    </td>
+                    <td className="whitespace-nowrap" data-testid={`receipt-cell-${c.id}`}>
+                      <ReceiptCell c={c} />
                     </td>
                     <td className="whitespace-nowrap">
-                      <button className="btn btn-sm" onClick={() => setDetail(c)}>
+                      <button className="btn btn-sm" onClick={() => setDetailId(c.id)}>
                         詳細
                       </button>{" "}
                       <Link href={`/checkouts/${c.id}/handwrite`} className="btn btn-sm">
@@ -183,7 +194,7 @@ export default function SalesPage() {
       {detail && (
         <Modal
           title={`会計#${detail.number} の詳細`}
-          onClose={() => setDetail(null)}
+          onClose={() => setDetailId(null)}
           wide
           footer={
             <>
@@ -283,7 +294,20 @@ export default function SalesPage() {
               </div>
             </div>
           </div>
+          <ReceiptHistory checkout={detail} canCancel={can("sales.void")} onCancel={setCancelIssue} />
         </Modal>
+      )}
+
+      {cancelIssue && (
+        <CancelIssueDialog
+          issue={cancelIssue}
+          onClose={() => setCancelIssue(null)}
+          onDone={async () => {
+            setSave({ kind: "saved", label: "領収書の記録を取り消しました" });
+            setCancelIssue(null);
+            await hist.reload();
+          }}
+        />
       )}
 
       {voidTarget && (
@@ -293,7 +317,7 @@ export default function SalesPage() {
           onDeleted={async (mode) => {
             setSave({ kind: "saved", label: `会計#${voidTarget.number} を取り消しました（${mode === "refund" ? `${yen(voidTarget.total)} をお客様に返してください` : "伝票は会計前に戻りました"}）` });
             setVoidTarget(null);
-            setDetail(null);
+            setDetailId(null);
             await reloadAll();
           }}
         />
@@ -308,7 +332,7 @@ export default function SalesPage() {
               await api(`/api/checkouts/${refundTarget.id}/refunds`, { method: "POST", idempotencyKey: newIdempotencyKey(), body });
               setSave({ kind: "saved", label: "返金を記録しました" });
               setRefundTarget(null);
-              setDetail(null);
+              setDetailId(null);
               await reloadAll();
             } catch (e) {
               setSave({ kind: "error", error: e });
@@ -340,12 +364,13 @@ export default function SalesPage() {
 }
 
 /** 会計の取消: 理由は聞かず、店舗の 4 桁の暗証番号を入れると記録ごと消す（伝票は会計前に戻る） */
-function DeleteCheckoutDialog({ checkout, onClose, onDeleted }: { checkout: Checkout; onClose: () => void; onDeleted: (mode: "refund" | "redo") => Promise<void> }) {
+function DeleteCheckoutDialog({ checkout, onClose, onDeleted }: { checkout: Row; onClose: () => void; onDeleted: (mode: "refund" | "redo") => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   const [resetKey, setResetKey] = useState(0);
   const [mode, setMode] = useState<"refund" | "redo" | null>(null);
   const hasCard = checkout.payments.some((p) => p.method === "card" && p.status === "valid");
+  const issuedCount = activeIssues(checkout).length;
   const code = err instanceof ApiError ? err.code : "";
   const locked = code === "void_pin_locked" || code === "void_pin_not_set";
 
@@ -387,6 +412,11 @@ function DeleteCheckoutDialog({ checkout, onClose, onDeleted }: { checkout: Chec
         {hasCard && (
           <p className="card-2 text-sm" style={{ borderColor: "var(--color-warn)" }}>
             カード払いがあります。決済端末（または決済会社の管理画面）でもカードの取消をしてください。
+          </p>
+        )}
+        {issuedCount > 0 && (
+          <p className="card-2 text-sm" style={{ borderColor: "var(--color-warn)" }} data-testid="void-receipt-warning">
+            この会計の領収書をお渡ししています（{issuedCount} 枚）。取り消すときは、お渡しした領収書を返してもらってください。
           </p>
         )}
         {mode && (
@@ -491,6 +521,128 @@ function CollectDialog({ receivable, onClose, onSubmit }: { receivable: Receivab
           <input className="input input-lg" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} />
         </Field>
       </div>
+    </ConfirmDialog>
+  );
+}
+
+/** 渡した時刻（会計と同じ営業の間なら時刻だけ、日をまたいだら日付も出す） */
+function issuedWhen(c: Checkout, r: ReceiptIssue): string {
+  const near = Math.abs(new Date(r.issued_at).getTime() - new Date(c.confirmed_at).getTime()) < 12 * 3600 * 1000;
+  return near ? fmtTime(r.issued_at) : fmtDateTime(r.issued_at);
+}
+
+/** 一覧の「領収書」欄: 発行済み（最後に渡した時刻と方法）／未発行／対象外（取消済み・全額ツケ） */
+function ReceiptCell({ c }: { c: Row }) {
+  const active = activeIssues(c);
+  if (active.length > 0) {
+    const last = active[active.length - 1];
+    return (
+      <div className="leading-tight">
+        <span className="badge badge-ok">発行済{active.length > 1 ? `（${active.length}枚）` : ""}</span>
+        <div className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
+          {issuedWhen(c, last)} {last.method_label}
+        </div>
+      </div>
+    );
+  }
+  if (c.status !== "confirmed") return <span style={{ color: "var(--color-muted)" }}>—</span>;
+  if (toInt(c.receipt_amount) <= 0) {
+    return (
+      <span className="text-sm" style={{ color: "var(--color-muted)" }} title="全額ツケのため、領収書は出しません">
+        対象外
+      </span>
+    );
+  }
+  return <span className="badge">未発行</span>;
+}
+
+/** 詳細の「領収書」: 渡した記録をすべて（取り消した記録も）出す */
+function ReceiptHistory({ checkout, canCancel, onCancel }: { checkout: Row; canCancel: boolean; onCancel: (r: ReceiptIssue) => void }) {
+  const issues = checkout.receipt_issues ?? [];
+  const active = activeIssues(checkout);
+  const target = checkout.status === "confirmed" && toInt(checkout.receipt_amount) > 0;
+  return (
+    <section className="mt-4 pt-3 border-t space-y-2" style={{ borderColor: "var(--color-border)" }} data-testid="receipt-history">
+      <div className="flex items-center gap-2 flex-wrap">
+        <h3 className="font-bold">領収書</h3>
+        {active.length > 0 ? (
+          <span className="badge badge-ok">発行済（{active.length}枚）</span>
+        ) : target ? (
+          <span className="badge">未発行</span>
+        ) : (
+          <span className="text-sm" style={{ color: "var(--color-muted)" }}>
+            対象外
+          </span>
+        )}
+        <span className="text-sm num" style={{ color: "var(--color-muted)" }}>
+          領収額 {yen(checkout.receipt_amount)}（現金＋カード）
+        </span>
+      </div>
+      {issues.length === 0 ? (
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          渡した記録はありません。{target && "手書きで渡したときは「手書き領収書用の金額」の画面で記録します。"}
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {issues.map((r) => (
+            <li key={r.id} className="card-2 flex items-start justify-between gap-2 text-sm num" style={r.cancelled_at ? { opacity: 0.6 } : undefined}>
+              <div>
+                <div className="font-semibold" style={r.cancelled_at ? { textDecoration: "line-through" } : undefined}>
+                  {fmtDateTime(r.issued_at)} ・ {r.method_label}
+                  {r.reissue && "（再発行）"} ・ {yen(r.amount)}
+                </div>
+                <div>
+                  宛名 {r.addressee || "なし"}
+                  {r.proviso && ` ・ 但し ${r.proviso}`} ・ 記録した人 {r.issued_by_name || "—"}
+                </div>
+                {r.cancelled_at && (
+                  <div style={{ color: "var(--color-danger)" }}>
+                    記録を取消 {fmtDateTime(r.cancelled_at)} {r.cancelled_by_name}
+                  </div>
+                )}
+              </div>
+              {canCancel && !r.cancelled_at && (
+                <button className="btn btn-sm whitespace-nowrap" onClick={() => onCancel(r)}>
+                  記録を取り消す
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** 打ち間違えた記録の取消（行は残る） */
+function CancelIssueDialog({ issue, onClose, onDone }: { issue: ReceiptIssue; onClose: () => void; onDone: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+
+  async function go() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/api/receipt-issues/${issue.id}/cancel`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: {} });
+      await onDone();
+    } catch (e) {
+      setErr(e);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ConfirmDialog
+      title="領収書の記録を取り消す"
+      message={`${fmtDateTime(issue.issued_at)} に${issue.method_label}で渡した記録（${yen(issue.amount)}）を取り消します。`}
+      confirmLabel="記録を取り消す"
+      danger
+      busy={busy}
+      onConfirm={go}
+      onCancel={onClose}
+    >
+      <p className="text-sm">打ち間違いで付けた記録だけを取り消してください。実際にお渡しした領収書の記録は取り消さないでください。取り消した記録も一覧に残ります。</p>
+      <ErrorBox error={err} />
     </ConfirmDialog>
   );
 }

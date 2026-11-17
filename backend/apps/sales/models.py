@@ -1,6 +1,6 @@
 """
 営業データ: 伝票(Visit)・コース適用(CourseEntry)・明細(OrderLine)・会計(Checkout)・支払い(Payment)・
-返金(Refund)・未収(Receivable)。
+返金(Refund)・未収(Receivable)・領収書の発行記録(ReceiptIssue)。
 
 金額は取引時点の情報（価格・税率・税込区分）を明細にスナップショットする。
 会計済みの伝票・明細は通常操作で直接書き換えない（取消は打消し・履歴で表現する）。
@@ -354,3 +354,32 @@ class ReceivableCollection(TimestampedModel):
     class Meta:
         ordering = ["-collected_at"]
         indexes = [models.Index(fields=["store", "business_date"])]
+
+
+class ReceiptIssueMethod(models.TextChoices):
+    HANDWRITTEN = "handwritten", "手書き"
+    PRINTED = "printed", "印刷"
+
+
+class ReceiptIssue(TimestampedModel):
+    """
+    領収書を発行した記録（会計ごと、渡すたびに 1 行）。「もらっていない」と言われたときに、いつ・誰が・いくらで出したかを確かめるためのもの。
+    金額は発行した時点の領収額（現金＋カード。未収は含めない）を保存する。2 回目からは reissue=True（領収書に「再発行」と書く）。
+    記録の取消は行を消さずに cancelled_at を入れる（会計そのものを取り消すと、会計と一緒に消える。操作履歴には残る）。
+    """
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="receipt_issues")
+    checkout = models.ForeignKey(Checkout, on_delete=models.CASCADE, related_name="receipt_issues")
+    method = models.CharField(max_length=20, choices=ReceiptIssueMethod.choices, default=ReceiptIssueMethod.HANDWRITTEN)
+    amount = models.DecimalField("領収額", max_digits=12, decimal_places=2)
+    addressee = models.CharField("宛名", max_length=60, blank=True)
+    proviso = models.CharField("但し書き", max_length=40, blank=True)
+    reissue = models.BooleanField("再発行", default=False)
+    issued_at = models.DateTimeField()
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["issued_at", "id"]
+        indexes = [models.Index(fields=["store", "checkout"])]

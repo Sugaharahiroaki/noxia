@@ -21,6 +21,7 @@ ACTION_LABELS: dict[str, str] = {
     "line.back_targets": "バック対象の変更",
     "checkout.confirm": "会計の確定", "checkout.void": "会計の取消", "checkout.refund": "返金",
     "checkout.delete": "会計の取消（記録ごと削除）",  # いまは書かない。以前に書かれた記録の表示用
+    "receipt.issue": "領収書を渡した記録", "receipt.issue.cancel": "領収書の記録の取消",
     "receivable.collect": "売掛の回収",
     # レジ・営業日
     "day.open": "開店", "day.close": "レジ締め", "day.reopen": "営業日の再開", "day.revise": "締めの修正", "day.bank_deposit": "銀行入金",
@@ -97,6 +98,7 @@ KEY_LABELS: dict[str, str] = {
     "created": "追加", "updated": "変更",
     "nomination": "本指名", "jounai": "場内指名", "yobi": "呼び", "douhan": "同伴",
     "nomination_subtotal": "本指名のある会計", "jounai_subtotal": "場内指名のある会計", "yobi_subtotal": "呼びのある会計", "douhan_subtotal": "同伴のある会計",
+    "issued_via": "発行方法", "addressee": "宛名", "proviso": "但し書き", "reissue": "再発行",
 }
 
 VALUE_LABELS: dict[str, dict[str, str]] = {
@@ -108,6 +110,7 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
     },
     "status": {"open": "営業中", "closed": "退店", "cancelled": "取消", "confirmed": "確定", "voided": "取消", "pending": "未確定", "active": "使用中"},
     "direction": {"in": "入金", "out": "出金"},
+    "issued_via": {"handwritten": "手書き", "printed": "印刷"},
     "role": {"owner": "オーナー", "manager": "店長", "staff": "スタッフ", "cast": "キャスト", "accountant": "経理"},
 }
 MAX_SUMMARY = 240

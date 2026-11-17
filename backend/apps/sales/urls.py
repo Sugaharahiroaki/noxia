@@ -34,6 +34,8 @@ urlpatterns = router.urls + [
     path("checkouts/<int:checkout_id>/void", views.CheckoutVoidView.as_view()),
     path("checkouts/<int:checkout_id>/delete", views.CheckoutDeleteView.as_view()),
     path("checkouts/<int:checkout_id>/refunds", views.CheckoutRefundsView.as_view()),
+    path("checkouts/<int:checkout_id>/receipt-issues", views.CheckoutReceiptIssuesView.as_view()),
+    path("receipt-issues/<int:issue_id>/cancel", views.ReceiptIssueCancelView.as_view()),
     path("receivables", views.ReceivableListView.as_view()),
     path("receivables/<int:receivable_id>/collect", views.ReceivableCollectView.as_view()),
     path("sales/history", views.SalesHistoryView.as_view()),
