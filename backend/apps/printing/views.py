@@ -14,8 +14,9 @@ from rest_framework.views import APIView
 from apps.core.audit import audit
 from apps.core.exceptions import ApiError
 from apps.core.idempotency import idempotent
-from apps.core.models import AuditLog
 from apps.core.permissions import CAP_CLOSING, CAP_FLOOR, CAP_SETTINGS_EDIT, StoreCaps
+from apps.sales import receipts
+from apps.sales.models import ReceiptIssue, ReceiptIssueMethod
 
 from . import documents
 from .models import PrinterConfig
@@ -114,7 +115,8 @@ class ReceiptPrintView(APIView):
 
 
 def _ryoshusho_issued(store, checkout) -> bool:
-    return AuditLog.objects.filter(store=store, action="print.ryoshusho", target_type="Checkout", target_id=str(checkout.id)).exists()
+    """もう渡したか（印刷・手書きのどちらでも。取り消した記録は数えない）。売上・会計履歴の「発行済」と同じ記録を見る。"""
+    return ReceiptIssue.objects.filter(store=store, checkout=checkout, cancelled_at__isnull=True).exists()
 
 
 class RyoshushoPrintView(APIView):
@@ -148,7 +150,10 @@ class RyoshushoPrintView(APIView):
         addressee = str(request.data.get("addressee") or "").strip()[:40]
         proviso = str(request.data.get("proviso") or "").strip()[:40]
         cfg = config_for(request.store)
-        issued = _ryoshusho_issued(request.store, checkout)
+        # 発行の記録（売上・会計履歴の「発行済」に出る）。再発行かどうかも記録と同時に決める
+        issue = receipts.record_issue(request.store, request.user, checkout.id, addressee=addressee,
+                                      proviso=proviso or cfg.ryoshusho_proviso, method=ReceiptIssueMethod.PRINTED)
+        issued = issue.reissue
         slip = documents.ryoshusho_slip(cfg, checkout, addressee=addressee, proviso=proviso, reissue=issued)
         audit(request, "print.ryoshusho", target=checkout, changes={
             "number": checkout.number, "addressee": addressee, "proviso": proviso or cfg.ryoshusho_proviso,

@@ -13,7 +13,7 @@ from apps.core.models import AuditLog
 from apps.core.testing import client_for, make_store, standard_fixture
 from apps.printing.models import PrinterConfig
 from apps.printing.slip import Slip, pair_lines, plain_lines, to_epos_xml, width
-from apps.sales.models import Checkout
+from apps.sales.models import Checkout, ReceiptIssue
 
 
 def key():
@@ -175,10 +175,33 @@ class RyoshushoTests(PrintBase):
             self.assertIn(s, body)
         self.assertNotIn("再発行", body)
         self.assertEqual(AuditLog.objects.filter(action="print.ryoshusho", target_id=str(co["id"])).count(), 1)
+        # 発行すると、売上・会計履歴の「発行済」と同じ記録（印刷）が付く
+        issue = ReceiptIssue.objects.get(checkout_id=co["id"])
+        self.assertEqual((issue.method, issue.amount, issue.addressee, issue.proviso, issue.reissue), ("printed", Decimal("5800"), "株式会社テスト", "お飲食代として", False))
         r2 = self.c.post(f"/api/checkouts/{co['id']}/print/ryoshusho", {"addressee": "株式会社テスト", "proviso": "ご宴会代として"}, format="json", **key())
         self.assertTrue(r2.json()["issued_before"])
         self.assertIn("（再発行）", texts(r2.json()["slip"]))
         self.assertIn("但し ご宴会代として", texts(r2.json()["slip"]))
+        self.assertEqual(list(ReceiptIssue.objects.filter(checkout_id=co["id"]).values_list("reissue", flat=True)), [False, True])
+        row = next(c for c in self.c.get("/api/sales/history").json()["checkouts"] if c["id"] == co["id"])
+        self.assertEqual([(x["method_label"], x["reissue"]) for x in row["receipt_issues"]], [("印刷", False), ("印刷", True)])
+
+    def test_preview_does_not_record_and_handwritten_counts(self):
+        PrinterConfig.objects.create(store=self.store, enabled=True)
+        v = self.open_visit()
+        co = self.checkout(v["id"], [{"method": "cash", "amount": "5800", "tendered": "6000"}])
+        # 下見（GET）では記録しない
+        self.assertFalse(self.c.get(f"/api/checkouts/{co['id']}/print/ryoshusho").json()["issued_before"])
+        self.assertFalse(ReceiptIssue.objects.exists())
+        # 手書きで渡した記録があれば、印刷は「再発行」
+        self.assertEqual(self.c.post(f"/api/checkouts/{co['id']}/receipt-issues", {}, format="json", **key()).status_code, 201)
+        self.assertTrue(self.c.get(f"/api/checkouts/{co['id']}/print/ryoshusho").json()["issued_before"])
+        r = self.c.post(f"/api/checkouts/{co['id']}/print/ryoshusho", {}, format="json", **key())
+        self.assertIn("（再発行）", texts(r.json()["slip"]))
+        # 打ち間違いとして取り消した記録は数えない
+        for i in ReceiptIssue.objects.filter(checkout_id=co["id"]):
+            self.assertEqual(self.c.post(f"/api/receipt-issues/{i.id}/cancel", {}, format="json", **key()).status_code, 200)
+        self.assertFalse(self.c.get(f"/api/checkouts/{co['id']}/print/ryoshusho").json()["issued_before"])
 
     def test_receivable_is_excluded_and_stamp_box(self):
         PrinterConfig.objects.create(store=self.store, enabled=True, stamp_box_from=Decimal(3000))
