@@ -1,0 +1,70 @@
+{
+  "source": "店内メニュー（SET MENU・CHAMPAGNE MENU・DRINK MENU）の写真から 2026-11-17 に登録",
+  "company": {
+    "code": "rivon",
+    "name": "BAR RIVON",
+    "note": "会社名（法人名・屋号）は未確認のため、店舗名と同じにしている。"
+  },
+  "store": {"code": "rivon", "name": "BAR RIVON"},
+  "settings": {
+    "settings_note": "メニュー（店内の SET MENU・CHAMPAGNE MENU・DRINK MENU の写真）から登録。\n・セット: MEN 3,500円／WOMEN 2,000円（1時間・1人あたり。飲み放題付き）\n・TAX 20%: サービス料 20% として設定（価格は税込扱い。合計＝表示価格×1.2。消費税は合計の 10/110）\n・現金なら 5%OFF: 現金のときのサービス料率を 14% にして表現（表示価格×1.14 ＝ TAX 込みの合計×0.95 でちょうど同じ金額）。カード・現金＋カードは 20%。ツケは標準の 20%\n・同伴料 1,500円\n【仮設定・要確認】延長料金（メニューに記載なし。1時間ごとにセットと同額にしている）／本指名料・場内指名料（記載なし。未設定のため指名は登録できない）／キャストドリンク・テキーラ・同伴のバック（未登録）／卓（未登録）",
+    "price_basis": "per_person",
+    "prices_include_tax": true,
+    "default_tax_rate": "10.00",
+    "service_charge_enabled": true,
+    "service_charge_rate": "20.00",
+    "service_charge_rate_cash": "14.00",
+    "service_charge_rate_card": "20.00",
+    "service_charge_target": "all",
+    "service_charge_after_discount": true,
+    "douhan_fee": 1500
+  },
+  "courses": [
+    {
+      "name": "MEN 1時間", "kind": "セット", "price": 3500, "duration_minutes": 60,
+      "extension_price": 3500, "extension_minutes": 60,
+      "note": "飲み放題付き。【仮設定】延長料金はメニューに記載なし（1時間ごとにセットと同額）"
+    },
+    {
+      "name": "WOMEN 1時間", "kind": "セット", "price": 2000, "duration_minutes": 60,
+      "extension_price": 2000, "extension_minutes": 60,
+      "note": "飲み放題付き。【仮設定】延長料金はメニューに記載なし（1時間ごとにセットと同額）"
+    }
+  ],
+  "categories": [
+    {"name": "キャストドリンク", "kind": "cast_drink", "products": [
+      {"name": "キャストドリンク", "price": 1000}
+    ]},
+    {"name": "ショット", "kind": "shot", "products": [
+      {"name": "テキーラ", "price": 1500}
+    ]},
+    {"name": "シャンパン", "kind": "bottle", "products": [
+      {"name": "オリシャン", "price": 30000, "note": "ORIGINAL CHAMPAGNE"},
+      {"name": "モエ NIR", "price": 40000, "note": "MOËT NIR"},
+      {"name": "オリシャンロゼ", "price": 50000, "note": "ORIGINAL CHAMPAGNE ROSÉ"},
+      {"name": "ベルエポック", "price": 80000, "note": "BELLE EPOQUE"},
+      {"name": "オリシャンマグナム", "price": 120000, "note": "ORIGINAL CHAMPAGNE MAGNUM"},
+      {"name": "アルマンドゴールド", "price": 140000, "note": "ARMAND DE BRIGNAC GOLD"}
+    ]},
+    {"name": "飲み放題", "kind": "drink", "products": [
+      {"name": "麦焼酎", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "芋焼酎", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "茉莉花", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "プレーンチューハイ", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "レモンチューハイ", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "ウイスキー", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "カシス", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "ピーチ", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "梅酒", "price": 0, "note": "セット料金に含む（飲み放題）"}
+    ]},
+    {"name": "ソフトドリンク", "kind": "drink", "products": [
+      {"name": "緑茶", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "ウーロン茶", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "ジャスミン茶", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "オレンジジュース", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "リンゴジュース", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "コーラ", "price": 0, "note": "セット料金に含む（飲み放題）"},
+      {"name": "ジンジャーエール", "price": 0, "note": "セット料金に含む（飲み放題）"}
+    ]}
+  ]
+}

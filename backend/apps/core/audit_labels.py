@@ -38,6 +38,7 @@ ACTION_LABELS: dict[str, str] = {
     "catalog.product.create": "商品の追加", "catalog.product.update": "商品の変更", "catalog.product.deactivate": "商品の停止",
     "catalog.course.create": "コースの追加", "catalog.course.update": "コースの変更", "catalog.course.deactivate": "コースの停止", "catalog.course.copy": "コースの複製",
     "catalog.table.create": "卓の追加", "catalog.table.update": "卓の変更", "catalog.table.deactivate": "卓の停止",
+    "catalog.menu.load": "メニューの一括登録",
     "sales.tag.create": "タグの追加", "sales.tag.update": "タグの変更", "sales.tag.deactivate": "タグの停止",
     "settings.update": "店舗設定の変更", "settings.void_pin": "取消用の暗証番号の設定", "terms.update": "名称の変更", "terms.reset": "名称を初期値に戻す",
     "store.create": "店舗の追加", "store.update": "店舗の変更", "store.membership.update": "店舗の権限の変更",
@@ -91,6 +92,7 @@ KEY_LABELS: dict[str, str] = {
     "customer_name": "お客様", "customer_id": "顧客", "course_id": "コース", "course": "コース", "option_id": "延長の候補", "direction": "入金／出金",
     "affects_profit": "粗利に含める", "quantity": "数量", "short_name": "略称", "refunds": "返金", "store": "店舗", "role": "役割", "user": "ユーザー",
     "username": "ユーザー名", "email": "メール", "discount": "値引き", "service_charge": "サービス料", "tax_total": "消費税", "items": "項目", "count": "件数",
+    "created": "追加", "updated": "変更",
 }
 
 VALUE_LABELS: dict[str, dict[str, str]] = {
