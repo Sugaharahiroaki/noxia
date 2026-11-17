@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx, useTx } from "@/lib/terms";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -32,6 +33,7 @@ export default function VisitDetailPage() {
   const visitId = Number(id);
   const router = useRouter();
   const toast = useToast();
+  const tx = useTx();
   const { reload: reloadFloor } = useFloor();
   const visitQ = useLoad<Visit>(`/api/visits/${id}`, [], { intervalMs: 30000 });
   const employees = useLoad<Employee[]>("/api/staff/employees?active=1");
@@ -110,7 +112,7 @@ export default function VisitDetailPage() {
       reloadFloor();
       const lineId = r.created_line_id;
       toast.show({
-        message: `${visit.table_name} ${option.minutes}分 延長しました（${fmtTime(option.to_planned_end_at)}まで ＋${yen(option.amount)}）`,
+        message: tx(`${visit.table_name} ${option.minutes}分 延長しました`) + `（${fmtTime(option.to_planned_end_at)}まで ＋${yen(option.amount)}）`,
         action: lineId
           ? {
               label: "取り消す",
@@ -118,7 +120,7 @@ export default function VisitDetailPage() {
                 try {
                   visitQ.setData(await undoLines(visitId, [lineId]));
                   reloadFloor();
-                  toast.show({ message: "延長を取り消しました", tone: "info" });
+                  toast.show({ message: tx("延長を取り消しました"), tone: "info" });
                 } catch (e) {
                   toast.show({ message: `取り消せませんでした: ${errorMessage(e)}`, tone: "error" });
                 }
@@ -203,7 +205,7 @@ export default function VisitDetailPage() {
           onClick={() => setTagOpen(true)}
           aria-label="タグを選ぶ"
         >
-          {visit.tags.length === 0 ? <span style={{ color: "var(--color-muted)" }}>＋ タグ</span> : visit.tags.map((t) => <TagChip key={t.id} tag={t} />)}
+          {visit.tags.length === 0 ? <span style={{ color: "var(--color-muted)" }}>＋ <Tx>タグ</Tx></span> : visit.tags.map((t) => <TagChip key={t.id} tag={t} />)}
         </button>
         <div className="ml-auto flex items-center gap-2" role="group" aria-label="人数">
           <button className="btn btn-lg btn-minus" style={{ minWidth: 72 }} onClick={() => setLeaveOpen(true)} aria-label="人を減らす（退店）">
@@ -258,7 +260,8 @@ export default function VisitDetailPage() {
                     {rows.map((r, i) => (
                       <div key={r.line.id} className="flex items-center gap-2 rounded-lg px-2" style={{ minHeight: 46, background: "var(--color-panel)", border: "1px solid var(--color-border)" }}>
                         <span className="font-bold whitespace-nowrap" style={{ minWidth: 76 }}>
-                          {i + 1}セット目
+                          {i + 1}
+                          <Tx>セット</Tx>目
                         </span>
                         <span className="num whitespace-nowrap">{r.from ? `${fmtTime(r.from)}〜${r.to ? fmtTime(r.to) : "無制限"}` : "—"}</span>
                         <span className="text-sm whitespace-nowrap" style={{ color: "var(--color-muted)" }}>
@@ -284,7 +287,7 @@ export default function VisitDetailPage() {
           <section className="card" aria-label="注文済み">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-bold">
-                指名・同伴・注文 <span className="num">{otherLines.length}</span>件
+                <Tx>指名・同伴・注文</Tx> <span className="num">{otherLines.length}</span>件
               </h2>
               <span className="text-sm" style={{ color: "var(--color-muted)" }}>
                 タップで取り消し{cancelledCount > 0 && ` ・ 取消済 ${cancelledCount}件`}
@@ -320,7 +323,7 @@ export default function VisitDetailPage() {
 
         <div className="col-span-5 space-y-2">
           <section className="card space-y-2" aria-label="延長">
-            <h2 className="text-lg font-bold">延長（押すまで料金は付きません）</h2>
+            <h2 className="text-lg font-bold"><Tx>延長（押すまで料金は付きません）</Tx></h2>
             {activeEntries.map((e) => (
               <ExtendPanel
                 key={e.id}
@@ -338,7 +341,7 @@ export default function VisitDetailPage() {
             ))}
           </section>
           <button className="btn w-full" onClick={() => setMore(true)}>
-            指名・同伴・値引き・席移動など
+            <Tx>指名・同伴・値引き・席移動など</Tx>
           </button>
           {settings.data && <PricingInfo st={settings.data} />}
         </div>
@@ -384,7 +387,7 @@ export default function VisitDetailPage() {
           <div className="grid grid-cols-2 gap-3">
             {(Object.keys(FEE_LABELS) as FeeKind[]).map((k) => (
               <button key={k} className="btn btn-xl" onClick={() => { setMore(false); setFee(k); }}>
-                ＋ {FEE_LABELS[k]}
+                ＋ <Tx>{FEE_LABELS[k]}</Tx>
               </button>
             ))}
             <button className="btn btn-xl" onClick={() => { setMore(false); setDiscount(true); }}>
@@ -408,7 +411,7 @@ export default function VisitDetailPage() {
           fee={(fee === "nomination" ? settings.data?.nomination_fee : fee === "jounai" ? settings.data?.jounai_fee : settings.data?.douhan_fee) ?? null}
           onClose={() => setFee(null)}
           onSubmit={async (employeeId, name) => {
-            await quickBatch([{ kind: fee, employee_id: employeeId, quantity: 1 }], `${visit.table_name} ${FEE_LABELS[fee]}（${name}）を追加しました`);
+            await quickBatch([{ kind: fee, employee_id: employeeId, quantity: 1 }], `${visit.table_name} ${tx(FEE_LABELS[fee])}（${name}）を追加しました`);
             setFee(null);
           }}
         />
@@ -482,7 +485,7 @@ export default function VisitDetailPage() {
       )}
 
       {extendAsk && (
-        <ConfirmDialog title={`${visit.table_name} ${extendAsk.option.minutes}分 延長しますか？`} confirmLabel="延長する" busy={extendBusy} onCancel={() => setExtendAsk(null)} onConfirm={doExtend}>
+        <ConfirmDialog title={tx(`${visit.table_name} ${extendAsk.option.minutes}分 延長しますか？`)} confirmLabel={tx("延長する")} busy={extendBusy} onCancel={() => setExtendAsk(null)} onConfirm={doExtend}>
           <div className="space-y-2 text-center">
             <div className="text-xl num">
               終了 {fmtTime(extendAsk.option.from_planned_end_at)} → <strong className="text-4xl">{fmtTime(extendAsk.option.to_planned_end_at)}</strong>
@@ -591,7 +594,7 @@ function ExtendPanel({ visitId, entry, showName, refreshKey, onPick, onUnlimited
     return (
       <div className="card-2" style={{ color: "var(--color-muted)" }}>
         {showName && <span className="font-bold mr-2">{entry.label || entry.course_name}</span>}
-        時間無制限のため延長はありません。
+        <Tx>時間無制限のため延長はありません。</Tx>
       </div>
     );
   }
@@ -599,7 +602,7 @@ function ExtendPanel({ visitId, entry, showName, refreshKey, onPick, onUnlimited
     return (
       <div className="card-2" style={{ color: "var(--color-muted)" }}>
         {showName && <span className="font-bold mr-2">{entry.label || entry.course_name}</span>}
-        在席のお客様がいないため、延長はありません。
+        <Tx>在席のお客様がいないため、延長はありません。</Tx>
       </div>
     );
   }
@@ -618,14 +621,14 @@ function ExtendPanel({ visitId, entry, showName, refreshKey, onPick, onUnlimited
           </div>
           <div className="ml-auto text-right leading-tight">
             <div className="text-xs" style={{ color: "var(--color-muted)" }}>
-              延長した場合 ＋
+              <Tx>延長した場合</Tx> ＋
             </div>
             <div className="text-xl font-bold num" style={{ color: "var(--color-orange)" }}>
               {yen(o.amount)}
             </div>
           </div>
           <button className="btn btn-primary" style={{ minWidth: 84 }} onClick={() => onPick(o)} aria-label={`${o.minutes}分 延長`}>
-            延長
+            <Tx>延長</Tx>
           </button>
         </div>
       ))}
@@ -640,7 +643,8 @@ function FeeModal({ kind, casts, fee, guard, onClose, onSubmit }: { kind: FeeKin
   const [emp, setEmp] = useState<Employee | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const label = FEE_LABELS[kind];
+  const tx = useTx();
+  const label = tx(FEE_LABELS[kind]);
   return (
     <Modal
       title={`${label}を追加`}

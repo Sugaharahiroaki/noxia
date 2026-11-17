@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { RequireCaps } from "@/components/common";
@@ -193,10 +194,18 @@ function Inner() {
                   <th>退店</th>
                   <th className="r">時間</th>
                   <th className="r">客数</th>
-                  <th>タグ</th>
-                  <th>本指名</th>
-                  <th>場内</th>
-                  <th>同伴</th>
+                  <th>
+                    <Tx>タグ</Tx>
+                  </th>
+                  <th>
+                    <Tx>本指名</Tx>
+                  </th>
+                  <th>
+                    <Tx>場内</Tx>
+                  </th>
+                  <th>
+                    <Tx>同伴</Tx>
+                  </th>
                   <th className="r">小計</th>
                   <th className="r">現金</th>
                   <th className="r">カード</th>

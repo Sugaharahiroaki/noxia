@@ -572,3 +572,34 @@ class HealthView(APIView):
 
     def get(self, request):
         return Response({"ok": True, "server_now": timezone.now().isoformat()})
+
+
+class StoreTermsView(APIView):
+    """名称変更（POS・集計画面の業務用語）。読むのは店舗の誰でも、変えるのは店舗設定の編集権限（再認証）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(write_caps=(CAP_SETTINGS_EDIT,))]
+
+    def get(self, request):
+        from . import terms
+
+        return Response({"terms": terms.term_list(request.store)})
+
+    @transaction.atomic
+    def put(self, request):
+        from . import terms
+
+        changes = terms.save_labels(request.store, terms.clean_labels(request.data.get("labels")))
+        if changes:
+            audit(request, "terms.update", changes=changes)
+        return Response({"terms": terms.term_list(request.store)})
+
+    @transaction.atomic
+    def delete(self, request):
+        """すべて初期値に戻す。"""
+        from . import terms
+
+        changes = terms.save_labels(request.store, {k: "" for k in terms.TERMS})
+        if changes:
+            audit(request, "terms.reset", changes=changes)
+        return Response({"terms": terms.term_list(request.store)})

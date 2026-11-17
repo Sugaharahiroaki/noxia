@@ -252,14 +252,35 @@ def slip_detail(store, visit_id) -> dict | None:
 # ---------------------------------------------------------------------------
 # M2: 日次・月次収支
 # ---------------------------------------------------------------------------
-# 入出金（CashMovement.kind）を粗利に含めるか。M6 で入出金項目のマスタ（CashItem）を作るまでは kind で決める。
-#   入金として粗利に足す: other_in（その他入金）
-#   出金として粗利から引く: expense（現金経費）・other_out（その他出金）
-#   含めない: daily_pay（日払い。人件費として別に引くため）・mid_collection（途中回収。現金の移動）・float_adjust_in（釣銭補充。現金の移動）
+# 入出金を粗利に含めるか。
+#   入出金項目（CashItem）を選んで登録したもの: 登録した時点の項目の「粗利に含める」（CashMovement.affects_profit）に従う。
+#   項目なし（これまでの記録・項目を選ばなかった記録）: 種別（kind）の既定に従う。
+#     入金として粗利に足す: other_in（その他入金）
+#     出金として粗利から引く: expense（現金経費）・other_out（その他出金）
+#     含めない: daily_pay（日払い。人件費として別に引くため）・mid_collection（途中回収。現金の移動）・float_adjust_in（釣銭補充。現金の移動）
 PROFIT_IN_KINDS = ("other_in",)
 PROFIT_OUT_KINDS = ("expense", "other_out")
 PROFIT_EXCLUDED_KINDS = ("daily_pay", "mid_collection", "float_adjust_in")
-PROFIT_KIND_NOTE = "粗利に含める入出金: 入金は「その他入金」、出金は「現金経費」「その他出金」。日払い（人件費として別に計上）・途中回収・釣銭補充は含めません。"
+INFLOW_KINDS = ("other_in", "float_adjust_in")
+PROFIT_KIND_NOTE = (
+    "粗利に含める入出金: 入出金項目を選んで登録したものは、その項目の「粗利に含める」の設定（登録した時点）に従います。"
+    "項目なしのものは、入金は「その他入金」、出金は「現金経費」「その他出金」を含めます。日払い（人件費として別に計上）・途中回収・釣銭補充は含めません。"
+)
+
+
+def movement_profit_side(kind: str, affects_profit: bool | None) -> str | None:
+    """
+    入出金 1 件を粗利のどちらに入れるか。"in"（入金として足す）／"out"（出金として引く）／None（含めない）。
+    affects_profit: 入出金項目を選んで登録したときの「粗利に含める」。None なら項目なし（種別の既定）。
+    日払い・途中回収・釣銭補充は、項目の有無に関わらず含めない（人件費の二重計上・現金の移動だから）。
+    """
+    if kind in PROFIT_EXCLUDED_KINDS:
+        return None
+    if affects_profit is False:
+        return None
+    if affects_profit is None and kind not in PROFIT_IN_KINDS + PROFIT_OUT_KINDS:
+        return None
+    return "in" if kind in INFLOW_KINDS else "out"
 
 
 def profit_metrics(*, sales: Decimal, income: Decimal = ZERO, labor_cast: Decimal = ZERO, labor_staff: Decimal = ZERO,
@@ -368,13 +389,15 @@ def daily_metrics(store, f: date, t: date) -> list[dict]:
         days[r["business_date"]]["daily_pay_cast" if is_cast(r["employee_id"]) else "daily_pay_staff"] += r["s"] or ZERO
 
     # 入出金（粗利に含めるもの）
-    for r in CashMovement.objects.filter(store=store, is_voided=False, business_day__date__gte=f, business_day__date__lte=t).values("business_day__date", "kind").annotate(s=Sum("amount")):
+    for r in (CashMovement.objects.filter(store=store, is_voided=False, business_day__date__gte=f, business_day__date__lte=t)
+              .values("business_day__date", "kind", "affects_profit").annotate(s=Sum("amount"))):
         row = days.get(r["business_day__date"])
         if row is None:
             continue
-        if r["kind"] in PROFIT_IN_KINDS:
+        side = movement_profit_side(r["kind"], r["affects_profit"])
+        if side == "in":
             row["income"] += r["s"] or ZERO
-        elif r["kind"] in PROFIT_OUT_KINDS:
+        elif side == "out":
             row["expenses"] += r["s"] or ZERO
     return [days[k] for k in sorted(days)]
 
@@ -467,6 +490,16 @@ def cash_days(store, f: date, t: date) -> list[dict]:
     return rows
 
 
+def movement_json(m) -> dict:
+    """入出金 1 件の表示用。項目を選んで登録したものは項目名を、そうでなければ種別の名前を「項目」として出す。"""
+    return {
+        "id": m.id, "kind": m.kind, "kind_label": m.get_kind_display(), "item_name": m.item_name, "label": m.item_name or m.get_kind_display(),
+        "direction": "in" if m.is_inflow else "out", "amount": str(m.amount),
+        "reason": m.reason, "employee_name": m.employee.display_name if m.employee_id else "", "occurred_at": m.occurred_at.isoformat(),
+        "is_voided": m.is_voided, "void_reason": m.void_reason, "in_profit": movement_profit_side(m.kind, m.affects_profit) is not None,
+    }
+
+
 CASH_FORMULA_NOTE = (
     "理論現金は NOXIA の既存の式です: 開始時釣銭 ＋ その日に受け取った現金 ＋ 未収回収（現金）＋ その他入金・釣銭補充 − 現金返金 − 現金経費 − 日払い − その他出金 − 途中回収。"
     "「入金」には未収の回収（現金）を、「出金」には現金の返金を含めて表示しています。"
@@ -491,11 +524,7 @@ def daily_report(store, d: date) -> dict:
     moves = []
     if bd is not None:
         for m in CashMovement.objects.filter(business_day=bd).select_related("employee").order_by("occurred_at"):
-            moves.append({
-                "id": m.id, "kind": m.kind, "kind_label": m.get_kind_display(), "direction": "in" if m.is_inflow else "out", "amount": str(m.amount),
-                "reason": m.reason, "employee_name": m.employee.display_name if m.employee_id else "", "occurred_at": m.occurred_at.isoformat(),
-                "is_voided": m.is_voided, "in_profit": m.kind in PROFIT_IN_KINDS + PROFIT_OUT_KINDS,
-            })
+            moves.append(movement_json(m))
     slips = slip_list(store, d, d)
     return {
         "date": d.isoformat(), "today": day_json(today), "cumulative": cj, "active_days": active_days,
@@ -908,3 +937,112 @@ def customer_report(store, today: date) -> dict:
         "as_of": today.isoformat(), "rank_since": since.isoformat(), "rank_months": RANK_MONTHS, "rank_thresholds": thresholds,
         "sharing_enabled": bool(store.company.customer_sharing_enabled), "rows": rows, "totals": totals, "note": CUSTOMER_NOTE,
     }
+
+
+# ---------------------------------------------------------------------------
+# M6: 履歴（入出金、伝票の削除）
+# ---------------------------------------------------------------------------
+def cash_history(store, year: int, month: int) -> dict:
+    """入出金の履歴（月）。項目ごとの合計と明細。取り消した入出金は明細に出すが、合計には入れない。"""
+    from apps.cash.models import CashMovement
+
+    f, t = month_range(year, month)
+    groups: dict[tuple[str, str], dict] = {}
+    rows = []
+    totals = {"in": ZERO, "out": ZERO, "profit_in": ZERO, "profit_out": ZERO}
+    qs = (CashMovement.objects.filter(store=store, business_day__date__gte=f, business_day__date__lte=t)
+          .select_related("employee", "business_day", "performed_by").order_by("business_day__date", "occurred_at", "id"))
+    for m in qs:
+        j = movement_json(m)
+        j["date"] = m.business_day.date.isoformat()
+        j["performed_by_name"] = str(m.performed_by) if m.performed_by_id else ""
+        rows.append(j)
+        if m.is_voided:
+            continue
+        side = movement_profit_side(m.kind, m.affects_profit)
+        g = groups.setdefault((j["direction"], j["label"], side is not None), {
+            "direction": j["direction"], "label": j["label"], "is_item": bool(m.item_name), "count": 0, "amount": ZERO, "in_profit": side is not None})
+        g["count"] += 1
+        g["amount"] += m.amount
+        totals[j["direction"]] += m.amount
+        if side is not None:
+            totals[f"profit_{side}"] += m.amount
+    summary = [{**g, "amount": str(g["amount"])} for g in sorted(groups.values(), key=lambda g: (g["direction"] != "in", -g["amount"], g["label"]))]
+    return {"month": f"{year}-{month:02d}", "from": f.isoformat(), "to": t.isoformat(), "summary": summary, "rows": rows,
+            "totals": {k: str(v) for k, v in totals.items()}, "profit_kind_note": PROFIT_KIND_NOTE}
+
+
+DELETION_ACTIONS = {
+    "visit.cancel": "伝票の取消",
+    "checkout.delete": "会計の取消（記録ごと削除）",
+    "checkout.void": "会計の取消",
+    "checkout.refund": "返金",
+    "line.cancel": "明細の取消",
+    "line.cancel.batch": "明細の取消（まとめて）",
+}
+DELETION_NOTE = (
+    "伝票・会計・明細を取り消した操作の記録です（操作履歴から作っています）。印刷の履歴はありません。"
+    "「会計の取消（記録ごと削除）」は、会計の記録が画面・集計から消えるため、金額はこの履歴にだけ残ります。"
+)
+
+
+def deletion_history(store, f: date, t: date) -> dict:
+    """
+    伝票の削除履歴。
+    - cancelled: 期間（営業日）内の取消済みの伝票
+    - logs: 期間（操作した日。営業日の翌朝までを含む）内の、取消・返金の操作履歴（AuditLog）
+    """
+    from datetime import datetime, time, timedelta
+
+    from django.utils import timezone
+
+    from apps.core.models import AuditLog
+    from apps.sales.models import Visit
+
+    cancelled = []
+    for v in (Visit.objects.filter(store=store, status="cancelled", business_date__gte=f, business_date__lte=t)
+              .select_related("table", "customer").order_by("business_date", "slip_number")):
+        cancelled.append({
+            "id": v.id, "public_id": v.public_id, "slip_number": v.slip_number, "business_date": v.business_date.isoformat(), "table_name": v.table.name,
+            "guest_count": v.guest_count, "customer": (v.customer.display_name if v.customer_id and v.customer else v.customer_name) or "",
+            "opened_at": v.opened_at.isoformat(), "closed_at": v.closed_at.isoformat() if v.closed_at else None, "cancel_reason": v.cancel_reason,
+        })
+    tz = timezone.get_current_timezone()
+    start = datetime.combine(f, time.min, tzinfo=tz)
+    end = datetime.combine(t + timedelta(days=2), time.min, tzinfo=tz)
+    logs = list(AuditLog.objects.filter(store=store, action__in=list(DELETION_ACTIONS), created_at__gte=start, created_at__lt=end)
+                .select_related("user").order_by("-id")[:1000])
+    from apps.sales.models import Checkout
+
+    # 操作の対象から伝票をたどる（伝票そのもの／会計 → 伝票。記録ごと消した会計は、操作履歴に残した伝票 ID から）
+    co_ids = {int(l.target_id) for l in logs if l.target_type == "Checkout" and l.target_id.isdigit()}
+    co_visit = dict(Checkout.objects.filter(store=store, id__in=co_ids).values_list("id", "visit_id"))
+
+    def visit_id_of(l, ch):
+        if not l.target_id.isdigit():
+            return None
+        if l.target_type == "Visit":
+            return int(l.target_id)
+        if l.target_type == "Checkout":
+            raw = ch.get("visit_id") or co_visit.get(int(l.target_id))
+            return int(raw) if raw else None
+        return None
+
+    pairs = [(l, l.changes if isinstance(l.changes, dict) else {}) for l in logs]
+    visits = {v.id: v for v in Visit.objects.filter(store=store, id__in={visit_id_of(l, ch) for l, ch in pairs} - {None}).select_related("table")}
+    out = []
+    for l, ch in pairs:
+        v = visits.get(visit_id_of(l, ch))
+        amount = ch.get("total") if ch.get("total") is not None else ch.get("amount")
+        detail = ch.get("name") or ""
+        if l.action == "line.cancel.batch":
+            detail = f"{len(ch.get('line_ids') or [])} 件"
+        elif l.action == "checkout.delete":
+            detail = "お客様に全額返す" if ch.get("mode") == "refund" else "打ち間違い（伝票を会計前に戻す）"
+        out.append({
+            "id": l.id, "at": l.created_at.isoformat(), "action": l.action, "action_label": DELETION_ACTIONS[l.action],
+            "user_name": str(l.user) if l.user_id else "", "visit_id": v.id if v else None, "public_id": v.public_id if v else "",
+            "table_name": v.table.name if v else "", "business_date": v.business_date.isoformat() if v else str(ch.get("business_date") or ""),
+            "detail": str(detail), "amount": str(amount) if amount is not None else None, "reason": str(ch.get("reason") or ""),
+        })
+    return {"from": f.isoformat(), "to": t.isoformat(), "cancelled": cancelled, "logs": out, "note": DELETION_NOTE}

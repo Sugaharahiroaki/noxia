@@ -148,21 +148,46 @@ class PersonReportView(APIView):
         return [StoreCaps()]
 
     def get(self, request, employee_id):
-        from apps.staff.models import Employee
-
-        access = request.store_access
-        own = getattr(request.user, "employee", None)
-        is_own = own is not None and own.id == int(employee_id) and own.company_id == request.store.company_id
-        if CAP_PAYROLL_VIEW_ALL in access.caps:
-            if not is_own and not is_reauthenticated(request):
-                raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
-        elif not (is_own and CAP_PAYROLL_VIEW_SELF in access.caps):
-            raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
-        emp = Employee.objects.filter(id=employee_id, company=request.store.company).first()
-        if emp is None:
-            raise ApiError("not_found", "従業員が見つかりません。", status=404)
+        emp = person_for_request(request, employee_id)
         y, m = parse_month(request)
         return Response(reports.person_report(request.store, emp, y, m))
+
+
+def person_for_request(request, employee_id):
+    """報酬支払明細を見てよい相手かを確かめて、従業員を返す（画面と PDF で同じ判定）。"""
+    from apps.staff.models import Employee
+
+    access = request.store_access
+    own = getattr(request.user, "employee", None)
+    is_own = own is not None and own.id == int(employee_id) and own.company_id == request.store.company_id
+    if CAP_PAYROLL_VIEW_ALL in access.caps:
+        if not is_own and not is_reauthenticated(request):
+            raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
+    elif not (is_own and CAP_PAYROLL_VIEW_SELF in access.caps):
+        raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
+    emp = Employee.objects.filter(id=employee_id, company=request.store.company).first()
+    if emp is None:
+        raise ApiError("not_found", "従業員が見つかりません。", status=404)
+    return emp
+
+
+class PersonPdfView(APIView):
+    """報酬支払明細の PDF。見られる人は画面（PersonReportView）と同じ。"""
+
+    def get_permissions(self):
+        return [StoreCaps()]
+
+    def get(self, request, employee_id):
+        from apps.accounting.exports import file_response
+        from apps.core import terms
+
+        from .report_pdf import pay_statement_pdf
+
+        emp = person_for_request(request, employee_id)
+        y, m = parse_month(request)
+        data = reports.person_report(request.store, emp, y, m)
+        pdf = pay_statement_pdf(data, terms.term_labels(request.store))
+        return file_response(request, f"pay_statement_{request.store.code}_{emp.id}_{data['month']}.pdf", pdf, "application/pdf", "export.report.pay_statement")
 
 
 CAST_CSV_COLUMNS = [
@@ -301,3 +326,60 @@ class CustomerReportView(APIView):
 
     def get(self, request):
         return Response(reports.customer_report(request.store, current_business_date(request.store)))
+
+
+# --- M6: 履歴・XLSX 出力 -------------------------------------------------------
+class CashHistoryView(APIView):
+    """入出金の履歴（月の合計と明細）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_DASHBOARD)]
+
+    def get(self, request):
+        y, m = parse_month(request)
+        return Response(reports.cash_history(request.store, y, m))
+
+
+class DeletionHistoryView(APIView):
+    """伝票の削除履歴（取消済みの伝票と、取消・返金の操作履歴）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SALES_VIEW)]
+
+    def get(self, request):
+        f, t = parse_range(request)
+        return Response(reports.deletion_history(request.store, f, t))
+
+
+class ReportXlsxView(APIView):
+    """集計画面の表の XLSX 出力。必要な権限は種類ごと（report_tables.KINDS）。キャスト・スタッフ集計は再認証が必要。"""
+
+    def get_permissions(self):
+        from .report_tables import KINDS
+
+        spec = KINDS.get(self.kwargs.get("kind"))
+        if spec is None:
+            return [StoreCaps()]
+        caps, reauth, _period = spec
+        return [StoreCaps(*caps, reauth=True if reauth else None)]
+
+    def get(self, request, kind):
+        from apps.accounting.exports import xlsx_response
+
+        from .report_tables import KINDS, build
+
+        if kind not in KINDS:
+            raise ApiError("not_found", "出力種別が不正です。", status=404)
+        period = KINDS[kind][2]
+        kwargs = {"today": current_business_date(request.store)}
+        if period == "range":
+            kwargs["f"], kwargs["t"] = parse_range(request)
+        elif period == "month":
+            kwargs["year"], kwargs["month"] = parse_month(request)
+        if kind == "tags":
+            group_by = request.query_params.get("group_by") or "tag"
+            if group_by not in ("tag", "day", "month"):
+                raise ApiError("validation_error", "集計の単位は tag / day / month のいずれかです。")
+            kwargs["group_by"] = group_by
+        base, sheets = build(kind, request.store, **kwargs)
+        return xlsx_response(request, f"{base}.xlsx", sheets, f"export.report.{kind}.xlsx")

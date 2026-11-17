@@ -30,7 +30,9 @@ from apps.terminals.models import CardTerminal, TerminalConfig
 from apps.staff.models import BackRule, Employee, EmployeeStoreAssignment, WageSetting
 
 DEV_PASSWORD = "Dev-pass-1234"
-SETTINGS_NOTE = "【仮設定】開発用データです。料金単位・税込区分・サービス料・無制限変更料金・指名/同伴料・端数処理・営業日切替時刻は営業開始前にオーナーが確定してください。"
+# 【仮設定】入出金項目（名前, 入金／出金, 粗利に含めるか）。項目と「粗利に含める」はオーナーが確定する
+CASH_ITEMS = [("雑収入", "in", True), ("両替・預り", "in", False), ("消耗品", "out", True), ("両替・立替", "out", False)]
+SETTINGS_NOTE ="【仮設定】開発用データです。料金単位・税込区分・サービス料・無制限変更料金・指名/同伴料・端数処理・営業日切替時刻は営業開始前にオーナーが確定してください。"
 
 
 class Command(BaseCommand):
@@ -190,6 +192,10 @@ class Command(BaseCommand):
         CourseExtensionOption.objects.create(course=set60, minutes=60, price=Decimal(3500), sort_order=2)
         for i, (tag_name, color, on_floor) in enumerate([("呼び", "#d9534f", True), ("新規", "#1f6fd0", True), ("常連", "#1a8a52", True), ("要確認", "#8a6d3b", False)]):
             Tag.objects.create(store=store, name=tag_name, color=color, show_on_floor=on_floor, sort_order=i)
+        # 【仮設定】入出金項目
+        from apps.cash.models import CashItem
+        for i, (item_name, direction, in_profit) in enumerate(CASH_ITEMS):
+            CashItem.objects.create(store=store, name=item_name, direction=direction, affects_profit=in_profit, sort_order=i)
         StoreSettings.objects.create(
             store=store, settings_note=SETTINGS_NOTE,
             price_basis="per_person", prices_include_tax=True, default_tax_rate=Decimal("10.00"),

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTx } from "@/lib/terms";
 import { useMemo, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import type { Tag, Visit, VisitTagInfo } from "@/lib/types";
@@ -52,9 +53,10 @@ export function TagPicker({ visitId, current, onClose, onSaved }: { visitId: num
     }
   }
 
+  const tx = useTx();
   return (
     <Modal
-      title="タグを選ぶ"
+      title={tx("タグを選ぶ")}
       wide
       onClose={busy ? undefined : onClose}
       footer={

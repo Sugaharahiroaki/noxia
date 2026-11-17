@@ -1,10 +1,11 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MonthPicker, RequireCaps } from "@/components/common";
 import { useBusinessDate } from "@/components/DateRange";
-import { amt, cnt, dayLabel, pct, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, dayLabel, ExportButton, pct, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { SalesTrendChart } from "@/components/SalesTrendChart";
 import { ErrorBox, PageHeader, Spinner, Stat } from "@/components/ui";
 import type { IncomeDay, MonthlyReport } from "@/lib/types_reports";
@@ -29,7 +30,15 @@ function Inner() {
 
   return (
     <div>
-      <PageHeader title="収支（月次）" subtitle="1 行 = 1 営業日。売上は確定した会計、人件費は時給×勤務時間＋確定したバック（既存の計算結果）です。" actions={month ? <MonthPicker value={month} onChange={setMonth} /> : null} />
+      <PageHeader title="収支（月次）" subtitle="1 行 = 1 営業日。売上は確定した会計、人件費は時給×勤務時間＋確定したバック（既存の計算結果）です。" actions={
+          month ? (
+            <>
+              <MonthPicker value={month} onChange={setMonth} />
+              <ExportButton path={`/api/reports/export/monthly.xlsx?month=${month}`} cap="export.cash" />
+            </>
+          ) : null
+        }
+      />
       <ReportNav />
       <ErrorBox error={q.error} onRetry={() => q.reload(false)} />
       {(q.loading || !month) && <Spinner />}
@@ -65,8 +74,12 @@ function Inner() {
                 <th className="r">カード</th>
                 <th className="r">売上計</th>
                 <th className="r">女子売上</th>
-                <th className="r">呼び小計</th>
-                <th className="r">同伴小計</th>
+                <th className="r">
+                  <Tx>呼び小計</Tx>
+                </th>
+                <th className="r">
+                  <Tx>同伴小計</Tx>
+                </th>
                 <th className="r">人数</th>
                 <th className="r">組数</th>
                 <th className="r">人件費（女子）</th>

@@ -366,3 +366,17 @@ class IdempotencyRecord(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "key"], name="uniq_idempotency_user_key")]
         indexes = [models.Index(fields=["created_at"])]
+
+
+class TermOverride(TimestampedModel):
+    """名称変更（店舗ごとの業務用語の上書き）。キーの一覧と初期値は apps/core/terms.py。"""
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="term_overrides")
+    key = models.CharField(max_length=30)
+    label = models.CharField("表示名", max_length=20)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["store", "key"], name="uniq_term_override_per_store")]
+
+    def __str__(self) -> str:
+        return f"{self.key}={self.label}"

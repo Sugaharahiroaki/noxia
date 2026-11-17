@@ -9,7 +9,7 @@ import { ConfirmDialog, Empty, ErrorBox, Field, Modal, NumberPad, PageHeader, Sa
 import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { fmtDate, fmtDateTime, fmtTime, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import type { BusinessDay, CashCurrent, DailyPayoutList, Employee } from "@/lib/types";
+import type { BusinessDay, CashCurrent, CashItem, DailyPayoutList, Employee } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
 const DENOMS = [10000, 5000, 2000, 1000, 500, 100, 50, 10, 5, 1];
@@ -414,7 +414,7 @@ function DayPanel({ day, onMovement, onClose, onReload, onDeposit, onRevise, onR
         {day.movements.length === 0 && <Empty>入出金はありません</Empty>}
         {day.movements.map((m) => (
           <div key={m.id} className="card-2 flex items-center gap-2" style={{ opacity: m.is_voided ? 0.5 : 1 }}>
-            <span className="badge">{m.kind_label}</span>
+            <span className="badge">{m.item_name || m.kind_label}</span>
             <span className="flex-1">
               {m.reason}
               {m.employee_name && ` ・ ${m.employee_name}`}
@@ -478,7 +478,11 @@ function MovementModal({ employees, canPay, onClose, onSubmit }: { employees: Em
   const [reason, setReason] = useState("");
   const [emp, setEmp] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [itemId, setItemId] = useState<number | null>(null);
   const def = KINDS.find((k) => k.kind === kind)!;
+  // 入出金項目（店舗が決めた項目）。その他入金・その他出金のときだけ選べる。選ばなくても登録できる
+  const itemsQ = useLoad<CashItem[]>("/api/store/cash-items?active=1");
+  const items = (itemsQ.data ?? []).filter((i) => (kind === "other_in" && i.direction === "in") || (kind === "other_out" && i.direction === "out"));
   return (
     <Modal
       title="現金の入出金を登録"
@@ -494,7 +498,7 @@ function MovementModal({ employees, canPay, onClose, onSubmit }: { employees: Em
             onClick={async () => {
               setBusy(true);
               try {
-                await onSubmit({ kind, amount: toInt(amount), reason: reason.trim(), employee_id: emp });
+                await onSubmit({ kind, amount: toInt(amount), reason: reason.trim(), employee_id: emp, ...(itemId && items.some((i) => i.id === itemId) ? { item_id: itemId } : {}) });
               } catch {
                 /* 表示済み */
               } finally {
@@ -510,11 +514,34 @@ function MovementModal({ employees, canPay, onClose, onSubmit }: { employees: Em
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-2">
           {KINDS.filter((k) => !k.cap || canPay).map((k) => (
-            <button key={k.kind} className={`btn btn-sm ${kind === k.kind ? "btn-primary" : ""}`} onClick={() => setKind(k.kind)} aria-pressed={kind === k.kind}>
+            <button
+              key={k.kind}
+              className={`btn btn-sm ${kind === k.kind ? "btn-primary" : ""}`}
+              onClick={() => {
+                setKind(k.kind);
+                setItemId(null);
+              }}
+              aria-pressed={kind === k.kind}
+            >
               {k.label}
             </button>
           ))}
         </div>
+        {items.length > 0 && (
+          <div>
+            <span className="label">項目（任意。集計で分けて見られます）</span>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="入出金項目">
+              <button className={`btn btn-sm ${itemId === null ? "btn-primary" : ""}`} onClick={() => setItemId(null)} aria-pressed={itemId === null}>
+                項目なし
+              </button>
+              {items.map((i) => (
+                <button key={i.id} className={`btn btn-sm ${itemId === i.id ? "btn-primary" : ""}`} onClick={() => setItemId(i.id)} aria-pressed={itemId === i.id}>
+                  {i.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {kind === "daily_pay" && (
           <p className="text-sm" style={{ color: "var(--color-muted)" }}>
             レジ現金からの日払いは、現金出金と従業員への支払記録を同時に1件だけ作ります（支払集計で二重に控除されません）。

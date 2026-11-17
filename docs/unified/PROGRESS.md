@@ -611,3 +611,40 @@
 - ランクの名前としきい値（開発用データの S 20／A 10／B 5／C 1／D 0 は仮）
 - 来店回数に営業中の伝票を入れるか、単価の分母を来店回数にするか客数にするか
 - お客様分析の「状態」「タイプ」「金種」の定義（Q13）
+
+## M6: 入出金項目・名称変更・履歴・XLSX／PDF 出力
+
+### 変更したファイル
+- 入出金項目（A6）: `backend/apps/cash/models.py`（`CashItem`、`CashMovement.item`・`item_name`・`affects_profit`）、`cash/views.py`・`urls.py`（`/api/store/cash-items`、入出金の登録で `item_id`）、`cash/migrations/0005_m6_items_terms.py`（表と列の追加だけ。既存データは変えない）
+- 粗利: `backend/apps/analytics/reports.py`（`movement_profit_side`。項目を選んだ入出金は登録時の「粗利に含める」、項目なしはこれまでどおり種別で判定）
+- 名称変更（A7）: `backend/apps/core/terms.py`（キーの一覧はここ 1 か所）、`core/models.py`（`TermOverride`）、`core/views.py`・`urls.py`（`/api/store/terms`）、`core/migrations/0009_m6_items_terms.py`
+- 履歴: `reports.py`（`cash_history`・`deletion_history`）、`report_views.py`（`/api/reports/cash-history`、`/api/reports/deletions`）
+- 出力: `backend/apps/analytics/report_tables.py`（XLSX の表）、`report_pdf.py`（報酬支払明細の PDF）、`report_views.py`（`/api/reports/export/<kind>.xlsx`、`/api/reports/people/<id>.pdf`）
+- `backend/apps/core/management/commands/seed_dev.py`（入出金項目 4 つを仮設定）、`backend/apps/analytics/tests/test_m6.py`（14 件）
+- 画面: `frontend/src/app/(app)/settings/reports/page.tsx`（入出金項目・名称変更）、`reports/history/page.tsx`（履歴）、`closing/page.tsx`（入出金の登録で項目を選ぶ）、`lib/terms.tsx`（`TermsProvider`・`useTx`・`<Tx>`）、`components/ReportKit.tsx`（`ExportButton`、入口に「履歴」）、`components/AppShell.tsx`（メニュー・`TermsProvider`）、POS と集計の見出し（卓詳細・入店・明細・タグ選択・延長、伝票一覧・伝票詳細・日報・月次・タグ集計・お客様分析・キャスト集計・報酬支払明細）
+- `README.md`（画面一覧・既知の制限）
+
+### 画面の入口
+- メニュー → 設定 → 「入出金項目・名称変更」（`/settings/reports`。見る: `settings.view`、変える: `settings.edit` と再認証）
+- 「開店・日締め・現金」→「＋ 入出金を登録」→ その他入金／その他出金で項目を選ぶ（任意）
+- メニュー → 集計 → 「履歴」（`/reports/history`。入出金の履歴は `dashboard.view`、伝票の削除履歴は `sales.view`）
+- 各集計画面の右上「XLSX 出力」（伝票一覧・タグ・商品・お客様・削除履歴は `export.sales`、月次・レジ精算・入出金の履歴は `export.cash`、キャスト・スタッフ集計は `export.payroll` と再認証）
+- 報酬支払明細（`/reports/cast/<id>`）の「PDF 出力」（見られる人は画面と同じ。本人は自分の分だけ）
+
+### 確認した内容と結果
+- 自動テスト（全 541 件 OK）: 粗利の判定（項目なしは種別、項目ありは登録時のフラグ、日払い・途中回収・釣銭補充は常に含めない）／項目のマスタの権限・別店舗の拒否・停止／入出金に項目を付けたときの種別と登録時の値の保存／**理論現金は項目の有無で変わらない**／あとで項目を変えても過去の集計が変わらない／名称変更の保存・初期値に戻す・入力チェック・再認証・別店舗に影響しない／入出金の履歴（取消は合計に入れない）／削除履歴（伝票・明細・会計の取消、別店舗は出ない）／全種類の XLSX（金額は数値セル）と権限／見出しの言い換え／PDF（本人・他人・別会社・再認証）
+- 既存の経理・経費のテスト（経費承認からのレジ出金、仕訳、日払い）は変更なしで通過
+- 画面（Playwright、作り直した検証 DB）: M6 の 30 項目すべて通過。既存の pos 20／tablet 31／m1 19／m3 20 も、それぞれ作り直した DB で通過
+- スクリーンショットと PDF: `.local/e2e/screenshots/m6/`
+
+### 仮の扱い
+- 入出金項目は「その他入金」「その他出金」を分けるためのもの。現金経費・日払い・途中回収・釣銭補充には項目を付けない
+- 「現金に含めるか」（`affects_cash`）は列だけ作り、常に「含める」（画面に出さない）。現金に含めない項目を作るには、レジ締めの計算と仕訳を変える必要があるため
+- 名称変更の対象は 7 語（本指名・場内指名・同伴・呼び・セット・延長・タグ）。見出し・ボタン・出力の見出しを言い換える。伝票の明細に保存済みの名前、領収書、経理の画面、一部の説明文は変えない
+- 削除履歴は操作履歴（AuditLog）から作る。記録ごと消した会計は、操作履歴に残した金額だけが出る
+- XLSX は画面の表と同じ数字を並べるだけ。伝票一覧の絞り込みは反映しない
+
+### 未決事項（オーナー確認）
+- 入出金項目の一覧と、それぞれを粗利に含めるか（開発用データの 4 項目は仮）
+- 現金に含めない入出金（振込での入金など）を集計に入れたいか（入れるなら経理側の扱いの確認が必要）
+- 名称変更の対象の語を増やすか（キャスト・スタッフ・卓 など）、明細の名前（指名料 など）も変えるか

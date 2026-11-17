@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFloor } from "@/components/AppShell";
@@ -220,7 +221,7 @@ function NewVisitInner() {
         <ol className="flex items-center gap-1 ml-2" aria-label="手順">
           {steps.map((s, i) => (
             <li key={s.key} className={`rounded-full px-3 py-1 text-sm font-bold ${i === stepIndex ? "pos-selected" : ""}`} style={i === stepIndex ? undefined : { background: "var(--color-panel3)", color: i < stepIndex ? "var(--color-text)" : "var(--color-muted)" }} aria-current={i === stepIndex ? "step" : undefined}>
-              {i + 1}. {s.label}
+              {i + 1}. <Tx>{s.label}</Tx>
             </li>
           ))}
         </ol>
@@ -233,7 +234,9 @@ function NewVisitInner() {
       {/* 1. セット構成（入口） */}
       {step === "kind" && (
         <section className="card space-y-3">
-          <h2 className="text-2xl font-bold">セット構成を選んでください</h2>
+          <h2 className="text-2xl font-bold">
+            <Tx>セット構成を選んでください</Tx>
+          </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {kinds.map((k) => (
               <button
@@ -305,7 +308,9 @@ function NewVisitInner() {
                           aria-pressed={selected}
                           title={f === null ? `${d.label}の料金が未設定です` : undefined}
                         >
-                          <span>{d.label}</span>
+                          <span>
+                            <Tx>{d.label}</Tx>
+                          </span>
                           <span className="text-xs font-normal num">{f === null ? "料金未設定" : yen(f)}</span>
                         </button>
                       );
@@ -449,7 +454,9 @@ function NewVisitInner() {
                   {preview.lines.map((l, i) => (
                     <div key={i} className="flex items-baseline justify-between gap-2 text-lg">
                       <span className="min-w-0">
-                        <span className="badge mr-1">{LINE_TYPE_LABELS[l.line_type] ?? l.line_type}</span>
+                        <span className="badge mr-1">
+                          <Tx>{LINE_TYPE_LABELS[l.line_type] ?? l.line_type}</Tx>
+                        </span>
                         {l.name}
                         <span className="num" style={{ color: "var(--color-muted)" }}>
                           {" "}

@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { RequireCaps } from "@/components/common";
-import { amt, cnt, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, ExportButton, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { useToast } from "@/components/Toast";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { api, downloadFile, errorMessage } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
+import { Tx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
 import type { Money } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
@@ -72,9 +73,12 @@ function Inner() {
         subtitle="お客様ごとの来店回数・最終来店日・単価・支払方法・指名・キープ・ランク。この店舗への来店だけを数えます。"
         actions={
           can("export.sales") ? (
+            <>
+            <ExportButton path="/api/reports/export/customers.xlsx" />
             <button className="btn btn-sm" onClick={() => downloadFile("/api/reports/export/customers.csv").catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>
               CSV 出力
             </button>
+            </>
           ) : null
         }
       />
@@ -125,9 +129,15 @@ function Inner() {
                   <th className="r">現金</th>
                   <th className="r">カード</th>
                   <th className="r">売掛</th>
-                  <th className="r">本指名</th>
-                  <th className="r">場内指名</th>
-                  <th className="r">同伴</th>
+                  <th className="r">
+                    <Tx>本指名</Tx>
+                  </th>
+                  <th className="r">
+                    <Tx>場内指名</Tx>
+                  </th>
+                  <th className="r">
+                    <Tx>同伴</Tx>
+                  </th>
                   <th>担当</th>
                 </tr>
               </thead>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import { useParams, useRouter } from "next/navigation";
 import { ErrorBox, Spinner } from "@/components/ui";
 import { yen } from "@/lib/format";
@@ -101,7 +102,9 @@ function Column({ title, lines, empty, showTargets }: { title: string; lines: Or
   return (
     <section className="flex flex-col min-h-0" style={{ background: "var(--color-panel)", border: "1.5px solid var(--color-border)", borderRadius: 14 }} aria-label={title}>
       <h2 className="pos-bar px-3 py-1.5 font-bold text-base rounded-t-[12px] flex justify-between">
-        <span>{title}</span>
+        <span>
+          <Tx>{title}</Tx>
+        </span>
         <span className="num">{lines.length}件</span>
       </h2>
       <div className="flex-1 overflow-y-auto p-1.5 space-y-1">

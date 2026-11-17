@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { RequireCaps } from "@/components/common";
@@ -127,13 +128,27 @@ function Inner() {
             <thead>
               <tr>
                 <th>キャスト</th>
-                <th className="r">呼び小計</th>
-                <th className="r">呼び本計</th>
-                <th className="r">同伴小計</th>
-                <th className="r">同伴本計</th>
-                <th className="r">本指名</th>
-                <th className="r">場内</th>
-                <th className="r">同伴</th>
+                <th className="r">
+                  <Tx>呼び小計</Tx>
+                </th>
+                <th className="r">
+                  <Tx>呼び本計</Tx>
+                </th>
+                <th className="r">
+                  <Tx>同伴小計</Tx>
+                </th>
+                <th className="r">
+                  <Tx>同伴本計</Tx>
+                </th>
+                <th className="r">
+                  <Tx>本指名</Tx>
+                </th>
+                <th className="r">
+                  <Tx>場内</Tx>
+                </th>
+                <th className="r">
+                  <Tx>同伴</Tx>
+                </th>
               </tr>
             </thead>
             <tbody>

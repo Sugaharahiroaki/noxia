@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MonthPicker, RequireCaps } from "@/components/common";
 import { useBusinessDate } from "@/components/DateRange";
-import { amt, dayLabel, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, dayLabel, ExportButton, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import type { CashMonth } from "@/lib/types_reports";
 import { useLoad } from "@/lib/useLoad";
@@ -29,7 +29,15 @@ function Inner() {
   const d = q.data;
   return (
     <div>
-      <PageHeader title="レジ精算（月間）" subtitle="開店した営業日ごとのレジの記録。数字は「開店・日締め・現金」と同じ計算です。" actions={month ? <MonthPicker value={month} onChange={setMonth} /> : null} />
+      <PageHeader title="レジ精算（月間）" subtitle="開店した営業日ごとのレジの記録。数字は「開店・日締め・現金」と同じ計算です。" actions={
+          month ? (
+            <>
+              <MonthPicker value={month} onChange={setMonth} />
+              <ExportButton path={`/api/reports/export/cash.xlsx?month=${month}`} cap="export.cash" />
+            </>
+          ) : null
+        }
+      />
       <ReportNav />
       <ErrorBox error={q.error} onRetry={() => q.reload(false)} />
       {(q.loading || !month) && <Spinner />}

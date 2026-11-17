@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { RequireCaps } from "@/components/common";
 import { DateRangeBar, useDateRange } from "@/components/DateRange";
-import { amt, cnt, fmtId, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, ExportButton, fmtId, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { useToast } from "@/components/Toast";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 import { fmtDate, fmtTime } from "@/lib/format";
+import { Tx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
 import type { StoreSettings } from "@/lib/types";
 import type { SlipList } from "@/lib/types_reports";
@@ -44,7 +45,9 @@ function Inner() {
 
   return (
     <div>
-      <PageHeader title="伝票一覧" subtitle="営業日ごとの伝票。金額は確定した会計（取消を除く）の合計です。営業中の伝票は会計前なので金額は「--」になります。" />
+      <PageHeader title="伝票一覧" subtitle="営業日ごとの伝票。金額は確定した会計（取消を除く）の合計です。営業中の伝票は会計前なので金額は「--」になります。"
+        actions={<ExportButton path={range ? `/api/reports/export/slips.xlsx?from=${range.from}&to=${range.to}` : null} cap="export.sales" label="XLSX 出力（期間内のすべて）" />}
+      />
       <ReportNav />
       <div className="space-y-3">
         <DateRangeBar range={range} onChange={setRange} businessDate={businessDate} />
@@ -69,10 +72,18 @@ function Inner() {
                   <th>退店</th>
                   <th className="r">時間</th>
                   <th className="r">客数</th>
-                  <th>タグ</th>
-                  <th>本指名</th>
-                  <th>場内</th>
-                  <th>同伴</th>
+                  <th>
+                    <Tx>タグ</Tx>
+                  </th>
+                  <th>
+                    <Tx>本指名</Tx>
+                  </th>
+                  <th>
+                    <Tx>場内</Tx>
+                  </th>
+                  <th>
+                    <Tx>同伴</Tx>
+                  </th>
                   <th className="r">小計</th>
                   <th className="r">サービス料</th>
                   <th className="r">値引き</th>

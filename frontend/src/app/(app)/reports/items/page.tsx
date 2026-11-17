@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { RequireCaps } from "@/components/common";
 import { DateRangeBar, useDateRange } from "@/components/DateRange";
-import { amt, cnt, dayLabel, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, dayLabel, ExportButton, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { useToast } from "@/components/Toast";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { downloadFile, errorMessage } from "@/lib/api";
@@ -42,9 +42,12 @@ function Inner() {
         subtitle="会計が確定した商品の個数と金額。日付 × 商品と、キャスト × 商品。"
         actions={
           can("export.sales") && qs ? (
+            <>
+            <ExportButton path={`/api/reports/export/items.xlsx?${qs}`} />
             <button className="btn btn-sm" onClick={() => downloadFile(`/api/reports/export/items.csv?${qs}`).catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>
               CSV 出力
             </button>
+            </>
           ) : null
         }
       />

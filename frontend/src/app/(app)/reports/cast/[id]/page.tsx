@@ -5,10 +5,11 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { MonthPicker } from "@/components/common";
 import { GroupToggles, PayCells, PayHead, useMonthReport } from "@/components/PeopleReport";
-import { amt, dayLabel, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, dayLabel, ExportButton, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { fmtTime } from "@/lib/format";
 import { payCell, payGroups, type PayCol, type PayRow, type PersonReport } from "@/lib/payColumns";
+import { useTx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
 
 export default function PersonReportPage() {
@@ -24,6 +25,7 @@ function Inner() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
   const { can } = useSession();
+  const tx = useTx();
   const q = useMonthReport<PersonReport>((m) => `/api/reports/people/${id}?month=${m}`, /^\d{4}-\d{2}$/.test(params.get("month") ?? "") ? params.get("month") : null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -33,7 +35,7 @@ function Inner() {
   const all = payGroups({ cast: !!cast, withholding });
   const groups = payGroups({ cast: !!cast, withholding, hidden });
   const t = d?.totals;
-  const line = (label: string, key: keyof PayRow, kind: PayCol["kind"] = "money") => ({ label, value: t ? payCell(t, { key, label, kind }) : "--" });
+  const line = (text: string, key: keyof PayRow, kind: PayCol["kind"] = "money") => ({ label: tx(text), value: t ? payCell(t, { key, label: text, kind }) : "--" });
 
   return (
     <div>
@@ -43,6 +45,7 @@ function Inner() {
         actions={
           <>
             {q.month && <MonthPicker value={q.month} onChange={q.setMonth} />}
+            {q.month && d && <ExportButton path={`/api/reports/people/${id}.pdf?month=${q.month}`} label="PDF 出力" reauth={can("payroll.view_all")} />}
             {can("payroll.view_all") && (
               <Link href={cast === false ? "/reports/staff" : "/reports/cast"} className="btn btn-sm">
                 ← 集計表

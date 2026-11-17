@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { downloadFile, errorMessage } from "@/lib/api";
+import { useTx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
+import { useToast } from "./Toast";
 
 /**
  * 管理用の集計画面（/reports/...）の共通部品。見た目は NOXIA の管理画面のまま。
@@ -31,7 +34,7 @@ export function cnt(value: string | number | null | undefined): string {
   return n.toLocaleString("ja-JP", { maximumFractionDigits: 1 });
 }
 
-export type ReportLink = { href: string; label: string; caps?: string[]; note?: string };
+export type ReportLink = { href: string; label: string; caps?: string[]; anyCaps?: string[]; note?: string };
 
 /** 集計画面の一覧（フェーズごとに足す） */
 export const REPORT_LINKS: ReportLink[] = [
@@ -44,6 +47,7 @@ export const REPORT_LINKS: ReportLink[] = [
   { href: "/reports/cash", label: "レジ精算（月間）", caps: ["dashboard.view"], note: "営業日ごとの釣銭・現金売上・入出金・理論現金・実際の現金・過不足・預金" },
   { href: "/reports/cast", label: "キャスト集計", caps: ["payroll.view_all"], note: "キャストごとの売上（呼び・同伴）と報酬（時間報酬・バック・日払い・残り）。名前から報酬支払明細へ" },
   { href: "/reports/staff", label: "スタッフ集計", caps: ["payroll.view_all"], note: "スタッフごとの報酬（時間報酬・調整・日払い・残り）" },
+  { href: "/reports/history", label: "履歴", anyCaps: ["dashboard.view", "sales.view"], note: "入出金の履歴（月の合計と明細）、伝票の削除履歴（取消した伝票・会計・明細）" },
 ];
 
 /** 割合（%）。null は「--」 */
@@ -62,7 +66,8 @@ export function dayLabel(dateStr: string): { day: number; weekday: string; weeke
 
 export function useReportLinks(): ReportLink[] {
   const { can, me } = useSession();
-  const links = REPORT_LINKS.filter((l) => !l.caps || can(...l.caps));
+  const tx = useTx();
+  const links = REPORT_LINKS.filter((l) => (!l.caps || can(...l.caps)) && (!l.anyCaps || l.anyCaps.some((c) => can(c)))).map((l) => ({ ...l, label: tx(l.label), note: l.note ? tx(l.note) : l.note }));
   // 全員分は見られないが自分の分は見られる人（キャスト本人など）には、自分の報酬支払明細だけを出す
   if (!can("payroll.view_all") && can("payroll.view_self") && me?.employee) {
     links.push({ href: `/reports/cast/${me.employee.id}`, label: "自分の報酬支払明細", note: "自分の勤務・バック・日払いの月ごとの明細と日別表" });
@@ -100,5 +105,30 @@ export function ReportNote({ children }: { children: React.ReactNode }) {
     <p className="text-sm mt-2" style={{ color: "var(--color-muted)" }}>
       {children}
     </p>
+  );
+}
+
+/**
+ * 出力ボタン（XLSX・PDF）。path はダウンロードする API。cap が無い人には出さない。
+ * reauth: 給与に関わる出力（キャスト・スタッフ集計、他人の報酬支払明細）はパスワードの再確認を挟む。
+ */
+export function ExportButton({ path, label = "XLSX 出力", cap, reauth = false }: { path: string | null; label?: string; cap?: string; reauth?: boolean }) {
+  const { can, withReauth } = useSession();
+  const toast = useToast();
+  if (!path || (cap && !can(cap))) return null;
+  return (
+    <button
+      className="btn btn-sm"
+      onClick={async () => {
+        try {
+          if (reauth) await withReauth(() => downloadFile(path));
+          else await downloadFile(path);
+        } catch (e) {
+          toast.show({ message: errorMessage(e), tone: "error" });
+        }
+      }}
+    >
+      {label}
+    </button>
   );
 }

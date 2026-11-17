@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { MonthPicker } from "@/components/common";
 import { useBusinessDate } from "@/components/DateRange";
-import { ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { ExportButton, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { api, downloadFile, errorMessage } from "@/lib/api";
 import { payCell, payGroups, type PayGroup, type PayRow, type PeopleReport } from "@/lib/payColumns";
+import { Tx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
 import { useToast } from "./Toast";
 
@@ -51,7 +52,7 @@ export function PayHead({ groups, first }: { groups: PayGroup[]; first: string }
         </th>
         {groups.map((g) => (
           <th key={g.key} colSpan={g.cols.length}>
-            {g.label}
+            <Tx>{g.label}</Tx>
           </th>
         ))}
       </tr>
@@ -59,7 +60,7 @@ export function PayHead({ groups, first }: { groups: PayGroup[]; first: string }
         {groups.flatMap((g) =>
           g.cols.map((c) => (
             <th key={`${g.key}-${c.key}`} className="r">
-              {c.label}
+              <Tx>{c.label}</Tx>
             </th>
           )),
         )}
@@ -104,7 +105,7 @@ export function GroupToggles({ all, hidden, onChange }: { all: PayGroup[]; hidde
             }}
           >
             {on ? "✓ " : ""}
-            {g.label}
+            <Tx>{g.label}</Tx>
           </button>
         );
       })}
@@ -146,6 +147,7 @@ export function PeopleReportPage({ kind }: { kind: "cast" | "staff" }) {
                 CSV 出力
               </button>
             )}
+            {q.month && <ExportButton path={`/api/reports/export/${kind}.xlsx?month=${q.month}`} cap="export.payroll" reauth />}
           </>
         }
       />
@@ -178,7 +180,7 @@ export function PeopleReportPage({ kind }: { kind: "cast" | "staff" }) {
           {d.rows.length === 0 && <Empty>対象の人がいません。</Empty>}
           <ReportNote>
             総支給額 = 時間報酬 ＋ バック計（ボーナス・マイナスの調整を含む）。残り支給額 = 総支給額 − 日払い − 控除{withholding ? " − 源泉所得税" : ""}。
-            {cast && "給率 = 総支給額 ÷ 呼び小計。呼び小計・本計は、指名（本指名・場内）のある伝票の小計・本計（複数人のときの分け方は伝票一覧の下の設定）。"}
+            {cast && <Tx>給率 = 総支給額 ÷ 呼び小計。呼び小計・本計は、指名（本指名・場内）のある伝票の小計・本計（複数人のときの分け方は伝票一覧の下の設定）。</Tx>}
             ボーナス・マイナスは手入力のバック調整（正・負）です。遅刻・欠勤を分けた項目や、手当としての記録はありません。法定控除・割増賃金は含みません。
             名前を押すと、その人の報酬支払明細と日別表を開きます。
           </ReportNote>

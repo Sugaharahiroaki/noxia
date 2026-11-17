@@ -12,11 +12,12 @@ from apps.core.business_date import business_date_now
 from apps.core.exceptions import ApiError
 from apps.core.idempotency import idempotent
 from apps.core.money import D
-from apps.core.permissions import CAP_CLOSING, CAP_CLOSING_EDIT, CAP_PAYROLL_PAY, StoreCaps
+from apps.core.api import StoreScopedViewSet
+from apps.core.permissions import CAP_CLOSING, CAP_CLOSING_EDIT, CAP_PAYROLL_PAY, CAP_SETTINGS_EDIT, StoreCaps
 from apps.staff.models import Employee, EmployeePayment
 
 from . import services
-from .models import BankDeposit, BusinessDay, CashMovement, CashMovementKind, ClosingRevision
+from .models import BankDeposit, BusinessDay, CashItem, CashMovement, CashMovementKind, ClosingRevision
 
 
 class CashMovementSerializer(serializers.ModelSerializer):
@@ -27,10 +28,62 @@ class CashMovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashMovement
         fields = ["id", "business_day", "kind", "kind_label", "amount", "reason", "employee", "employee_name", "occurred_at", "performed_by_name",
-                  "is_voided", "void_reason"]
+                  "is_voided", "void_reason", "item", "item_name"]
 
     def get_performed_by_name(self, obj):
         return str(obj.performed_by) if obj.performed_by else ""
+
+
+class CashItemSerializer(serializers.ModelSerializer):
+    direction_label = serializers.CharField(source="get_direction_display", read_only=True)
+
+    class Meta:
+        model = CashItem
+        # affects_cash は読むだけ（レジの入出金は必ず現金に含める。現金の計算は種別で決まり、項目では変わらない）
+        fields = ["id", "name", "direction", "direction_label", "affects_profit", "affects_cash", "sort_order", "is_active"]
+        read_only_fields = ["id", "affects_cash"]
+
+    def validate_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("項目名を入力してください。")
+        return value
+
+    def validate(self, attrs):
+        # 入金／出金は、使い始めたあとで変えると過去の記録と合わなくなるので変えられない
+        if self.instance is not None and "direction" in attrs and attrs["direction"] != self.instance.direction:
+            raise serializers.ValidationError({"direction": "入金／出金はあとから変えられません。新しい項目を作ってください。"})
+        return attrs
+
+
+class CashItemViewSet(StoreScopedViewSet):
+    """入出金項目のマスタ（store/cash-items）。読む: closing.operate、書く: settings.edit（再認証）。削除は停止。"""
+
+    model = CashItem
+    serializer_class = CashItemSerializer
+    caps_read = (CAP_CLOSING,)
+    caps_write = (CAP_SETTINGS_EDIT,)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.query_params.get("active") == "1":
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        audit(self.request, "cash.item.create", target=serializer.instance, changes=serializer.data)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        audit(self.request, "cash.item.update", target=serializer.instance, changes=serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        obj.is_active = False
+        obj.save(update_fields=["is_active", "updated_at"])
+        audit(request, "cash.item.deactivate", target=obj)
+        return Response(status=204)
 
 
 class BankDepositSerializer(serializers.ModelSerializer):
@@ -133,6 +186,16 @@ class CashMovementsView(APIView):
     def post(self, request):
         store = request.store
         kind = request.data.get("kind")
+        # 入出金項目（任意）。項目を選んだときの種別は、入金の項目 = その他入金、出金の項目 = その他出金（現金の計算・仕訳はこれまでどおり種別で決まる）
+        item = None
+        if request.data.get("item_id"):
+            item = CashItem.objects.filter(id=request.data["item_id"], store=store, is_active=True).first()
+            if item is None:
+                raise ApiError("validation_error", "この店舗で利用できない入出金項目が指定されました。")
+            item_kind = CashMovementKind.OTHER_IN if item.direction == "in" else CashMovementKind.OTHER_OUT
+            if kind and kind != item_kind:
+                raise ApiError("validation_error", "入出金項目と種別（入金／出金）が合っていません。")
+            kind = item_kind
         if kind not in CashMovementKind.values:
             raise ApiError("validation_error", "入出金の種別が不正です。")
         amount = D(request.data.get("amount") or 0)
@@ -164,6 +227,7 @@ class CashMovementsView(APIView):
         mv = CashMovement.objects.create(
             store=store, business_day=day, kind=kind, amount=amount, reason=reason[:200], employee=employee,
             occurred_at=timezone.now(), performed_by=request.user, account=account,
+            item=item, item_name=item.name if item else "", affects_profit=item.affects_profit if item else None,
         )
         if kind == CashMovementKind.DAILY_PAY:
             from apps.accounting import services as accounting
@@ -175,7 +239,7 @@ class CashMovementsView(APIView):
             # 手入力の出金は渡した額だけなので源泉徴収を計算しない。給与以外は月次の「要確認」に出す
             st = accounting.settle_simple(store, employee, amount=amount, on_date=day.date, paid_on=timezone.localdate(mv.occurred_at), mode="net")
             accounting.record_withholding(ep, st, work_date=day.date, user=request.user)
-        audit(request, f"cash.movement.{kind}", target=mv, changes={"amount": amount, "reason": reason})
+        audit(request, f"cash.movement.{kind}", target=mv, changes={"amount": amount, "reason": reason, **({"item": item.name} if item else {})})
         return Response(CashMovementSerializer(mv).data, status=201)
 
 

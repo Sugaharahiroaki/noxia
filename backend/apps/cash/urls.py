@@ -1,8 +1,12 @@
 from django.urls import path
+from rest_framework.routers import SimpleRouter
 
 from . import views
 
-urlpatterns = [
+router = SimpleRouter(trailing_slash=False)
+router.register("store/cash-items", views.CashItemViewSet, basename="cash-item")
+
+urlpatterns = router.urls + [
     path("cash/current", views.CurrentBusinessDayView.as_view()),
     path("cash/open", views.OpenBusinessDayView.as_view()),
     path("cash/close", views.CloseBusinessDayView.as_view()),

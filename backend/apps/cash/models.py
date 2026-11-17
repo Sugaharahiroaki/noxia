@@ -71,6 +71,34 @@ class CashMovementKind(models.TextChoices):
     FLOAT_ADJUST_IN = "float_adjust_in", "釣銭補充"
 
 
+class CashItemDirection(models.TextChoices):
+    IN = "in", "入金"
+    OUT = "out", "出金"
+
+
+class CashItem(TimestampedModel):
+    """
+    入出金項目のマスタ（店舗ごと）。「その他入金」「その他出金」を、店舗が決めた項目で分けて記録するためのもの。
+    - 現金の計算（理論現金）と仕訳は、これまでどおり CashMovement.kind で決まる。項目は集計（粗利に含めるか）と表示にだけ使う。
+    - affects_cash は「現金に含めるか」。レジの入出金として記録する項目は必ず現金に含めるので、いまは True 固定（画面には出さない）。
+    """
+
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="cash_items")
+    name = models.CharField("項目名", max_length=40)
+    direction = models.CharField("入金／出金", max_length=5, choices=CashItemDirection.choices)
+    affects_profit = models.BooleanField("粗利に含める", default=True)
+    affects_cash = models.BooleanField("現金に含める", default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["direction", "sort_order", "id"]
+        indexes = [models.Index(fields=["store", "is_active"])]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class CashMovement(TimestampedModel):
     """レジ現金の入出金（売上・返金は別テーブルから集計するため含めない）。"""
 
@@ -87,6 +115,10 @@ class CashMovement(TimestampedModel):
     voided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     # 現金経費の勘定科目（承認済みの領収書から設定。未設定なら仕訳では雑費＋警告）
     account = models.ForeignKey("accounting.Account", null=True, blank=True, on_delete=models.SET_NULL, related_name="cash_movements")
+    # 入出金項目（任意）。項目名と「粗利に含めるか」は登録した時点の値を残す（あとで項目を変えても過去の集計は変わらない）
+    item = models.ForeignKey(CashItem, null=True, blank=True, on_delete=models.SET_NULL, related_name="movements")
+    item_name = models.CharField("入出金項目（登録時の名前）", max_length=40, blank=True)
+    affects_profit = models.BooleanField("粗利に含める（登録時）", null=True, blank=True)  # null = 項目なし。種別（kind）の既定に従う
 
     class Meta:
         ordering = ["-occurred_at"]

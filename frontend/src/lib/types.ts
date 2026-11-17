@@ -440,7 +440,15 @@ export type CashMovement = {
   performed_by_name: string;
   is_voided: boolean;
   void_reason: string;
+  item?: number | null;
+  item_name?: string;
 };
+
+/** 入出金項目（店舗ごとのマスタ。その他入金・その他出金を分けて記録する） */
+export type CashItem = { id: number; name: string; direction: "in" | "out"; direction_label: string; affects_profit: boolean; affects_cash: boolean; sort_order: number; is_active: boolean };
+
+/** 名称変更（POS・集計画面の業務用語） */
+export type TermRow = { key: string; default: string; description: string; label: string; overridden: boolean };
 
 export type DaySummary = {
   opening_float: Money;

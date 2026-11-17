@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { fmtTime, ROLE_LABELS, yen } from "@/lib/format";
 import { fmtRemainShort, undoLines } from "@/lib/pos";
 import { useSession } from "@/lib/session";
+import { TermsProvider } from "@/lib/terms";
 import type { FloorAlarm, FloorState } from "@/lib/types";
 import { computeAlarm, syncServerClock, useNow } from "@/lib/useServerClock";
 import { CourseActionDialog, type CourseActionKind } from "./CourseActionDialog";
@@ -50,6 +51,7 @@ const NAV: NavItem[] = [
   { href: "/accounting/settings", label: "会計設定（事業者・科目・権限）", anyCaps: ["accounting.settings", "tax.view"], group: "経理" },
   { href: "/settings/pricing", label: "時給・バック・料金", caps: ["settings.view"], group: "設定" },
   { href: "/settings/store", label: "店舗設定・権限", caps: ["settings.view"], group: "設定" },
+  { href: "/settings/reports", label: "入出金項目・名称変更", caps: ["settings.view"], group: "設定" },
 ];
 
 type FloorCtx = {
@@ -65,7 +67,9 @@ export function useFloor() {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
-      <ShellInner>{children}</ShellInner>
+      <TermsProvider>
+        <ShellInner>{children}</ShellInner>
+      </TermsProvider>
     </ToastProvider>
   );
 }

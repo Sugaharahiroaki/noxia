@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { RequireCaps } from "@/components/common";
 import { DateRangeBar, useDateRange } from "@/components/DateRange";
-import { amt, cnt, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
+import { amt, cnt, ExportButton, ReportNav, ReportNote, ReportTable } from "@/components/ReportKit";
 import { useToast } from "@/components/Toast";
 import { Empty, ErrorBox, PageHeader, Spinner } from "@/components/ui";
 import { downloadFile, errorMessage } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
+import { Tx, useTx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
 import type { Money } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
@@ -32,6 +33,7 @@ export default function TagReportPage() {
 function Inner() {
   const { can } = useSession();
   const toast = useToast();
+  const tx = useTx();
   const [range, setRange, businessDate] = useDateRange();
   const [groupBy, setGroupBy] = useState<GroupBy>("tag");
   const qs = range ? `from=${range.from}&to=${range.to}&group_by=${groupBy}` : null;
@@ -42,13 +44,16 @@ function Inner() {
   return (
     <div>
       <PageHeader
-        title="タグ集計"
+        title={tx("タグ集計")}
         subtitle="伝票に付けたタグごとの件数・客数・金額。金額は確定した会計の合計です。"
         actions={
           can("export.sales") && qs ? (
+            <>
+            <ExportButton path={`/api/reports/export/tags.xlsx?${qs}`} />
             <button className="btn btn-sm" onClick={() => downloadFile(`/api/reports/export/tags.csv?${qs}`).catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>
               CSV 出力
             </button>
+            </>
           ) : null
         }
       />
@@ -70,7 +75,9 @@ function Inner() {
               <thead>
                 <tr>
                   {groupBy !== "tag" && <th>{groupBy === "day" ? "営業日" : "月"}</th>}
-                  <th>タグ</th>
+                  <th>
+                    <Tx>タグ</Tx>
+                  </th>
                   <th className="r">件数</th>
                   <th className="r">客数</th>
                   <th className="r">伝票小計</th>
@@ -83,7 +90,9 @@ function Inner() {
               <tbody>
                 <tr className="total-row">
                   {groupBy !== "tag" && <td />}
-                  <td>タグの行の合計（重複あり）</td>
+                  <td>
+                    <Tx>タグの行の合計（重複あり）</Tx>
+                  </td>
                   <td className="r">{cnt(d.totals.count)}</td>
                   <td className="r">{cnt(d.totals.guests)}</td>
                   <td className="r">{amt(d.totals.subtotal)}</td>

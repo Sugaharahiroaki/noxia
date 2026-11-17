@@ -1,5 +1,6 @@
 "use client";
 
+import { Tx } from "@/lib/terms";
 import { useEffect, useState } from "react";
 import { api, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { fmtTime, yen } from "@/lib/format";
@@ -70,7 +71,7 @@ export function CourseActionDialog({
             やめる
           </button>
           <button className="btn btn-xl btn-primary" onClick={confirm} disabled={!ready || busy}>
-            {busy ? "処理中…" : kind === "extend" ? "延長する" : "無制限にする"}
+            {busy ? "処理中…" : kind === "extend" ? <Tx>延長する</Tx> : "無制限にする"}
           </button>
         </>
       }
@@ -92,7 +93,7 @@ export function CourseActionDialog({
           <div className="text-5xl font-bold num" style={{ color: "var(--color-warn)" }}>
             ＋{yen(ext.amount)}
           </div>
-          <div style={{ color: "var(--color-muted)" }}>{ext.minutes}分延長（元の終了予定時刻から加算）</div>
+          <div style={{ color: "var(--color-muted)" }}>{ext.minutes}分<Tx>延長（元の終了予定時刻から加算）</Tx></div>
         </div>
       )}
       {kind === "unlimited" && unl && (
