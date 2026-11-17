@@ -871,11 +871,13 @@ def cancel_checkout_full(store: Store, user, checkout_id) -> dict:
     OrderLine.objects.filter(checkout=checkout).update(status=LineStatus.CANCELLED, checkout=None, cancelled_by=user, cancelled_at=now)
     visit = Visit.objects.select_for_update().get(pk=checkout.visit_id)
     checkout.delete()
-    # ほかに有効な会計・未会計の明細が無ければ、伝票ごと取消にする
+    # ほかに有効な会計・未会計の明細が無ければ、伝票ごと取消にする。
+    # PC からの会計の取消は履歴に残さない方針なので、この伝票は取消済みの一覧・削除履歴にも出さない
     if not visit.checkouts.filter(status=CheckoutStatus.CONFIRMED).exists() and not visit.lines.filter(status=LineStatus.ACTIVE).exists():
         visit.status = VisitStatus.CANCELLED
         visit.closed_at = now
-        visit.save(update_fields=["status", "closed_at", "updated_at"])
+        visit.hide_from_history = True
+        visit.save(update_fields=["status", "closed_at", "hide_from_history", "updated_at"])
         visit.course_entries.filter(is_active=True).update(is_active=False, ended_at=now)
     return summary
 

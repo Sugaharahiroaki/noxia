@@ -40,6 +40,8 @@ class Visit(TimestampedModel):
     primary_employee = models.ForeignKey("staff.Employee", null=True, blank=True, on_delete=models.SET_NULL, related_name="primary_visits")
     note = models.CharField(max_length=300, blank=True)
     cancel_reason = models.CharField(max_length=200, blank=True)
+    # PC の「売上・会計履歴」から会計を消して（お客様に全額返す）取消になった伝票。店舗の方針で、取消済みの一覧・削除履歴に出さない
+    hide_from_history = models.BooleanField("取消を履歴に出さない", default=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
 
     class Meta:

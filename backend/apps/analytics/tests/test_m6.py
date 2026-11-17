@@ -203,6 +203,65 @@ class DeletionHistoryTests(Base):
         self.assertEqual((od["cancelled"], od["logs"]), ([], []))
         self.assertEqual(client_for(self.fx.users["cast"], self.store).get("/api/reports/deletions").status_code, 403)
 
+    def test_pc_checkout_delete_leaves_no_trace(self):
+        """店舗の方針: PC の「売上・会計履歴」から暗証番号で消した会計は、操作履歴・削除履歴・取消済みの一覧・来店履歴のどこにも出ない。"""
+        from apps.core import void_pin
+        from apps.customers.models import Customer
+
+        void_pin.set_pin(self.store, "4826")
+        customer = Customer.objects.create(company=self.store.company, store=self.store, display_name="田中様")
+        # 打ち間違い（伝票を会計前に戻す）
+        v1, co1 = self.paid_visit(0)
+        Visit = type(v1)
+        Visit.objects.filter(id=v1.id).update(customer=customer)
+        r = self.owner.post(f"/api/checkouts/{co1.id}/delete", {"pin": "4826"}, format="json", **key())
+        self.assertEqual(r.status_code, 200, r.content)
+        # お客様に全額返す（伝票ごと取消）
+        v2, co2 = self.paid_visit(1)
+        Visit.objects.filter(id=v2.id).update(customer=customer)
+        r = self.owner.post(f"/api/checkouts/{co2.id}/delete", {"pin": "4826", "mode": "refund"}, format="json", **key())
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(Visit.objects.get(id=v2.id).hide_from_history)
+        # 操作履歴に書かない
+        self.assertFalse(AuditLog.objects.filter(store=self.store, action="checkout.delete").exists())
+        # 削除履歴（操作・取消済みの伝票）に出ない
+        d = self.c.get("/api/reports/deletions").json()
+        self.assertEqual((d["logs"], d["cancelled"]), ([], []))
+        self.assertIn("操作履歴にもこの履歴にも残しません", d["note"])
+        # 伝票一覧の「取消」にも出ず、伝票詳細も開けない。会計前に戻った v1 は普通の伝票として出る
+        self.assertEqual([r["id"] for r in self.c.get("/api/reports/slips", {"cancelled": "1"}).json()["rows"]], [])
+        self.assertEqual([r["id"] for r in self.c.get("/api/reports/slips").json()["rows"]], [v1.id])
+        self.assertEqual(self.c.get(f"/api/reports/slips/{v2.id}").status_code, 404)
+        # 来店履歴にも出ない（v1 だけ）
+        hist = self.c.get(f"/api/customers/{customer.id}/history").json()
+        self.assertEqual([x["id"] for x in hist["visits"]], [v1.id])
+        # 卓からの取消はこれまでどおり残る
+        v3 = services.open_visit(self.store, self.user, {"table_id": self.fx.tables[2].id, "entries": [{"guest_count": 1, "course_id": self.fx.hourly.id}]})
+        self.assertEqual(self.c.post(f"/api/visits/{v3.id}/cancel", {"reason": "入力ミス"}, format="json", **key()).status_code, 200)
+        d = self.c.get("/api/reports/deletions").json()
+        self.assertEqual(([r["action"] for r in d["logs"]], [r["id"] for r in d["cancelled"]]), (["visit.cancel"], [v3.id]))
+
+
+class AuditLabelTests(Base):
+    def test_audit_logs_are_shown_in_japanese(self):
+        from apps.core.audit_labels import action_label, changes_summary, target_label
+
+        self.assertEqual(action_label("visit.cancel"), "伝票の取消")
+        self.assertEqual(action_label("cash.movement.expense"), "入出金の登録（現金経費）")
+        self.assertEqual(action_label("accounting.journal.void"), "経理: journal・取消")  # 表に無いものは 家族 + 動詞
+        self.assertEqual(action_label("something.unknown"), "something.unknown")
+        self.assertEqual(target_label("Visit"), "伝票")
+        self.assertEqual(changes_summary({"total": "7000.00", "payments": [{"method": "cash", "amount": "7000.00"}], "reason": "入力ミス"}),
+                         "合計 7,000、支払い 現金 7,000、理由 入力ミス")
+        self.assertEqual(changes_summary({"opening_float": {"before": "50000.00", "after": "30000.00"}, "line_ids": [1, 2, 3], "is_active": False}),
+                         "釣銭準備金 50,000 → 30,000、明細 3 件、使用中 いいえ")
+        self.assertEqual(changes_summary({}), "")
+        # API でも日本語が付く
+        v = services.open_visit(self.store, self.user, {"table_id": self.fx.tables[0].id, "entries": [{"guest_count": 2, "course_id": self.fx.hourly.id}]})
+        self.c.post(f"/api/visits/{v.id}/cancel", {"reason": "入力ミス"}, format="json", **key())
+        rows = self.owner.get("/api/audit/logs", {"action": "visit.cancel"}).json()
+        self.assertEqual((rows[0]["action_label"], rows[0]["target_label"], rows[0]["summary"]), ("伝票の取消", "伝票", "理由 入力ミス"))
+
 
 class ExportTests(Base):
     def sheets(self, resp):

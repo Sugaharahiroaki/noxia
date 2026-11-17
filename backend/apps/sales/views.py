@@ -566,8 +566,8 @@ class CheckoutDeleteView(APIView):
             summary = services.cancel_checkout_full(request.store, request.user, checkout_id)
         else:
             summary = services.delete_checkout(request.store, request.user, checkout_id)
-        # 画面・集計からは消えるが、いつ・いくらの会計を消したかは操作履歴（オーナーが見る）に残す
-        audit(request, "checkout.delete", target_type="Checkout", target_id=str(summary["checkout_id"]), changes=summary)
+        # 店舗の方針で、PC からの会計の取消は操作履歴にも削除履歴にも残さない（卓からの取消は残す）。
+        # 消した会計の要約は応答として返すだけで、どこにも保存しない
         return Response({"deleted": summary})
 
 

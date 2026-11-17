@@ -68,7 +68,8 @@ class CustomerHistoryView(APIView):
         if customer is None:
             raise ApiError("not_found", "顧客が見つかりません。", status=404)
         # 来店・会計履歴はこの店舗分だけ（他店舗の売上は見せない）
-        visits = customer.visits.filter(store=store).select_related("table", "primary_employee").prefetch_related("course_entries", "lines")[:50]
+        # hide_from_history: PC から会計を消して取消になった伝票は、店舗の方針で来店履歴にも出さない
+        visits = customer.visits.filter(store=store).exclude(hide_from_history=True).select_related("table", "primary_employee").prefetch_related("course_entries", "lines")[:50]
         checkouts = Checkout.objects.filter(store=store, visit__customer=customer).prefetch_related("payments")[:50]
         bottles = customer.bottle_keeps.filter(store=store)
         return Response({

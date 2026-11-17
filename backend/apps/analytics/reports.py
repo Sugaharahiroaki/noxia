@@ -105,7 +105,8 @@ def visits_for_reports(store, f: date, t: date):
 
     from apps.sales.models import OrderLine, Visit
 
-    return Visit.objects.filter(store=store, business_date__gte=f, business_date__lte=t).select_related("table", "customer").prefetch_related(
+    # hide_from_history: PC から会計を消して取消になった伝票。店舗の方針で一覧・履歴に出さない
+    return Visit.objects.filter(store=store, business_date__gte=f, business_date__lte=t).exclude(hide_from_history=True).select_related("table", "customer").prefetch_related(
         Prefetch("lines", queryset=OrderLine.objects.select_related("checkout").prefetch_related("back_targets__employee")),
         "checkouts__payments", "checkouts__refunds", "visit_tags__tag", "course_entries", "guests",
     ).order_by("business_date", "slip_number")
@@ -972,17 +973,17 @@ def cash_history(store, year: int, month: int) -> dict:
             "totals": {k: str(v) for k, v in totals.items()}, "profit_kind_note": PROFIT_KIND_NOTE}
 
 
+# 削除履歴に出す操作。PC の「売上・会計履歴」から暗証番号で消した会計（checkout.delete）は、店舗の方針で操作履歴に書かないので、ここにも出ない
 DELETION_ACTIONS = {
     "visit.cancel": "伝票の取消",
-    "checkout.delete": "会計の取消（記録ごと削除）",
     "checkout.void": "会計の取消",
     "checkout.refund": "返金",
     "line.cancel": "明細の取消",
     "line.cancel.batch": "明細の取消（まとめて）",
 }
 DELETION_NOTE = (
-    "伝票・会計・明細を取り消した操作の記録です（操作履歴から作っています）。印刷の履歴はありません。"
-    "「会計の取消（記録ごと削除）」は、会計の記録が画面・集計から消えるため、金額はこの履歴にだけ残ります。"
+    "卓から取り消した伝票・明細と、返金の記録です（操作履歴から作っています）。印刷の履歴はありません。"
+    "PC の「売上・会計履歴」から暗証番号で取り消した会計は、店舗の方針で操作履歴にもこの履歴にも残しません。"
 )
 
 
@@ -1000,7 +1001,7 @@ def deletion_history(store, f: date, t: date) -> dict:
     from apps.sales.models import Visit
 
     cancelled = []
-    for v in (Visit.objects.filter(store=store, status="cancelled", business_date__gte=f, business_date__lte=t)
+    for v in (Visit.objects.filter(store=store, status="cancelled", business_date__gte=f, business_date__lte=t).exclude(hide_from_history=True)
               .select_related("table", "customer").order_by("business_date", "slip_number")):
         cancelled.append({
             "id": v.id, "public_id": v.public_id, "slip_number": v.slip_number, "business_date": v.business_date.isoformat(), "table_name": v.table.name,
@@ -1037,8 +1038,6 @@ def deletion_history(store, f: date, t: date) -> dict:
         detail = ch.get("name") or ""
         if l.action == "line.cancel.batch":
             detail = f"{len(ch.get('line_ids') or [])} 件"
-        elif l.action == "checkout.delete":
-            detail = "お客様に全額返す" if ch.get("mode") == "refund" else "打ち間違い（伝票を会計前に戻す）"
         out.append({
             "id": l.id, "at": l.created_at.isoformat(), "action": l.action, "action_label": DELETION_ACTIONS[l.action],
             "user_name": str(l.user) if l.user_id else "", "visit_id": v.id if v else None, "public_id": v.public_id if v else "",

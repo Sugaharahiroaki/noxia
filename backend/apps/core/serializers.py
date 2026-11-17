@@ -157,10 +157,28 @@ class InvitationSerializer(serializers.ModelSerializer):
 
 class AuditLogSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
+    action_label = serializers.SerializerMethodField()
+    target_label = serializers.SerializerMethodField()
+    summary = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
-        fields = ["id", "store", "user", "user_name", "action", "target_type", "target_id", "changes", "request_id", "created_at"]
+        fields = ["id", "store", "user", "user_name", "action", "action_label", "target_type", "target_label", "target_id", "changes", "summary", "request_id", "created_at"]
 
     def get_user_name(self, obj):
         return str(obj.user) if obj.user else ""
+
+    def get_action_label(self, obj) -> str:
+        from .audit_labels import action_label
+
+        return action_label(obj.action)
+
+    def get_target_label(self, obj) -> str:
+        from .audit_labels import target_label
+
+        return target_label(obj.target_type)
+
+    def get_summary(self, obj) -> str:
+        from .audit_labels import changes_summary
+
+        return changes_summary(obj.changes)

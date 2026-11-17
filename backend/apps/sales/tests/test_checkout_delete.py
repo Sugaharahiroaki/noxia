@@ -50,9 +50,8 @@ class CheckoutDeleteTests(FlowBase):
         self.assertEqual((hist["checkout_count"], hist["voided_count"], Decimal(hist["total"])), (0, 0, Decimal("0")))
         after_cash = Decimal(self.c.get("/api/cash/current").json()["day"]["summary"]["theoretical_cash"])
         self.assertEqual(after_cash, before_cash - Decimal("3500"))
-        # 操作履歴にだけ残る
-        log = AuditLog.objects.filter(action="checkout.delete").latest("id")
-        self.assertEqual(log.changes["total"], co["total"])
+        # 店舗の方針で、PC からの会計の取消は操作履歴にも残さない
+        self.assertFalse(AuditLog.objects.filter(action="checkout.delete").exists())
         # 二度目は見つからない
         self.assertEqual(self.delete(co).status_code, 404)
         # 戻った明細で会計し直せる（バックも作り直される）
@@ -146,8 +145,10 @@ class CheckoutDeleteTests(FlowBase):
         # 会計・支払いは消え、伝票は取消、明細も取消
         self.assertFalse(Checkout.objects.filter(id=co["id"]).exists())
         self.assertFalse(Payment.objects.filter(checkout_id=co["id"]).exists())
-        self.assertEqual(Visit.objects.get(id=v["id"]).status, "cancelled")
+        visit = Visit.objects.get(id=v["id"])
+        self.assertEqual((visit.status, visit.hide_from_history), ("cancelled", True))
         self.assertFalse(OrderLine.objects.filter(visit_id=v["id"], status="active").exists())
+        self.assertFalse(AuditLog.objects.filter(action="checkout.delete").exists())
         # 売上ゼロ、レジは会計前と同じ（全額返した）
         hist = self.c.get("/api/sales/history").json()["summary"]
         self.assertEqual((hist["checkout_count"], Decimal(hist["total"])), (0, Decimal("0")))

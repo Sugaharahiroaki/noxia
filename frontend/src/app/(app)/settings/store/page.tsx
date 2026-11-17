@@ -263,7 +263,7 @@ function VoidPinSection({ isSet, onChanged }: { isSet: boolean; onChanged: (v: b
     <section className="card space-y-3">
       <h2 className="font-bold">会計の取消（暗証番号）</h2>
       <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-        「売上・会計履歴」で会計を取り消すときに入れる 4 桁の番号です。取消は理由を聞かず、会計の記録ごと消して伝票を会計前に戻します（いつ・いくらの会計を消したかは「操作履歴」に残ります）。
+        「売上・会計履歴」で会計を取り消すときに入れる 4 桁の番号です。取消は理由を聞かず、会計の記録ごと消して伝票を会計前に戻します。この取消は操作履歴にも削除履歴にも残しません（卓からの取消は残ります）。
         5 回続けて間違えると 10 分間取消できなくなります。番号が未設定の間は取消できません。
       </p>
       <div className="card-2">状態: {isSet ? "設定済み" : "未設定（取消できません）"}</div>
@@ -465,7 +465,10 @@ function TablesTab({ tables, canEdit, setSave }: { tables: ReturnType<typeof use
   );
 }
 
-type AuditRow = { id: number; user_name: string; action: string; target_type: string; target_id: string; changes: Record<string, unknown>; created_at: string };
+type AuditRow = {
+  id: number; user_name: string; action: string; action_label: string; target_type: string; target_label: string; target_id: string;
+  changes: Record<string, unknown>; summary: string; created_at: string;
+};
 
 function AuditTab() {
   const q = useLoad<AuditRow[]>("/api/audit/logs");
@@ -487,13 +490,13 @@ function AuditTab() {
           {q.data?.map((r) => (
             <tr key={r.id}>
               <td className="whitespace-nowrap">{fmtDateTime(r.created_at)}</td>
-              <td>{r.user_name}</td>
-              <td>{r.action}</td>
-              <td>
-                {r.target_type} {r.target_id}
+              <td className="whitespace-nowrap">{r.user_name}</td>
+              <td className="whitespace-nowrap" title={r.action}>
+                {r.action_label || r.action}
               </td>
-              <td className="text-xs" style={{ color: "var(--color-muted)" }}>
-                {JSON.stringify(r.changes).slice(0, 160)}
+              <td className="whitespace-nowrap">{r.target_type ? `${r.target_label || r.target_type} #${r.target_id}` : "--"}</td>
+              <td className="text-sm" style={{ color: "var(--color-muted)" }} title={JSON.stringify(r.changes)}>
+                {r.summary || "--"}
               </td>
             </tr>
           ))}
