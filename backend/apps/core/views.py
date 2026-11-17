@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 from . import void_pin
 from .audit import audit
 from .exceptions import ApiError
+from .idempotency import idempotent
 from .models import (
     AuditLog, Company, CompanyMembership, CompanyRole, Invitation, OperatorAccessLog, Store, StoreMembership, StoreRole,
     StoreSettings, User,
@@ -667,3 +668,71 @@ class StoreTabletView(APIView):
         if changes:
             audit(request, "settings.tablet", target=store, changes=changes)
         return Response(self._payload(store))
+
+
+def _tablet_account_manager(request) -> None:
+    """タブレット用アカウントを作る・パスワードを変えるのは、会社オーナーと運営者だけ（店舗管理者は不可）。"""
+    role = company_role_for(request.user, request.store.company)
+    if role not in ("operator", CompanyRole.OWNER):
+        raise ApiError("forbidden", "タブレット用アカウントの作成・パスワード変更は、会社オーナーだけができます。", status=403)
+    if role == "operator":
+        OperatorAccessLog.objects.create(user=request.user, company=request.store.company, store=request.store,
+                                          method=request.method, path=request.path[:300])
+
+
+def _validated_password(password: str, user=None) -> str:
+    if not password:
+        raise ApiError("validation_error", "パスワードを入力してください。")
+    try:
+        validate_password(password, user)
+    except DjangoValidationError as e:
+        raise ApiError("validation_error", "、".join(e.messages))
+    return password
+
+
+class StoreTabletAccountsView(APIView):
+    """
+    タブレット用アカウントをその場で作る {username, password, display_name}。
+    招待リンクを使わず、PC で決めたログイン ID とパスワードをそのままタブレットで入れればログインできる。
+    作ったアカウントはこの店舗の店舗管理者で、タブレット用の印が付いた状態になる（会社内の権限は一般）。
+    """
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SETTINGS_EDIT, reauth=True)]
+
+    @idempotent
+    @transaction.atomic
+    def post(self, request):
+        _tablet_account_manager(request)
+        store = request.store
+        username = (request.data.get("username") or "").strip()
+        display_name = (request.data.get("display_name") or "").strip() or f"{store.name} タブレット"
+        if not username:
+            raise ApiError("validation_error", "ログイン ID を入力してください。")
+        if User.objects.filter(username=username).exists():
+            raise ApiError("validation_error", "このログイン ID は既に使われています。別の ID にしてください。")
+        password = _validated_password(request.data.get("password") or "")
+        user = User.objects.create_user(username=username, password=password, display_name=display_name)
+        CompanyMembership.objects.create(user=user, company=store.company, role=CompanyRole.MEMBER)
+        sm = StoreMembership.objects.create(user=user, store=store, role=StoreRole.MANAGER, is_tablet=True)
+        audit(request, "settings.tablet.account_create", target=sm, changes={"username": username, "display_name": display_name})
+        return Response(StoreTabletView()._payload(store), status=201)
+
+
+class StoreTabletAccountPasswordView(APIView):
+    """タブレット用アカウントのパスワードを変える {password}（忘れたとき・入れ替えるとき）。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_SETTINGS_EDIT, reauth=True)]
+
+    @idempotent
+    @transaction.atomic
+    def post(self, request, membership_id):
+        _tablet_account_manager(request)
+        sm = StoreMembership.objects.select_related("user").filter(id=membership_id, store=request.store, is_tablet=True).first()
+        if sm is None:
+            raise ApiError("not_found", "この店舗のタブレット用アカウントが見つかりません。", status=404)
+        sm.user.set_password(_validated_password(request.data.get("password") or "", sm.user))
+        sm.user.save(update_fields=["password"])
+        audit(request, "settings.tablet.account_password", target=sm, changes={"username": sm.user.username})
+        return Response(StoreTabletView()._payload(request.store))

@@ -41,6 +41,7 @@ ACTION_LABELS: dict[str, str] = {
     "catalog.menu.load": "メニューの一括登録",
     "sales.tag.create": "タグの追加", "sales.tag.update": "タグの変更", "sales.tag.deactivate": "タグの停止",
     "settings.update": "店舗設定の変更", "settings.void_pin": "取消用の暗証番号の設定", "terms.update": "名称の変更", "terms.reset": "名称を初期値に戻す",
+    "settings.tablet": "タブレットの設定", "settings.tablet.account_create": "タブレット用アカウントの作成", "settings.tablet.account_password": "タブレット用アカウントのパスワード変更",
     "store.create": "店舗の追加", "store.update": "店舗の変更", "store.membership.update": "店舗の権限の変更",
     "company.update": "会社の変更", "company.invite": "招待", "company.membership.update": "会社の権限の変更",
     # 顧客・予約・在庫

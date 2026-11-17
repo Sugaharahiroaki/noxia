@@ -1,10 +1,10 @@
 """店舗タブレット用アカウント（メニューの出し分け）の設定。"""
 from __future__ import annotations
 
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 
 from apps.core import tablet
-from apps.core.models import AuditLog, StoreMembership
+from apps.core.models import AuditLog, CompanyMembership, StoreMembership, User
 from apps.core.testing import client_for, standard_fixture
 
 
@@ -74,3 +74,87 @@ class TabletSettingsTests(APITestCase):
         # 別店舗のオーナーからは、この店舗の配属は見えない
         oc = client_for(other.users["owner"], other.store, reauth=True)
         self.assertNotIn("manager", [m["username"] for m in oc.get("/api/store/tablet").json()["members"] if m["user_id"] == self.fx.users["manager"].id])
+
+
+class TabletAccountCreateTests(APITestCase):
+    """PC でログイン ID とパスワードを決めて、タブレット用アカウントをその場で作る（招待リンクを使わない）。"""
+
+    PASSWORD = "Tablet-pass-2026"
+
+    def setUp(self):
+        self.fx = standard_fixture()
+        self.store = self.fx.store
+        self.owner = client_for(self.fx.users["owner"], self.store, reauth=True)
+
+    def create(self, client=None, **body):
+        data = {"username": "rivon-tablet", "password": self.PASSWORD, "display_name": "店のタブレット", **body}
+        return (client or self.owner).post("/api/store/tablet/accounts", data, format="json")
+
+    def test_create_then_login_with_that_id_and_password(self):
+        r = self.create()
+        self.assertEqual(r.status_code, 201, r.content)
+        m = [x for x in r.json()["members"] if x["username"] == "rivon-tablet"]
+        self.assertEqual([(x["role"], x["is_tablet"], x["display_name"]) for x in m], [("manager", True, "店のタブレット")])
+        # そのままログインでき、タブレット用（営業の画面だけ）になっている
+        c = APIClient()
+        self.assertEqual(c.post("/api/auth/login", {"username": "rivon-tablet", "password": self.PASSWORD}, format="json").status_code, 200)
+        s = c.get("/api/auth/me").json()["stores"]
+        self.assertEqual([(x["id"], x["is_tablet"], x["role"]) for x in s], [(self.store.id, True, "manager")])
+        u = User.objects.get(username="rivon-tablet")
+        self.assertEqual(CompanyMembership.objects.get(user=u).role, "member")   # 会社の権限は一般（全店の管理はできない）
+        self.assertTrue(AuditLog.objects.filter(store=self.store, action="settings.tablet.account_create").exists())
+
+    def test_default_display_name_and_validation(self):
+        r = self.create(display_name="")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(User.objects.get(username="rivon-tablet").display_name, f"{self.store.name} タブレット")
+        self.assertEqual(self.create().status_code, 400)                                   # 同じ ID は作れない
+        self.assertEqual(self.create(username="t2", password="123").status_code, 400)       # 弱いパスワードは不可
+        self.assertEqual(self.create(username="", password=self.PASSWORD).status_code, 400)
+        self.assertFalse(User.objects.filter(username="t2").exists())
+
+    def test_only_company_owner_with_reauth(self):
+        # 店舗管理者は店舗設定を変えられても、アカウントは作れない
+        mgr = client_for(self.fx.users["manager"], self.store, reauth=True)
+        self.assertEqual(self.create(client=mgr).status_code, 403)
+        self.assertEqual(self.create(client=client_for(self.fx.users["cast"], self.store, reauth=True)).status_code, 403)
+        # オーナーでも再認証が必要
+        self.assertEqual(self.create(client=client_for(self.fx.users["owner"], self.store, reauth=False)).status_code, 403)
+        self.assertFalse(User.objects.filter(username="rivon-tablet").exists())
+
+    def test_other_store_owner_cannot_create_here(self):
+        other = standard_fixture("s2", "c2")
+        # 別会社のオーナーが X-Store-Id をこの店舗にしても拒否される
+        oc = client_for(other.users["owner"], self.store, reauth=True)
+        r = oc.post("/api/store/tablet/accounts", {"username": "x-tablet", "password": self.PASSWORD}, format="json")
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(User.objects.filter(username="x-tablet").exists())
+        # 自分の店舗で作れば、自分の店舗にだけ配属される
+        r = client_for(other.users["owner"], other.store, reauth=True).post(
+            "/api/store/tablet/accounts", {"username": "x-tablet", "password": self.PASSWORD}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(list(StoreMembership.objects.filter(user__username="x-tablet").values_list("store_id", flat=True)), [other.store.id])
+
+    def test_idempotent_double_tap(self):
+        key = {"HTTP_IDEMPOTENCY_KEY": "tablet-create-1"}
+        body = {"username": "rivon-tablet", "password": self.PASSWORD}
+        r1 = self.owner.post("/api/store/tablet/accounts", body, format="json", **key)
+        r2 = self.owner.post("/api/store/tablet/accounts", body, format="json", **key)
+        self.assertEqual((r1.status_code, r2.status_code), (201, 201))
+        self.assertEqual(User.objects.filter(username="rivon-tablet").count(), 1)
+
+    def test_change_password(self):
+        sm_id = [x["id"] for x in self.create().json()["members"] if x["username"] == "rivon-tablet"][0]
+        url = f"/api/store/tablet/accounts/{sm_id}/password"
+        self.assertEqual(client_for(self.fx.users["manager"], self.store, reauth=True).post(url, {"password": "New-tablet-pass-9"}, format="json").status_code, 403)
+        self.assertEqual(self.owner.post(url, {"password": "1"}, format="json").status_code, 400)
+        self.assertEqual(self.owner.post(url, {"password": "New-tablet-pass-9"}, format="json").status_code, 200)
+        self.assertTrue(User.objects.get(username="rivon-tablet").check_password("New-tablet-pass-9"))
+        # タブレット用でない配属・別店舗の配属は変えられない
+        mgr_sm = StoreMembership.objects.get(user=self.fx.users["manager"], store=self.store)
+        self.assertEqual(self.owner.post(f"/api/store/tablet/accounts/{mgr_sm.id}/password", {"password": "New-tablet-pass-9"}, format="json").status_code, 404)
+        other = standard_fixture("s2", "c2")
+        other_sm = StoreMembership.objects.get(user=other.users["manager"], store=other.store)
+        StoreMembership.objects.filter(id=other_sm.id).update(is_tablet=True)
+        self.assertEqual(self.owner.post(f"/api/store/tablet/accounts/{other_sm.id}/password", {"password": "New-tablet-pass-9"}, format="json").status_code, 404)
+        self.assertFalse(other.users["manager"].__class__.objects.get(id=other.users["manager"].id).check_password("New-tablet-pass-9"))
