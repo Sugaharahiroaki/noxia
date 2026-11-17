@@ -660,7 +660,7 @@ export type Customer = {
 };
 
 // --- カード決済端末 ---
-export type TerminalMode = "off" | "mock" | "mock_disabled" | "sandbox" | "production" | "production_blocked" | "incomplete";
+export type TerminalMode = "off" | "mock" | "mock_disabled" | "sandbox" | "production" | "production_blocked" | "incomplete" | "square_pos";
 
 export type TerminalStatusInfo = {
   mode: TerminalMode;
@@ -690,6 +690,9 @@ export type TerminalPayment = {
   status_label: string;
   error_message: string;
   provider_payment_id: string;
+  provider_verified: boolean;
+  /** Square リーダー: 処理中のあいだだけ、Square のアプリを開く URL（square-commerce-v1://…） */
+  handoff_url: string | null;
   checkout: number | null;
   checkout_number: number | null;
   requested_by_name: string;
@@ -700,7 +703,7 @@ export type TerminalPayment = {
 };
 
 export type TerminalConfig = {
-  provider: "none" | "mock" | "square";
+  provider: "none" | "mock" | "square" | "square_pos";
   square_environment: "sandbox" | "production";
   square_location_id: string;
   square_access_token?: string;
@@ -708,6 +711,8 @@ export type TerminalConfig = {
   square_access_token_masked: string;
   square_webhook_signature_key_masked: string;
   square_webhook_url: string;
+  square_application_id: string;
+  square_pos_callback_url: string;
   note: string;
   webhook_path: string | null;
   mode: TerminalMode;
@@ -728,6 +733,49 @@ export type CardTerminalDevice = {
   pairing_expires_at: string | null;
   paired_at: string | null;
   is_active: boolean;
+};
+
+// --- レシートプリンター ---
+export type PrinterConfig = {
+  enabled: boolean;
+  printer_name: string;
+  model_name: string;
+  connection: "tm_print_assistant";
+  paper_width: 80 | 58;
+  print_estimate: boolean;
+  print_receipt: boolean;
+  print_ryoshusho: boolean;
+  print_closing: boolean;
+  shop_name: string;
+  shop_name_default: string;
+  address1: string;
+  address2: string;
+  address3: string;
+  phone: string;
+  invoice_number: string;
+  receipt_message: string;
+  ryoshusho_proviso: string;
+  stamp_box_from: string | null;
+  updated_at: string;
+};
+
+export type SlipKind = "estimate" | "receipt" | "ryoshusho" | "closing" | "test";
+
+export type SlipRow = { kind: "text" | "pair" | "rule" | "feed" | "stamp"; left: string; right: string; align: "left" | "center" | "right"; size: 1 | 2; bold: boolean };
+
+export type PrintSlip = { kind: SlipKind; title: string; columns: number; rows: SlipRow[] };
+
+/** 概算伝票の 1 段（minutes = 0 は「いまお会計の場合」）。金額はサーバーの計算そのまま */
+export type EstimateTier = { minutes: number; planned_end_at: string | null; extended_entries: string[]; total: Money; by_method: Partial<Record<RateMethod, Money>> };
+
+export type PrintResponse = {
+  slip: PrintSlip;
+  epos_xml: string;
+  printable: boolean;
+  paper_width: 80 | 58;
+  tiers?: EstimateTier[];
+  issued_before?: boolean;
+  proviso_default?: string;
 };
 
 // --- 経理（源泉所得税・freee） -------------------------------------------------

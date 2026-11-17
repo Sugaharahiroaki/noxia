@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFloor } from "@/components/AppShell";
+import { CheckoutPrintButtons } from "@/components/Printing";
+import { openExternalApp } from "@/lib/printing";
 import { TerminalAttentionList, TerminalWaitDialog, rememberTerminal, rememberedTerminal } from "@/components/TerminalPay";
 import { useToast } from "@/components/Toast";
 import { ErrorBox, Modal, NumberPad, Spinner } from "@/components/ui";
@@ -141,6 +143,9 @@ export default function CheckoutPage() {
   }, [method, tendered, card, total, split, selected]);
 
   const terminalOn = !!term.data?.enabled && terminalId !== null && !manualCard && (method === "card" || method === "mixed");
+  // Square リーダー（iPad の Bluetooth・Square のアプリ経由）。送る先が端末ではなく Square のアプリになる
+  const squarePos = term.data?.mode === "square_pos";
+  const sendLabel = squarePos ? "Square リーダーで払う" : "決済端末に送る";
   const ready =
     usable &&
     total > 0 &&
@@ -199,6 +204,8 @@ export default function CheckoutPage() {
       });
       rememberTerminal(terminalId);
       setTp(r);
+      // Square リーダー: Square のアプリを開いて金額を渡す（金額はサーバーが決めた URL のまま）
+      if (r.handoff_url) openExternalApp(r.handoff_url);
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "";
       if (code === "terminal_busy") await loadTerminalState();
@@ -303,6 +310,9 @@ export default function CheckoutPage() {
             {cardP && <div>カード {yen(cardP.amount)}</div>}
             {rec && <div style={{ color: "var(--color-warn)" }}>ツケ（未収） {yen(rec.amount)}</div>}
           </div>
+        </div>
+        <div className="flex flex-wrap justify-center gap-3 empty:hidden">
+          <CheckoutPrintButtons checkoutId={result.id} className="btn btn-xl flex-1" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Link href={`/checkouts/${result.id}/handwrite`} className="btn btn-xl">
@@ -499,10 +509,13 @@ export default function CheckoutPage() {
             {method === "card" && terminalOn && (
               <div className="space-y-3">
                 <p className="text-2xl font-bold">
-                  「決済端末に送る」を押すと、端末に <span className="num" style={{ color: "var(--color-warn)" }}>{yen(total)}</span> が表示されます
+                  {squarePos ? "「Square リーダーで払う」を押すと、Square のアプリに " : "「決済端末に送る」を押すと、端末に "}
+                  <span className="num" style={{ color: "var(--color-warn)" }}>{yen(total)}</span> {squarePos ? "が入ります" : "が表示されます"}
                 </p>
                 <p className="text-base" style={{ color: "var(--color-muted)" }}>
-                  お客様に端末でカードを読み取ってもらうと、自動で会計まで終わります。カード番号は記録しません。
+                  {squarePos
+                    ? "お客様に Square リーダーでカードを読ませると、Square のアプリから結果が戻り、自動で会計まで終わります。カード番号は記録しません。"
+                    : "お客様に端末でカードを読み取ってもらうと、自動で会計まで終わります。カード番号は記録しません。"}
                 </p>
               </div>
             )}
@@ -582,7 +595,7 @@ export default function CheckoutPage() {
             {method === "mixed" && cardN > 0 && (
               <p className="text-base" style={{ color: "var(--color-muted)" }}>
                 {terminalOn
-                  ? `カード分 ${yen(cardN)} を決済端末に送ります。現金はお預かりして、端末の決済が終わったらお釣りを渡してください。`
+                  ? `カード分 ${yen(cardN)} を${squarePos ? " Square のアプリに渡します" : "決済端末に送ります"}。現金はお預かりして、カードの決済が終わったらお釣りを渡してください。`
                   : `カード分 ${yen(cardN)} は決済端末で決済してから確定してください。`}
               </p>
             )}
@@ -608,18 +621,20 @@ export default function CheckoutPage() {
 
             <p className="kbd-hint text-sm" style={{ color: "var(--color-muted)" }}>
               キーボード: {method === "cash" || method === "mixed" ? "数字で金額を入力 ・ " : ""}
-              {terminalOn ? "Enter で決済端末に送る" : "Enter で会計（確認画面でもう一度 Enter で確定）"}
+              {terminalOn ? `Enter で${sendLabel}` : "Enter で会計（確認画面でもう一度 Enter で確定）"}
               {method === "mixed" ? " ・ Tab でカード／お預かりの欄を切り替え" : ""}
             </p>
             {terminalOn ? (
               <button className="btn btn-xl btn-primary w-full" disabled={!ready || busy} onClick={sendToTerminal}>
                 {busy
-                  ? "端末に送っています…"
+                  ? squarePos
+                    ? "Square のアプリを開いています…"
+                    : "端末に送っています…"
                   : method === "mixed" && (cardN <= 0 || cardN >= total)
                     ? "カードの金額を入れてください"
                     : method === "mixed" && (short > 0 || tendered === "")
                       ? "お預かりを入れてください"
-                      : `決済端末に送る（カード ${yen(method === "card" ? total : cardN)}）`}
+                      : `${sendLabel}（カード ${yen(method === "card" ? total : cardN)}）`}
               </button>
             ) : (
             <button className="btn btn-xl btn-ok w-full" disabled={!ready || busy} onClick={() => setConfirmOpen(true)}>
@@ -631,7 +646,7 @@ export default function CheckoutPage() {
             )}
             {!!term.data?.enabled && (method === "card" || method === "mixed") && (
               <button className="btn btn-sm btn-ghost w-full" onClick={() => setManualCard((v) => !v)}>
-                {manualCard ? "← 決済端末に送る方法に戻す" : "端末に金額を手で入れて決済した場合はこちら（手入力で記録）"}
+                {manualCard ? `← ${sendLabel}方法に戻す` : "端末に金額を手で入れて決済した場合はこちら（手入力で記録）"}
               </button>
             )}
           </section>

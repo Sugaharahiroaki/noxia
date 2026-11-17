@@ -743,6 +743,57 @@ def quote(visit: Visit, line_ids=None, method: str | None = None):
     return totals, lines
 
 
+def estimate_tiers(visit: Visit) -> list[dict]:
+    """
+    概算伝票の「いま会計したら／延長したら」の金額（会計前に見せる用。何も記録しない）。
+    延長の段は、延長できるセット（時間制・在席あり）の延長候補の分数ごと（コースに登録した候補。30分・60分などは店舗の設定）。
+    ある分数の段では、その分数の候補を持つセットをすべてその分だけ延長したとして、未会計の明細に延長の明細を足して
+    compute_totals で計算する（画面・伝票で税やサービス料を計算しない）。候補の分数を持たないセットはその段では延長しない。
+    戻り値: [{minutes(0=いま), planned_end_at, extended_entries, total, by_method}]
+    """
+    from .pricing import LineInput
+
+    st = store_settings(visit.store)
+    lines = list(visit.lines.filter(status=LineStatus.ACTIVE, checkout__isnull=True))
+    base = line_inputs_from_orderlines(lines)
+    method_rates = has_method_rates(st)
+
+    def totals_for(inputs) -> dict:
+        t = compute_totals(inputs, st, None)
+        by_method = {}
+        if method_rates:
+            for m in RATE_METHODS:
+                by_method[m] = str(compute_totals(inputs, st, m).total)
+        return {"total": str(t.total), "by_method": by_method}
+
+    entries = [
+        e for e in visit.course_entries.filter(is_active=True).select_related("course").prefetch_related("guests", "course__extension_options")
+        if not e.is_unlimited and e.planned_end_at is not None and entry_present_count(e) > 0
+    ]
+    ends = [e.planned_end_at for e in entries]
+    tiers = [{"minutes": 0, "planned_end_at": timezone.localtime(max(ends)).isoformat() if ends else None, "extended_entries": [], **totals_for(base)}]
+
+    cands = {e.id: extension_candidates(e) for e in entries}
+    multi = len(entries) > 1  # セットが 1 つなら「どのセットを延長するか」は出さない
+    for minutes in sorted({c["minutes"] for cs in cands.values() for c in cs}):
+        extra = []
+        extended = []
+        new_ends = []
+        for e in entries:
+            cand = next((c for c in cands[e.id] if c["minutes"] == minutes), None)
+            if cand is None:
+                new_ends.append(e.planned_end_at)
+                continue
+            present = entry_present_count(e)
+            extra.append(LineInput(id=None, line_type=LineType.EXTENSION, amount=course_amount(st, cand["price"], present),
+                                   tax_rate=D(e.course.tax_rate), tax_included=st.prices_include_tax))
+            extended.append(e.label or e.course_name)
+            new_ends.append(e.planned_end_at + timedelta(minutes=minutes))
+        tiers.append({"minutes": minutes, "planned_end_at": timezone.localtime(max(new_ends)).isoformat(),
+                      "extended_entries": extended if multi else [], **totals_for(base + extra)})
+    return tiers
+
+
 # --- 会計確定 -------------------------------------------------------------------
 @transaction.atomic
 def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payment_id=None) -> Checkout:

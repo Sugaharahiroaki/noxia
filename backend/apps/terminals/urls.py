@@ -10,6 +10,7 @@ urlpatterns = [
     path("terminals/devices/<int:terminal_id>/pair", views.TerminalPairView.as_view()),
     path("terminals/status", views.TerminalStatusView.as_view()),
     path("terminals/webhook/<str:token>", csrf_exempt(views.SquareWebhookView.as_view())),
+    path("terminals/square-pos/callback", csrf_exempt(views.SquarePosCallbackView.as_view())),
     path("visits/<int:visit_id>/terminal-payments", views.VisitTerminalPaymentsView.as_view()),
     path("terminal-payments/<int:tp_id>", views.TerminalPaymentDetailView.as_view()),
     path("terminal-payments/<int:tp_id>/cancel", views.TerminalPaymentCancelView.as_view()),

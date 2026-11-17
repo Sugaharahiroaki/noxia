@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFloor } from "@/components/AppShell";
 import { DailyPayoutBoard } from "@/components/DailyPayouts";
+import { PrintDialog, usePrinter } from "@/components/Printing";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, NumberPad, PageHeader, SaveStatus, Spinner, Stat, type SaveState } from "@/components/ui";
 import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/lib/api";
@@ -299,6 +300,7 @@ function DayPanel({ day, onMovement, onClose, onReload, onDeposit, onRevise, onR
           開店 {fmtTime(day.opened_at)} {day.opened_by_name && `(${day.opened_by_name})`}
           {closed && ` ・ 締め ${fmtDateTime(day.closed_at)} (${day.closed_by_name})`}
         </span>
+        <ClosingPrint day={day} />
       </div>
       {!closed && (day.open_visits?.length ?? 0) > 0 && (
         <div className="card space-y-3" style={{ borderColor: "var(--color-danger)", borderWidth: 2, background: "rgba(240,91,91,0.12)" }} role="alert">
@@ -430,6 +432,21 @@ function DayPanel({ day, onMovement, onClose, onReload, onDeposit, onRevise, onR
       </div>
 
     </div>
+  );
+}
+
+/** 精算伝票の印刷（プリンターで精算伝票を出す設定のときだけ）。締め前に出すと「締め前」と印字される */
+function ClosingPrint({ day }: { day: BusinessDay }) {
+  const printer = usePrinter();
+  const [open, setOpen] = useState(false);
+  if (!printer.can("closing")) return null;
+  return (
+    <>
+      <button className="btn btn-lg ml-auto" onClick={() => setOpen(true)} data-testid="print-closing">
+        🖨 精算伝票{day.status === "closed" ? "" : "（締め前）"}
+      </button>
+      {open && <PrintDialog title={day.status === "closed" ? "精算伝票" : "精算伝票（締め前）"} path={`/api/cash/days/${day.id}/print/closing`} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

@@ -18,6 +18,10 @@ const MODE_TEXT: Record<TerminalMode, { text: string; tone: "ok" | "warn" | "dan
     text: "本番の設定ですが、サーバー側で送信が止められています（CARD_TERMINAL_LIVE_ENABLED）。運用開始時にサーバー管理者が有効にします。",
     tone: "danger",
   },
+  square_pos: {
+    text: "Square リーダー: 会計画面から Square のアプリを開き、お客様がカードを読ませると、結果が NOXIA に戻って会計が終わります。",
+    tone: "ok",
+  },
 };
 
 export function TerminalSettingsTab() {
@@ -53,6 +57,8 @@ export function TerminalSettingsTab() {
         square_environment: form.square_environment,
         square_location_id: form.square_location_id,
         square_webhook_url: form.square_webhook_url,
+        square_application_id: form.square_application_id,
+        square_pos_callback_url: form.square_pos_callback_url,
         note: form.note,
       };
       if (token) body.square_access_token = token;
@@ -96,17 +102,50 @@ export function TerminalSettingsTab() {
           いまの動き: {mode.text}
         </p>
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-          会計画面の「決済端末に送る」で、金額が NOXIA のサーバーから決済会社を通って店の端末に届きます。PC からでも iPad からでも同じように使えます。
-          カード番号は NOXIA には届かず、保存もしません。
+          Square ターミナル: 会計画面の「決済端末に送る」で、金額が NOXIA のサーバーから決済会社を通って店の端末に届きます（PC・iPad どちらからでも）。
+          Square リーダー: iPad に Bluetooth でつないだリーダーを、Square のアプリ経由で使います（その iPad からだけ）。
+          どちらもカード番号は NOXIA には届かず、保存もしません。
         </p>
 
         <Field label="接続する決済会社">
           <select className="input" value={form.provider} disabled={!canEdit} onChange={(e) => set({ provider: e.target.value as TerminalConfig["provider"] })}>
             <option value="none">未接続（端末に手入力）</option>
             {(form.mock_allowed || form.provider === "mock") && <option value="mock">模擬端末（テスト用・実際の決済なし）</option>}
-            <option value="square">Square ターミナル</option>
+            <option value="square">Square ターミナル（据え置き・Wi-Fi）</option>
+            <option value="square_pos">Square リーダー（iPad の Bluetooth・Square のアプリ経由）</option>
           </select>
         </Field>
+
+        {form.provider === "square_pos" && (
+          <div className="space-y-3" data-testid="square-pos-settings">
+            <ol className="text-base space-y-1 list-decimal pl-6">
+              <li>レジの iPad に Square の「Square POS レジ」アプリを入れてログインし、アプリの設定で Square リーダーを Bluetooth で接続します。</li>
+              <li>
+                Square Developer（developer.squareup.com）でアプリケーションを作り、「Point of Sale API」の Web の Callback URL に、下の「戻り先 URL」と同じものを登録します。
+              </li>
+              <li>そのアプリケーションの「アプリケーション ID」を下に入れて保存し、下の「端末を追加」で 1 台登録します（例: レジの iPad）。</li>
+              <li>アクセストークンとロケーション ID も入れておくと、Square から戻ってきた結果を Square に問い合わせて、金額が合っているか確かめてから会計にします（おすすめ）。</li>
+            </ol>
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              会計画面で「Square リーダーで払う」を押すと Square のアプリが開いて金額が入ります。お客様がカードを読ませると、Square のアプリが NOXIA の戻り先を開いて会計が終わります。
+              NOXIA をホーム画面から開いているときは、戻り先は Safari で開きます。そのあと NOXIA に切り替えると会計完了が出ています。Square の Point of Sale API には練習用（Sandbox）がないので、確かめるときは実際の小さい金額で試します。
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field label="アプリケーション ID（必須）" hint="Square Developer → アプリケーション → Credentials。sq0idp- で始まります。">
+                <input className="input" value={form.square_application_id} disabled={!canEdit} onChange={(e) => set({ square_application_id: e.target.value })} placeholder="sq0idp-…" />
+              </Field>
+              <Field label="戻り先 URL（必須・Square に登録したものと同じ）" hint={`この NOXIA の場合: ${origin.startsWith("https://") ? origin : "https://（公開するドメイン）"}/square-callback`}>
+                <input className="input" value={form.square_pos_callback_url} disabled={!canEdit} onChange={(e) => set({ square_pos_callback_url: e.target.value })} placeholder="https://…/square-callback" />
+              </Field>
+              <Field label="アクセストークン（照合用・任意）" hint={form.square_access_token_masked ? `保存済み（${form.square_access_token_masked}）。変えるときだけ入力します。` : "本番（Production）のアクセストークン。注文の読み取りに使います。"}>
+                <input className="input" type="password" autoComplete="off" value={token} disabled={!canEdit} onChange={(e) => setToken(e.target.value)} placeholder={form.square_access_token_masked || ""} />
+              </Field>
+              <Field label="ロケーション ID（任意）" hint="入れると、その店舗（ロケーション）の取引かも確かめます。">
+                <input className="input" value={form.square_location_id} disabled={!canEdit} onChange={(e) => set({ square_location_id: e.target.value })} />
+              </Field>
+            </div>
+          </div>
+        )}
 
         {form.provider === "square" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -183,7 +222,13 @@ export function TerminalSettingsTab() {
           )}
           {canEdit && (
             <div className="flex gap-2">
-              <input className="input flex-1" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="端末名（例: レジ横）" maxLength={40} />
+              <input
+                className="input flex-1"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={saved.provider === "square_pos" ? "名前（例: レジの iPad）" : "端末名（例: レジ横）"}
+                maxLength={40}
+              />
               <button
                 className="btn btn-lg"
                 disabled={devBusy || !newName.trim()}

@@ -20,6 +20,9 @@ def effective_mode(cfg: TerminalConfig) -> str:
         return "off"
     if cfg.provider == TerminalProviderKind.MOCK:
         return "mock" if settings.CARD_TERMINAL_MOCK_ENABLED else "mock_disabled"
+    if cfg.provider == TerminalProviderKind.SQUARE_POS:
+        # 決済は Square のアプリでお客様がカードを読ませたときだけ（NOXIA からは決済会社へ送らない）ので、本番の送信止めの対象外
+        return "square_pos" if cfg.square_application_id and cfg.square_pos_callback_url else "incomplete"
     if not cfg.square_access_token or not cfg.square_location_id:
         return "incomplete"
     if cfg.square_environment == "production":
@@ -42,7 +45,8 @@ class TerminalConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = TerminalConfig
         fields = ["provider", "square_environment", "square_location_id", "square_access_token", "square_webhook_signature_key",
-                  "square_access_token_masked", "square_webhook_signature_key_masked", "square_webhook_url", "note",
+                  "square_access_token_masked", "square_webhook_signature_key_masked", "square_webhook_url",
+                  "square_application_id", "square_pos_callback_url", "note",
                   "webhook_path", "mode", "live_enabled", "mock_allowed", "updated_at"]
         read_only_fields = ["updated_at"]
 
@@ -81,6 +85,15 @@ class TerminalConfigSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("https:// で始まる URL を入れてください（Square に登録したものと同じ）。")
         return value
 
+    def validate_square_pos_callback_url(self, value):
+        value = (value or "").strip()
+        if value and not value.startswith("https://"):
+            raise serializers.ValidationError("https:// で始まる URL を入れてください（Square の Developer Console に登録したものと同じ）。")
+        return value
+
+    def validate_square_application_id(self, value):
+        return (value or "").strip()
+
 
 class CardTerminalSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source="get_status_display", read_only=True)
@@ -102,13 +115,26 @@ class TerminalPaymentSerializer(serializers.ModelSerializer):
     slip_number = serializers.IntegerField(source="visit.slip_number", read_only=True)
     table_name = serializers.SerializerMethodField()
     requested_by_name = serializers.SerializerMethodField()
+    handoff_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TerminalPayment
         fields = ["id", "visit", "slip_number", "table_name", "terminal", "terminal_name", "provider", "is_mock", "amount", "cash_amount",
                   "cash_tendered", "change_amount", "line_ids", "status", "status_label", "error_message", "provider_payment_id",
+                  "provider_verified", "handoff_url",
                   "checkout", "checkout_number", "requested_by_name", "created_at", "finished_at", "resolved_at", "resolution_note"]
         read_only_fields = fields
+
+    def get_handoff_url(self, obj):
+        """Square リーダー: 処理中のあいだだけ、Square のアプリを開く URL（もう一度開くのにも使う）。"""
+        if obj.provider != TerminalProviderKind.SQUARE_POS:
+            return None
+        from . import services
+
+        try:
+            return services.square_pos_handoff_url(obj)
+        except ApiError:
+            return None
 
     def get_is_mock(self, obj):
         return obj.provider == TerminalProviderKind.MOCK

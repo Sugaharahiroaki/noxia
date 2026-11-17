@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { RequireCaps } from "@/components/common";
 import { DesignationSettings } from "@/components/DesignationSettings";
+import { PrinterSettingsTab } from "@/components/PrinterSettings";
 import { useToast } from "@/components/Toast";
 import { Empty, ErrorBox, Spinner } from "@/components/ui";
 import { api, errorMessage, newIdempotencyKey } from "@/lib/api";
@@ -17,7 +18,8 @@ import { useLoad } from "@/lib/useLoad";
  * 項目が 1 つだけの設定（料金・会計アラート・料金計算）は、中央と右を合わせた広いフォームにする。
  * すべて既存の API（store/tables・courses・categories・products・tags、store/settings）につなぐ。
  * 読むのは settings.view、書くのは catalog.edit（マスタ）／settings.edit＋パスワードの再確認（店舗設定）。
- * プリンター・レシート・領収書・キッチン印刷・注文チャイム・名称変更は出さない（UNIFIED_PLAN 6 章 Q11）。
+ * プリンター（レシートプリンター 1 台・Bluetooth はエプソンのアプリ経由）は 2026-11-17 に追加（UNIFIED_PLAN 6 章 Q11 を変更）。
+ * キッチン印刷・注文チャイム・名称変更は出さない。
  */
 
 type Row = Record<string, unknown> & { id?: number };
@@ -49,7 +51,8 @@ type MasterSection = {
 };
 type FormSection = { kind: "form"; key: string; label: string; intro: string; fields: FieldSpec[] };
 type DesignationSection = { kind: "designations"; key: string; label: string };
-type Section = MasterSection | FormSection | DesignationSection;
+type PrinterSection = { kind: "printer"; key: string; label: string };
+type Section = MasterSection | FormSection | DesignationSection | PrinterSection;
 
 const COLORS = ["", "#d9534f", "#e8801a", "#c9a227", "#1a8a52", "#1f6fd0", "#6f42c1", "#8a6d3b", "#555555"];
 const ROUND: Option[] = [
@@ -233,6 +236,7 @@ const SECTIONS: Section[] = [
       { key: "total_rounding_mode", label: "合計の丸め方", type: "select", options: ROUND },
     ],
   },
+  { kind: "printer", key: "printer", label: "プリンター" },
 ];
 
 export default function PosSettingsPage() {
@@ -288,6 +292,10 @@ function Inner() {
           <MasterEditor key={section.key} section={section} ctx={ctx} onCategoriesChanged={() => categories.reload()} pane={pane} />
         ) : section.kind === "designations" ? (
           <DesignationSettings key={section.key} variant="pane" title={section.label} />
+        ) : section.kind === "printer" ? (
+          <div key={section.key} className="min-h-0 overflow-y-auto p-2" style={pane}>
+            <PrinterSettingsTab />
+          </div>
         ) : (
           <SettingsForm key={section.key} section={section} pane={pane} />
         )}

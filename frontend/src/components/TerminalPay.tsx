@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { fmtTime, yen } from "@/lib/format";
+import { openExternalApp } from "@/lib/printing";
 import type { TerminalPayment } from "@/lib/types";
 
 const POLL_MS = 2000;
@@ -80,7 +81,10 @@ export function TerminalWaitDialog({
   const cash = Number(tp.cash_amount) > 0;
 
   return (
-    <Modal title={waiting ? "決済端末でお支払い中" : failed ? "カード決済できませんでした" : attention ? "要確認" : "決済端末"} onClose={waiting ? undefined : onClose}>
+    <Modal
+      title={waiting ? (tp.provider === "square_pos" ? "Square リーダーでお支払い中" : "決済端末でお支払い中") : failed ? "カード決済できませんでした" : attention ? "要確認" : "決済端末"}
+      onClose={waiting ? undefined : onClose}
+    >
       <div className="space-y-4" data-testid="terminal-dialog" data-status={tp.status}>
         <div className="text-center space-y-1">
           <div className="text-lg" style={{ color: "var(--color-muted)" }}>
@@ -96,12 +100,26 @@ export function TerminalWaitDialog({
           )}
         </div>
 
-        {tp.status === "pending" && (
+        {tp.status === "pending" && tp.provider !== "square_pos" && (
           <div className="card-2 text-center space-y-1">
             <div className="text-2xl font-bold">端末にカードをかざす・差し込んでもらってください</div>
             <div className="text-base" style={{ color: "var(--color-muted)" }}>
               端末で決済が終わると、自動で会計まで完了します（{fmtTime(tp.created_at)} に送信）
             </div>
+          </div>
+        )}
+        {tp.status === "pending" && tp.provider === "square_pos" && (
+          <div className="card-2 text-center space-y-2" data-testid="square-pos-pending">
+            <div className="text-2xl font-bold">Square のアプリで、お客様にカードを読ませてください</div>
+            <div className="text-base" style={{ color: "var(--color-muted)" }}>
+              決済が終わると Square のアプリが NOXIA に結果を返し、自動で会計まで完了します（{fmtTime(tp.created_at)} に開始）。
+              Safari が開いたときは、そのあと NOXIA に切り替えてください。
+            </div>
+            {tp.handoff_url && (
+              <button className="btn btn-xl btn-primary w-full" onClick={() => tp.handoff_url && openExternalApp(tp.handoff_url)} data-testid="square-pos-open">
+                Square のアプリを開く
+              </button>
+            )}
           </div>
         )}
         {tp.status === "approved" && <div className="text-2xl font-bold text-center">承認されました。会計を記録しています…</div>}
@@ -150,7 +168,7 @@ export function TerminalWaitDialog({
 
         {tp.status === "pending" && (
           <button className="btn btn-lg w-full" disabled={busy} onClick={() => act("cancel")}>
-            送信を取り消す（別の方法で払う）
+            {tp.provider === "square_pos" ? "取り消す（Square で決済していないとき・別の方法で払う）" : "送信を取り消す（別の方法で払う）"}
           </button>
         )}
         {!waiting && (

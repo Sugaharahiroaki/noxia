@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFloor } from "@/components/AppShell";
 import { CourseActionDialog } from "@/components/CourseActionDialog";
 import { GuestLeaveDialog } from "@/components/GuestLeaveDialog";
+import { CheckoutPrintButtons, EstimateDialog } from "@/components/Printing";
 import { sortByShift, StaffButton, useShiftGuard } from "@/components/ShiftGuard";
 import { TagChip, TagPicker } from "@/components/TagPicker";
 import { useToast } from "@/components/Toast";
@@ -53,6 +54,7 @@ export default function VisitDetailPage() {
   const [cancelVisit, setCancelVisit] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [estimateOpen, setEstimateOpen] = useState(false);
   const [extendAsk, setExtendAsk] = useState<{ entry: CourseEntry; option: ExtendOption } | null>(null);
   const [extendBusy, setExtendBusy] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
@@ -175,6 +177,7 @@ export default function VisitDetailPage() {
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
+            {last && last.status !== "voided" && <CheckoutPrintButtons checkoutId={last.id} />}
             {last && (
               <Link href={`/checkouts/${last.id}/handwrite`} className="btn btn-xl btn-primary">
                 手書き用の金額を見る
@@ -536,7 +539,10 @@ export default function VisitDetailPage() {
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <button className="btn btn-xl" style={{ minWidth: 120 }} onClick={() => router.push(`/visits/${visit.id}/bill`)}>
+          <button className="btn btn-xl" style={{ minWidth: 110 }} onClick={() => setEstimateOpen(true)} data-testid="open-estimate">
+            概算
+          </button>
+          <button className="btn btn-xl" style={{ minWidth: 110 }} onClick={() => router.push(`/visits/${visit.id}/bill`)}>
             明細
           </button>
           <button className="btn btn-xl btn-primary" style={{ minWidth: 150 }} onClick={() => router.push(`/visits/${visit.id}/order`)}>
@@ -547,6 +553,9 @@ export default function VisitDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* 概算（いまお会計なら／延長したら）。お客様に見せる・印刷して渡す */}
+      {estimateOpen && <EstimateDialog visitId={visitId} tableName={visit.table_name} onClose={() => setEstimateOpen(false)} />}
 
       {/* 出勤していない人を選んだときの確認（上の選択画面より手前に出る） */}
       {shiftGuard}

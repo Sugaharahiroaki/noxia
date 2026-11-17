@@ -22,6 +22,9 @@ class TerminalProviderKind(models.TextChoices):
     NONE = "none", "未接続（端末に手入力）"
     MOCK = "mock", "模擬端末（テスト用・実際の決済なし）"
     SQUARE = "square", "Square ターミナル"
+    # iPad に Bluetooth でつないだ Square リーダー。iPad の Safari は Bluetooth の機器に直接つなげないので、
+    # NOXIA → Square のアプリ（Point of Sale API の URL）→ リーダー、の順に金額を渡し、結果は Square のアプリから戻り先 URL で受け取る
+    SQUARE_POS = "square_pos", "Square リーダー（Bluetooth・Square のアプリ経由）"
 
 
 class TerminalConfig(TimestampedModel):
@@ -35,6 +38,9 @@ class TerminalConfig(TimestampedModel):
     square_location_id = models.CharField(max_length=64, blank=True)
     square_webhook_signature_key = models.CharField(max_length=128, blank=True)
     square_webhook_url = models.CharField("Square に登録した通知先URL（署名の検証に使う）", max_length=300, blank=True)
+    # Square リーダー（Point of Sale API）
+    square_application_id = models.CharField("Square のアプリケーション ID（Point of Sale API）", max_length=80, blank=True)
+    square_pos_callback_url = models.CharField("Square に登録した戻り先 URL（Web Callback URL）", max_length=300, blank=True)
     note = models.CharField(max_length=300, blank=True)
 
 
@@ -96,6 +102,10 @@ class TerminalPayment(TimestampedModel):
     status = models.CharField(max_length=20, choices=TerminalPaymentStatus.choices, default=TerminalPaymentStatus.PENDING)
     provider_checkout_id = models.CharField(max_length=100, blank=True)
     provider_payment_id = models.CharField(max_length=100, blank=True)
+    # Square リーダー: Square のアプリから戻ってきたときに、どの決済かを見分ける使い捨ての値（推測できない乱数）
+    callback_token = models.CharField(max_length=64, blank=True, db_index=True)
+    # 決済会社に結果を問い合わせて金額まで確かめたか（Square リーダーでアクセストークンが無いときは False のまま）
+    provider_verified = models.BooleanField(default=False)
     error_message = models.CharField(max_length=300, blank=True)
     checkout = models.OneToOneField("sales.Checkout", null=True, blank=True, on_delete=models.SET_NULL, related_name="terminal_payment")
     requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")

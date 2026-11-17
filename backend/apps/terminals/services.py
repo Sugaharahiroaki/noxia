@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import secrets
 import uuid
 
 from django.db import transaction
@@ -87,8 +88,74 @@ def request_payment(store, user, visit_id, data: dict) -> TerminalPayment:
     )
     result = provider.create_checkout(terminal, card_amount, reference=f"{store.code}-{visit.slip_number}-{tp.id}", idempotency_key=f"noxia-tp-{tp.id}-{uuid.uuid4().hex[:8]}")
     tp.provider_checkout_id = result.checkout_id
-    tp.save(update_fields=["provider_checkout_id", "updated_at"])
+    if cfg.provider == "square_pos":
+        # Square のアプリから戻ってきたときに、この決済を見分ける値（ログインなしの戻り先で使うので推測できない乱数）
+        tp.callback_token = secrets.token_urlsafe(32)
+    tp.save(update_fields=["provider_checkout_id", "callback_token", "updated_at"])
     return tp
+
+
+def square_pos_handoff_url(tp: TerminalPayment) -> str | None:
+    """処理中の Square リーダーの決済を、Square のアプリで始める URL（square-commerce-v1://…）。それ以外は None。"""
+    if tp.provider != "square_pos" or tp.status != TerminalPaymentStatus.PENDING or not tp.callback_token:
+        return None
+    from .providers import SquarePosProvider
+
+    provider = SquarePosProvider(config_for(tp.store))
+    table = tp.visit.table.name if tp.visit.table_id else ""
+    return provider.handoff_url(tp.amount, tp.callback_token, f"NOXIA {table} 伝票#{tp.visit.slip_number}")
+
+
+def apply_square_pos_result(data: dict) -> TerminalPayment | None:
+    """
+    Square のアプリからの戻り（?data= の中身）を反映する。state が一致する決済だけ。何度呼ばれても会計は 1 つ。
+      成功: status=ok, transaction_id（オフライン決済では無い）, client_transaction_id
+      失敗: status=error, error_code（payment_canceled など）
+    アクセストークンがあれば Square に問い合わせて、完了と金額を確かめてから会計にする（合わなければ「要確認」）。
+    """
+    from .providers import SQUARE_POS_ERRORS, SquarePosProvider
+
+    token = str(data.get("state") or "")
+    if len(token) < 20:
+        return None
+    tp = TerminalPayment.objects.select_related("store", "visit").filter(provider="square_pos", callback_token=token).first()
+    if tp is None:
+        return None
+    ok = data.get("status") == "ok"
+    txn = str(data.get("transaction_id") or "")[:100]
+    client_txn = str(data.get("client_transaction_id") or "")[:100]
+    verified, problem = False, ""
+    if ok and tp.status == TerminalPaymentStatus.PENDING:
+        provider = SquarePosProvider(config_for(tp.store))
+        if txn and provider.can_verify():
+            verified, problem = provider.verify_order(txn, tp.amount)
+    with transaction.atomic():
+        locked = TerminalPayment.objects.select_for_update().get(pk=tp.pk)
+        if locked.status != TerminalPaymentStatus.PENDING:
+            if ok and locked.status in (TerminalPaymentStatus.CANCELED, TerminalPaymentStatus.DECLINED) and not locked.checkout_id:
+                # NOXIA で取り消したあとに、Square では決済が終わっていた
+                locked.status = TerminalPaymentStatus.NEEDS_ATTENTION
+                locked.provider_payment_id = txn or client_txn
+                locked.error_message = ("Square では決済済みです（NOXIA で取り消したあとに結果が届きました）。"
+                                        "伝票を確認し、二重にならないよう必要なら Square のアプリで返金してください。")[:300]
+                locked.save()
+            return locked
+        if not ok:
+            code = str(data.get("error_code") or "")
+            detail = SQUARE_POS_ERRORS.get(code, f"Square のアプリで決済できませんでした（{code or '理由不明'}）。")
+            _apply_provider_status(locked, "CANCELED" if code == "payment_canceled" else "FAILED", [], detail)
+            return locked
+        if problem:
+            locked.status = TerminalPaymentStatus.NEEDS_ATTENTION
+            locked.provider_payment_id = txn
+            locked.error_message = f"{problem} 伝票と Square の取引を確認してください。"[:300]
+            locked.finished_at = timezone.now()
+            locked.save()
+            return locked
+        locked.provider_verified = verified
+        locked.save(update_fields=["provider_verified", "updated_at"])
+        _apply_provider_status(locked, "COMPLETED", [txn or client_txn or f"SQPOS-{locked.id}"])
+    return finalize(tp.id)
 
 
 def _apply_provider_status(tp: TerminalPayment, status: str, payment_ids: list[str], detail: str = "") -> None:
@@ -114,8 +181,11 @@ def finalize(tp_id: int) -> TerminalPayment:
         tp = TerminalPayment.objects.select_for_update().select_related("visit", "store", "terminal").get(pk=tp_id)
         if tp.status != TerminalPaymentStatus.APPROVED or tp.checkout_id:
             return tp
+        note = f"決済端末（{tp.terminal.name}）"
+        if tp.provider == "square_pos" and not tp.provider_verified:
+            note += "・Square に照合していない"
         payments = [{"method": "card", "amount": str(tp.amount), "card_reference": (tp.provider_payment_id or f"TERMINAL-{tp.id}")[:60],
-                     "note": f"決済端末（{tp.terminal.name}）"}]
+                     "note": note}]
         if tp.cash_amount > 0:
             payments.append({"method": "cash", "amount": str(tp.cash_amount), "tendered": str(tp.cash_tendered or tp.cash_amount)})
         try:
@@ -209,8 +279,9 @@ def add_terminal(store, name: str) -> CardTerminal:
     if CardTerminal.objects.filter(store=store, name=name).exists():
         raise ApiError("validation_error", "同じ名前の端末があります。")
     t = CardTerminal.objects.create(store=store, provider=cfg.provider, name=name)
-    if cfg.provider == "mock":
-        t.device_id = f"mock_device_{t.id}"
+    if cfg.provider in ("mock", "square_pos"):
+        # 模擬端末と Square リーダー（Bluetooth の接続は Square のアプリ側）は、NOXIA でのペアリングが無いのですぐ使える
+        t.device_id = f"{cfg.provider}_device_{t.id}"
         t.status = TerminalStatus.PAIRED
         t.paired_at = timezone.now()
         t.save()

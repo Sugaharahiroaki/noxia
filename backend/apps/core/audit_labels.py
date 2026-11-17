@@ -55,7 +55,8 @@ ACTION_LABELS: dict[str, str] = {
     # カード端末
     "terminal.config.update": "カード端末の設定", "terminal.device.add": "端末の追加", "terminal.device.update": "端末の変更", "terminal.device.pair_start": "端末のペアリング",
     "terminal.payment.request": "端末へ送信", "terminal.payment.cancel": "端末の送信取消", "terminal.payment.resolve": "端末の結果確認", "terminal.payment.status": "端末の状態確認",
-    "terminal.payment.simulate": "端末の模擬操作",
+    "terminal.payment.simulate": "端末の模擬操作", "terminal.payment.square_pos_result": "Square リーダーの結果",
+    "printing.config.update": "プリンターの設定", "print.ryoshusho": "領収書の発行",
     # 領収書・LINE
     "expenses.receipt.create": "領収書の登録", "expenses.receipt.edit": "領収書の修正", "expenses.receipt.file": "領収書の画像",
     "line.integration.update": "LINE 連携の設定", "line.user.create": "LINE 友だちの登録", "line.user.update": "LINE 友だちの変更",

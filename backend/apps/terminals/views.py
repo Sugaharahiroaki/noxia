@@ -127,7 +127,7 @@ class TerminalStatusView(APIView):
     def get(self, request):
         cfg = services.config_for(request.store)
         mode = effective_mode(cfg)
-        usable = mode in ("mock", "sandbox", "production")
+        usable = mode in ("mock", "sandbox", "production", "square_pos")
         terminals = list(services.active_terminals(request.store)) if usable else []
         attention = _payment_qs(request.store).filter(status=TerminalPaymentStatus.NEEDS_ATTENTION, resolved_at__isnull=True)[:20]
         return Response({
@@ -220,6 +220,42 @@ class TerminalPaymentResolveView(APIView):
             tp.save()
         audit(request, "terminal.payment.resolve", target=tp, changes={"note": tp.resolution_note})
         return Response(_payment_data(request.store, tp.id))
+
+
+# --- Square リーダー: Square のアプリからの戻り -------------------------------------------
+class SquarePosCallbackView(APIView):
+    """
+    Square のアプリが戻り先 URL（NOXIA の /square-callback）を開いたとき、その画面が ?data= の中身をそのまま送ってくる。
+    ホーム画面から開いた NOXIA と Safari ではログインが別になるため、ログインは要らない（代わりに、決済ごとの推測できない値 state で見分ける）。
+    何度送られても会計は 1 つ。返すのは結果と伝票・会計の番号だけ。
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        data = request.data.get("data")
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except ValueError:
+                data = None
+        if not isinstance(data, dict):
+            raise ApiError("validation_error", "Square のアプリからの結果を読めませんでした。")
+        tp = services.apply_square_pos_result(data)
+        if tp is None:
+            raise ApiError("not_found", "対応する決済が見つかりません（古い画面からの戻りかもしれません）。", status=404)
+        audit(request, "terminal.payment.square_pos_result", target=tp, store=tp.store,
+              changes={"status": tp.status, "square_status": str(data.get("status") or ""), "error_code": str(data.get("error_code") or ""),
+                       "verified": tp.provider_verified, "checkout": tp.checkout_id})
+        return Response({
+            "status": tp.status,
+            "status_label": tp.get_status_display(),
+            "message": tp.error_message,
+            "visit": tp.visit_id,
+            "checkout": tp.checkout_id,
+            "store": tp.store_id,
+        })
 
 
 # --- 決済会社からの通知 ---------------------------------------------------------
