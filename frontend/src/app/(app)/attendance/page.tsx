@@ -27,12 +27,19 @@ type BackEntry = { id: number; employee_name: string; visit_slip_number: number 
 type Statement = {
   employee_id: number;
   employee_name: string;
+  start_date: string;
+  end_date: string;
   worked_minutes: number;
   wage_amount: string;
   back_amount: string;
   gross_amount: string;
   paid_amount: string;
+  withheld_amount: string;
+  deducted_amount: string;
   balance_amount: string;
+  payment_method: string;
+  payment_method_label: string;
+  daily_fixed_amount: string | null;
   missing_wage_setting: boolean;
   shifts: { shift_id: number; business_date: string; minutes: number; hourly_wage: string | null; amount: string; open: boolean }[];
   notice: string;
@@ -91,7 +98,7 @@ export default function AttendancePage() {
             )}
             {can("payroll.view_all") && (
               <button className={`btn btn-sm ${tab === "pay" ? "btn-primary" : ""}`} onClick={() => setTab("pay")}>
-                期間の集計（確認用）
+                支払集計・締め払い
               </button>
             )}
           </>
@@ -534,10 +541,22 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
 
   return (
     <div className="space-y-3">
-      <div className="card-2" style={{ borderColor: "var(--color-accent)" }}>
-        <p className="text-lg font-semibold">日払いでその日に精算しているので、ここでの「締め」作業は不要です。</p>
-        <p className="text-base" style={{ color: "var(--color-muted)" }}>
-          レジ締めとも関係ありません。期間ごとの支払額・未渡しの残りを確認したいときに使ってください。
+      <div className="card-2 space-y-1" style={{ borderColor: "var(--color-accent)" }}>
+        <p className="text-lg font-semibold">期間ごとの「支給対象額」「渡した額」「残額（締めで渡す額）」を見る画面です。</p>
+        <ul className="text-base list-disc pl-5" style={{ color: "var(--color-muted)" }}>
+          <li>
+            <strong>日払いの人</strong>: その日に全額を渡しているので、残額はふつう 0 円です。ここでの作業はいりません。
+          </li>
+          <li>
+            <strong>日払い＋締め払いの人</strong>: 毎日の日払い（契約で決めた 1日の額）を引いた残りが「残額」です。締めの日は、期間を締めの範囲（「今月」など）にして
+            残額を渡し、「締め払いを記録」で記録してください。残額が 0 円になります。
+          </li>
+          <li>
+            <strong>月払いの人</strong>: 期間の支給対象額がそのまま残額です。渡したら同じく「締め払いを記録」で記録します。
+          </li>
+        </ul>
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          日払い（レジの現金から渡した額）はレジ締めの現金出金に自動で入っています。締め払いはレジの現金とは別に記録します（レジ締めの計算は変わりません）。
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -559,12 +578,13 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
             <thead>
               <tr>
                 <th>従業員</th>
+                <th>支払方法</th>
                 <th>勤務時間</th>
                 <th>時給分</th>
                 <th>確定バック</th>
                 <th>支給対象額</th>
-                <th>実支払額</th>
-                <th>残額</th>
+                <th>渡した額（日払い・締め払いなど）</th>
+                <th>残額（締めで渡す額）</th>
                 <th></th>
               </tr>
             </thead>
@@ -572,6 +592,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
               {statements.map((s) => (
                 <tr key={s.employee_id}>
                   <td className="font-semibold">{s.employee_name}</td>
+                  <td className="text-sm whitespace-nowrap">{s.payment_method_label}</td>
                   <td>
                     {fmtMinutes(s.worked_minutes)}
                     {s.missing_wage_setting && <span className="badge badge-warn ml-1">時給未設定あり</span>}
@@ -579,14 +600,22 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
                   <td>{yen(s.wage_amount)}</td>
                   <td>{yen(s.back_amount)}</td>
                   <td className="font-bold">{yen(s.gross_amount)}</td>
-                  <td>{yen(s.paid_amount)}</td>
+                  <td>
+                    {yen(s.paid_amount)}
+                    {(toInt(s.withheld_amount) > 0 || toInt(s.deducted_amount) > 0) && (
+                      <div className="text-xs" style={{ color: "var(--color-muted)" }}>
+                        {toInt(s.withheld_amount) > 0 && `源泉 ${yen(s.withheld_amount)} `}
+                        {toInt(s.deducted_amount) > 0 && `控除 ${yen(s.deducted_amount)}`}
+                      </div>
+                    )}
+                  </td>
                   <td className="font-bold" style={{ color: Number(s.balance_amount) < 0 ? "var(--color-danger)" : undefined }}>
                     {yen(s.balance_amount)}
                   </td>
                   <td>
                     {can("payroll.pay") && (
-                      <button className="btn btn-sm" onClick={() => setPayFor(s)}>
-                        振込等を記録
+                      <button className={`btn btn-sm ${toInt(s.balance_amount) > 0 ? "btn-primary" : ""}`} onClick={() => setPayFor(s)}>
+                        締め払いを記録
                       </button>
                     )}
                   </td>
@@ -595,7 +624,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
             </tbody>
           </table>
           <p className="text-xs mt-2" style={{ color: "var(--color-muted)" }}>
-            {statements[0]?.notice ?? "勤務・バックに基づく支払集計です。"} その日のお渡しは「出勤・お渡し」の「渡した」で記録されます（レジの現金出金と関連付き、二重に数えません）。
+            {statements[0]?.notice ?? "勤務・バックに基づく支払集計です。"} その日のお渡し（日払い）は「出勤・お渡し」の「渡した」で記録されます（レジの現金出金と関連付き、二重に数えません）。
           </p>
         </div>
       )}
@@ -687,6 +716,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
       {payFor && (
         <PaymentModal
           statement={payFor}
+          businessDate={bd}
           onClose={() => setPayFor(null)}
           onSaved={async () => {
             setPayFor(null);
@@ -700,15 +730,19 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
   );
 }
 
-function PaymentModal({ statement, onClose, onSaved, setSave, withReauth }: { statement: Statement; onClose: () => void; onSaved: () => Promise<void>; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+function PaymentModal({ statement, businessDate, onClose, onSaved, setSave, withReauth }: { statement: Statement; businessDate: string | null; onClose: () => void; onSaved: () => Promise<void>; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+  // 締め払いは締め日のあとに渡すことが多いので、集計している期間の最終日（今日より後なら今日）の分として記録する。
+  // こうすると、その期間の支払集計・キャスト集計の残額が 0 になり、次の期間には入らない
+  const recordOn = businessDate && statement.end_date > businessDate ? businessDate : statement.end_date;
   const [amount, setAmount] = useState(String(Math.max(0, toInt(statement.balance_amount))));
   const [kind, setKind] = useState("settlement");
+  const [method, setMethod] = useState<"bank" | "other">("bank");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   return (
     <Modal
-      title={`${statement.employee_name} への支払いを記録（振込など）`}
+      title={`${statement.employee_name} への締め払いを記録`}
       onClose={onClose}
       footer={
         <>
@@ -722,7 +756,7 @@ function PaymentModal({ statement, onClose, onSaved, setSave, withReauth }: { st
               setBusy(true);
               setSave({ kind: "saving" });
               try {
-                await withReauth(() => api("/api/staff/payments", { method: "POST", idempotencyKey: newIdempotencyKey(), body: { employee_id: statement.employee_id, amount: toInt(amount), method: "bank", kind, note } }));
+                await withReauth(() => api("/api/staff/payments", { method: "POST", idempotencyKey: newIdempotencyKey(), body: { employee_id: statement.employee_id, amount: toInt(amount), method, kind, note, business_date: recordOn } }));
                 setSave({ kind: "saved" });
                 await onSaved();
               } catch (e) {
@@ -739,10 +773,49 @@ function PaymentModal({ statement, onClose, onSaved, setSave, withReauth }: { st
       }
     >
       <ErrorBox error={err} />
+      <div className="card-2 mb-3 num space-y-0.5">
+        <div className="flex justify-between">
+          <span>支給対象額（時給分＋確定バック）</span>
+          <span>{yen(statement.gross_amount)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>渡した額（日払いなど）</span>
+          <span>−{yen(statement.paid_amount)}</span>
+        </div>
+        {toInt(statement.deducted_amount) > 0 && (
+          <div className="flex justify-between">
+            <span>その他控除</span>
+            <span>−{yen(statement.deducted_amount)}</span>
+          </div>
+        )}
+        {toInt(statement.withheld_amount) > 0 && (
+          <div className="flex justify-between">
+            <span>源泉所得税</span>
+            <span>−{yen(statement.withheld_amount)}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-bold text-lg">
+          <span>残額（締めで渡す額）</span>
+          <span>{yen(statement.balance_amount)}</span>
+        </div>
+        <div className="text-sm" style={{ color: "var(--color-muted)" }}>
+          集計期間 {fmtDate(statement.start_date)} 〜 {fmtDate(statement.end_date)}。この支払いは {fmtDate(recordOn)} の分として記録します（この期間の残額が 0 になります）。
+        </div>
+      </div>
       <p className="text-sm mb-2" style={{ color: "var(--color-muted)" }}>
-        レジ現金からの支払いはここでは登録できません（「開店・日締め・現金」の日払い出金から登録）。
+        レジの現金から出す支払いはここでは記録できません（レジ締めの計算に入らないように、振込やレジ以外の現金で渡した分を記録します）。
       </p>
       <div className="space-y-3">
+        <Field label="渡し方">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="渡し方">
+            <button type="button" className={`btn btn-sm ${method === "bank" ? "btn-primary" : ""}`} onClick={() => setMethod("bank")} aria-pressed={method === "bank"}>
+              振込
+            </button>
+            <button type="button" className={`btn btn-sm ${method === "other" ? "btn-primary" : ""}`} onClick={() => setMethod("other")} aria-pressed={method === "other"}>
+              現金（レジ以外。封筒・オーナーの手元など）
+            </button>
+          </div>
+        </Field>
         <Field label="種別">
           <select className="input" value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="settlement">締め支払い（残額）</option>

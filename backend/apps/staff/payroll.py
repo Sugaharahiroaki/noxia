@@ -61,6 +61,31 @@ def payments_total(store, employee, start: date, end: date, pay_period=None) -> 
     return _payments_qs(store, employee, start, end, pay_period).aggregate(s=Sum("amount"))["s"] or ZERO
 
 
+PAYMENT_METHOD_LABELS = {
+    "daily_cash": "日払い（レジ現金）",
+    "monthly_bank": "月払い（振込）",
+    "mixed": "日払い＋締め払い",
+    "other": "その他",
+}
+
+
+def pay_plan(employee, on_date: date) -> dict:
+    """
+    その日に有効な契約の支払方法。
+      method: daily_cash / monthly_bank / mixed / other / ""（契約なし）
+      daily_fixed: 日払い＋締め払いの人の、1日に日払いで渡す額（手渡し額）。それ以外は None（その日の全額を渡す）
+    """
+    from apps.accounting.compensation import contract_for
+
+    c = contract_for(employee, on_date)
+    method = c.payment_method if c is not None else ""
+    fixed = D(c.daily_pay_amount) if c is not None and method == "mixed" and c.daily_pay_amount and c.daily_pay_amount > 0 else None
+    label = PAYMENT_METHOD_LABELS.get(method, "契約なし" if not method else method)
+    if fixed is not None:
+        label = f"{label}（1日 ¥{fixed:,.0f}）"
+    return {"method": method, "label": label, "daily_fixed": fixed}
+
+
 def compute_statement(store, employee, start: date, end: date, pay_period=None) -> dict:
     shifts = Shift.objects.filter(store=store, employee=employee, business_date__gte=start, business_date__lte=end).prefetch_related("breaks").order_by("clock_in")
     rows = []
@@ -85,11 +110,16 @@ def compute_statement(store, employee, start: date, end: date, pay_period=None) 
     withheld = agg["w"] or ZERO
     deducted = agg["d"] or ZERO
     gross = wage_amount + backs
+    plan = pay_plan(employee, end)
     return {
         "employee_id": employee.id,
         "employee_name": employee.display_name,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
+        # 支払方法（期間の最終日に有効な契約）。日払い＋締め払いの人は、残額 = 締めで渡す額
+        "payment_method": plan["method"],
+        "payment_method_label": plan["label"],
+        "daily_fixed_amount": str(plan["daily_fixed"]) if plan["daily_fixed"] is not None else None,
         "worked_minutes": total_minutes,
         "wage_amount": str(wage_amount),
         "back_amount": str(backs),
@@ -100,7 +130,8 @@ def compute_statement(store, employee, start: date, end: date, pay_period=None) 
         "balance_amount": str(gross - paid - withheld - deducted),
         "missing_wage_setting": missing_wage,
         "shifts": rows,
-        "notice": "勤務・バックに基づく支払集計です。ホステス報酬の源泉所得税は日払いのお渡し時に計算した額を表示します。給与の所得税・社会保険・割増賃金などの法定控除は含みません。",
+        "notice": "勤務・バックに基づく支払集計です。残額 = 支給対象額 − 渡した額（日払い・締め払いなど）− 源泉所得税 − その他控除。"
+                  "ホステス報酬の源泉所得税は日払いのお渡し時に計算した額を表示します。給与の所得税・社会保険・割増賃金などの法定控除は含みません。",
     }
 
 
@@ -109,9 +140,15 @@ def daily_payout(store, employee, work_date: date, *, include_rate: bool = True,
     その日のお渡し額（日払い）。
       報酬総額   = 時給 × 勤務時間（休憩除く） + その日の確定バック
       未精算     = 報酬総額 − その日の勤務分として精算済みの額（渡した額＋源泉所得税＋その他控除。work_date で突き合わせ）
-      お渡し額   = 未精算 − 源泉所得税 − その他控除（厚生費・チェックした備品代など）  ← remaining_amount
+      お渡し額   = 未精算 − 源泉所得税 − その他控除（厚生費・チェックした備品代など）  ← remaining_amount（いま全部渡すときの額）
     源泉所得税・その他控除は accounting.services.payout_tax_preview で計算する（税務区分が未確認なら計算せず「要確認」、
     店舗設定で源泉所得税を差し引かない場合は計算しない）。selected_deductions: チェックした店舗の控除項目（None なら既定）。
+
+    日払い＋締め払いの人（契約の支払方法 mixed と 1日の日払いの額 F）:
+      今日渡す額（daily_due_amount） = min(F − その日に渡し済みの額, お渡し額)   ← 「渡した」で渡す額
+      締めに回す額（carry_amount）   = お渡し額 − 今日渡す額                     ← 支払集計の残額に入り、締めで渡す
+      日払い分を渡し終えたら status は paid（残りは締め）。それ以外の人は 今日渡す額 = お渡し額、締めに回す額 = 0。
+      源泉所得税を差し引かない店舗では、締めに回す額 = その日の報酬 − 渡した額 − その他控除 とぴったり一致する。
     """
     shifts = list(
         Shift.objects.filter(store=store, employee=employee, business_date=work_date).prefetch_related("breaks").order_by("clock_in")
@@ -175,6 +212,17 @@ def daily_payout(store, employee, work_date: date, *, include_rate: bool = True,
                                  selected=selected_deductions)
         if remaining_gross > 0:
             remaining = D(tax["net_amount"])
+    # 日払い＋締め払い: 今日渡すのは固定額まで。残りは締めに回す
+    plan = pay_plan(employee, work_date)
+    fixed = plan["daily_fixed"]
+    fixed_left = max(fixed - paid, ZERO) if fixed is not None else None
+    if fixed is not None and remaining > 0:
+        daily_due = min(fixed_left, remaining)
+    else:
+        daily_due = max(remaining, ZERO) if remaining_gross > 0 else ZERO
+    carry = max(remaining - daily_due, ZERO) if remaining_gross > 0 else ZERO
+    if fixed is not None and status in ("ready", "partial") and daily_due <= 0:
+        status = "paid"  # 日払い分は渡し済み。残りは締めで渡す
     return {
         "employee_id": employee.id,
         "employee_name": employee.display_name,
@@ -195,6 +243,12 @@ def daily_payout(store, employee, work_date: date, *, include_rate: bool = True,
         "settled_amount": str(settled),
         "remaining_gross": str(remaining_gross),
         "remaining_amount": str(remaining),
+        "pay_plan": "daily_settlement" if fixed is not None else "daily",
+        "payment_method_label": plan["label"],
+        "daily_fixed_amount": str(fixed) if fixed is not None else None,
+        "daily_fixed_remaining": str(fixed_left) if fixed_left is not None else None,
+        "daily_due_amount": str(daily_due),
+        "carry_amount": str(carry),
         "missing_wage_setting": missing_wage,
         "items": items,
         "tax": tax,

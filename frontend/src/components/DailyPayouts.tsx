@@ -14,6 +14,7 @@ type PayResult = {
   payout: DailyPayout;
   cash_movement_id: number;
   amount: string;
+  carry_amount: string;
   withholding_amount: string;
   other_deduction_amount: string;
   other_deductions: PayoutDeductionRow[];
@@ -43,7 +44,14 @@ function useDeductionChecks(row: DailyPayout) {
   const picked = options.filter((o) => checked.includes(o.code));
   const net = row.tax ? toInt(row.tax.net_without_options) - picked.reduce((s, o) => s + toInt(o.amount), 0) : toInt(row.remaining_amount);
   const fixed = toInt(row.remaining_gross) > 0 ? (row.tax?.other_deductions ?? []).filter((d) => !d.optional) : [];
-  return { options, checked, setChecked, picked, fixed, net };
+  // 今日渡す額: 日払い＋締め払いの人は 1日の日払いの額まで（サーバーも同じ計算で渡す）。残りは締めに回す
+  const payNow = settlementPlan(row) ? Math.max(0, Math.min(toInt(row.daily_fixed_remaining), net)) : net;
+  return { options, checked, setChecked, picked, fixed, net, payNow, carry: Math.max(0, net - payNow) };
+}
+
+/** 日払い＋締め払いの人か */
+function settlementPlan(r: DailyPayout) {
+  return r.pay_plan === "daily_settlement";
 }
 
 function DeductionChecks({ options, checked, onChange, disabled }: { options: PayoutDeductionOption[]; checked: string[]; onChange: (codes: string[]) => void; disabled?: boolean }) {
@@ -162,6 +170,7 @@ export function DailyPayoutBoard({ compact, workDate, onChanged }: { compact?: b
     toast.show({
       message:
         `${row.employee_name}さんに ${yen(r.amount)} 渡しました（レジから出金）` +
+        (settlementPlan(row) && toInt(r.carry_amount) > 0 ? `・残り ${yen(r.carry_amount)} は締めで渡します` : "") +
         (toInt(r.withholding_amount) > 0 ? `・源泉所得税 ${yen(r.withholding_amount)} は預り金` : "") +
         (r.other_deductions.length > 0 ? `・${r.other_deductions.map((d) => `${d.label} ${yen(d.amount)}`).join("・")} を差し引き` : ""),
       action: {
@@ -197,6 +206,11 @@ export function DailyPayoutBoard({ compact, workDate, onChanged }: { compact?: b
           {data.totals.unpaid_count > 0 && (
             <span className="badge badge-warn" style={{ fontSize: "1.05rem", padding: "6px 12px" }}>
               お渡し待ち {data.totals.unpaid_count}名 <strong className="num ml-1">{yen(data.totals.remaining)}</strong>
+            </span>
+          )}
+          {toInt(data.totals.carry) > 0 && (
+            <span className="badge badge-accent" style={{ fontSize: "1.05rem", padding: "6px 12px" }}>
+              締めに回す <strong className="num ml-1">{yen(data.totals.carry)}</strong>
             </span>
           )}
           {data.totals.working_count > 0 && (
@@ -240,9 +254,14 @@ export function DailyPayoutBoard({ compact, workDate, onChanged }: { compact?: b
               <div className="flex items-center justify-between gap-2">
                 <div className="text-3xl font-bold">{r.employee_name}</div>
                 <span className={st.cls} style={{ fontSize: "1rem", padding: "6px 10px" }}>
-                  {r.on_break ? "休憩中" : st.label}
+                  {r.on_break ? "休憩中" : r.status === "paid" && settlementPlan(r) && toInt(r.carry_amount) > 0 ? "✓ 日払い済み" : st.label}
                 </span>
               </div>
+              {settlementPlan(r) && (
+                <div className="text-base" style={{ color: "var(--color-muted)" }}>
+                  日払い＋締め払い（1日 {yen(r.daily_fixed_amount)}）
+                </div>
+              )}
 
               {r.status === "absent" && !compact && (
                 <button className="btn btn-xl btn-ok w-full" disabled={busy !== null} onClick={() => clock(r, "in")}>
@@ -319,13 +338,19 @@ export function DailyPayoutBoard({ compact, workDate, onChanged }: { compact?: b
               {due && (
                 <>
                   <div className="flex items-baseline justify-between pt-1">
-                    <span className="text-xl">お渡し</span>
+                    <span className="text-xl">{settlementPlan(r) ? "お渡し（日払い）" : "お渡し"}</span>
                     <span className="font-bold num" style={{ fontSize: "2.6rem", lineHeight: 1.1, color: "var(--color-warn)" }}>
-                      {yen(r.remaining_amount)}
+                      {yen(r.daily_due_amount)}
                     </span>
                   </div>
+                  {settlementPlan(r) && toInt(r.carry_amount) > 0 && (
+                    <div className="flex justify-between text-lg num" style={{ color: "var(--color-accent)" }}>
+                      <span>締めに回す</span>
+                      <span>{yen(r.carry_amount)}</span>
+                    </div>
+                  )}
                   <button className="btn btn-xl btn-ok w-full" onClick={() => setPayTarget({ row: r })}>
-                    渡した（{yen(r.remaining_amount)}）
+                    渡した（{yen(r.daily_due_amount)}）
                   </button>
                   <button className="btn btn-sm btn-ghost w-full" onClick={() => setCustomTarget(r)}>
                     金額を変えて渡す
@@ -333,6 +358,12 @@ export function DailyPayoutBoard({ compact, workDate, onChanged }: { compact?: b
                 </>
               )}
 
+              {r.status === "paid" && settlementPlan(r) && toInt(r.carry_amount) > 0 && (
+                <div className="flex justify-between text-lg num" style={{ color: "var(--color-accent)" }}>
+                  <span>締めに回す</span>
+                  <span>{yen(r.carry_amount)}</span>
+                </div>
+              )}
               {r.status === "paid" && (
                 <div className="flex items-center justify-between">
                   <span className="text-2xl font-bold num" style={{ color: "var(--color-ok)" }}>
@@ -448,7 +479,7 @@ function PayConfirm({ row, greeting, onClose, onPay, onReload }: { row: DailyPay
             <button
               className="btn btn-xl btn-ok"
               style={{ minWidth: 220 }}
-              disabled={busy || d.net <= 0}
+              disabled={busy || d.payNow <= 0}
               onClick={async () => {
                 setBusy(true);
                 setError(null);
@@ -468,16 +499,29 @@ function PayConfirm({ row, greeting, onClose, onPay, onReload }: { row: DailyPay
       }
     >
       <div className="text-center space-y-2">
-        <div className="text-xl">本日のお渡し</div>
+        <div className="text-xl">{settlementPlan(row) ? "本日のお渡し（日払い）" : "本日のお渡し"}</div>
         <div className="font-bold num" style={{ fontSize: "4.5rem", lineHeight: 1, color: "var(--color-warn)" }}>
-          {yen(d.net)}
+          {yen(d.payNow)}
         </div>
         <div className="text-lg num" style={{ color: "var(--color-muted)" }}>
           勤務 {fmtMinutes(row.worked_minutes)} {yen(row.wage_amount)} ＋ バック {yen(row.back_confirmed)}
           {toInt(row.settled_amount) > 0 && ` − 精算済み ${yen(row.settled_amount)}`}
           {tax > 0 && ` − 源泉所得税 ${yen(tax)}`}
           {[...d.fixed, ...d.picked].map((x) => ` − ${x.label} ${yen(x.amount)}`).join("")}
+          {settlementPlan(row) && ` = ${yen(d.net)}`}
         </div>
+        {settlementPlan(row) && (
+          <div className="card-2 text-xl num" style={{ borderColor: "var(--color-accent)" }}>
+            日払い＋締め払い（1日 {yen(row.daily_fixed_amount)}）。今日は <strong>{yen(d.payNow)}</strong> を渡し、
+            {d.carry > 0 ? (
+              <>
+                残り <strong>{yen(d.carry)}</strong> は締めで渡します。
+              </>
+            ) : (
+              "締めに回す分はありません。"
+            )}
+          </div>
+        )}
         <DeductionChecks options={d.options} checked={d.checked} onChange={d.setChecked} disabled={busy} />
         {d.net <= 0 && (
           <p className="text-xl font-bold" style={{ color: "var(--color-danger)" }}>
@@ -510,7 +554,8 @@ function CustomPay({ row, onClose, onPay }: { row: DailyPayout; onClose: () => v
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const max = d.net;
-  const value = typed ?? String(Math.max(max, 0));
+  // 日払い＋締め払いの人は、打つ前の初期値を「今日渡す額（1日の日払いの額まで）」にする
+  const value = typed ?? String(Math.max(settlementPlan(row) ? d.payNow : max, 0));
   const n = toInt(value);
   const tax = pendingDeductions(row).tax;
   const fixedNote = [...(tax > 0 ? [`源泉所得税 ${yen(tax)}`] : []), ...d.fixed.map((x) => `${x.label} ${yen(x.amount)}`)].join("・");
@@ -553,7 +598,11 @@ function CustomPay({ row, onClose, onPay }: { row: DailyPayout; onClose: () => v
           )}
           <div className="text-5xl font-bold num text-right">{yen(n)}</div>
           {n > max && <p className="font-bold" style={{ color: "var(--color-danger)" }}>未渡しの額より多くは渡せません。</p>}
-          {n > 0 && n < max && <p style={{ color: "var(--color-muted)" }}>残り {yen(max - n)} は未渡しとして残ります（あとで渡せます）。</p>}
+          {n > 0 && n < max && (
+            <p style={{ color: "var(--color-muted)" }}>
+              {settlementPlan(row) ? `残り ${yen(max - n)} は締めで渡す額になります。` : `残り ${yen(max - n)} は未渡しとして残ります（あとで渡せます）。`}
+            </p>
+          )}
           <DeductionChecks options={d.options} checked={d.checked} onChange={d.setChecked} disabled={busy} />
           {d.picked.length > 0 && (
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>

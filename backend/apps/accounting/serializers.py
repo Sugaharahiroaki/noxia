@@ -62,7 +62,7 @@ class CastContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = CastContract
         fields = ["id", "employee", "employee_name", "contract_type", "contract_type_label", "start_date", "end_date", "calc_period", "calc_period_label",
-                  "payment_method", "payment_note", "tax_category", "tax_category_label", "tax_review_status", "tax_review_status_label",
+                  "payment_method", "daily_pay_amount", "payment_note", "tax_category", "tax_category_label", "tax_review_status", "tax_review_status_label",
                   "tax_reviewed_by_name", "tax_reviewed_at", "review_checklist", "review_note", "advisor_note", "advisor_noted_at", "deductions",
                   "document_name", "has_document", "is_active", "created_at"]
         read_only_fields = ["id", "tax_category", "tax_review_status", "tax_reviewed_at", "review_checklist", "review_note", "advisor_note",
@@ -79,6 +79,16 @@ class CastContractSerializer(serializers.ModelSerializer):
         end = attrs.get("end_date", getattr(self.instance, "end_date", None))
         if start and end and end < start:
             raise serializers.ValidationError({"end_date": "契約終了日は開始日以降にしてください。"})
+        # 日払い＋締め払い: 1日あたりの日払いの額が必要（残りは締めで渡す）。それ以外の支払方法では使わないので消しておく
+        method = attrs.get("payment_method", getattr(self.instance, "payment_method", "daily_cash"))
+        if method == "mixed":
+            amount = attrs.get("daily_pay_amount", getattr(self.instance, "daily_pay_amount", None))
+            if amount is None or amount <= 0:
+                raise serializers.ValidationError({"daily_pay_amount": "日払い＋締め払いの人は、1日に日払いで渡す額を入力してください。"})
+            if amount != amount.to_integral_value():
+                raise serializers.ValidationError({"daily_pay_amount": "日払いの額は円単位で入力してください。"})
+        elif "payment_method" in attrs or "daily_pay_amount" in attrs:
+            attrs["daily_pay_amount"] = None
         return attrs
 
     def validate_deductions(self, value):

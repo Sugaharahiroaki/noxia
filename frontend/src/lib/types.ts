@@ -496,8 +496,19 @@ export type DailyPayout = {
   settled_amount: Money;
   /** 未精算の報酬（源泉所得税・その他控除を引く前） */
   remaining_gross: Money;
-  /** 今渡す額（源泉所得税・その他控除を引いた後） */
+  /** いま全部渡すときの額（源泉所得税・その他控除を引いた後） */
   remaining_amount: Money;
+  /** daily_settlement: 日払い＋締め払い（1日の日払いは固定額まで、残りは締め）。daily: その日の全額を渡す */
+  pay_plan: "daily" | "daily_settlement";
+  payment_method_label: string;
+  /** 日払い＋締め払いの人の 1日の日払いの額 */
+  daily_fixed_amount: Money | null;
+  /** その日の日払いの額のうち、まだ渡していない額 */
+  daily_fixed_remaining: Money | null;
+  /** 今日渡す額（「渡した」で渡す額）。日払い＋締め払いの人は固定額まで */
+  daily_due_amount: Money;
+  /** 締めに回す額（日払い＋締め払いの人だけ。支払集計の残額に入る） */
+  carry_amount: Money;
   missing_wage_setting: boolean;
   items: PayItem[];
   tax: PayoutTax | null;
@@ -550,7 +561,7 @@ export type PayoutTax = {
 export type DailyPayoutList = {
   work_date: string;
   rows: DailyPayout[];
-  totals: { gross: Money; paid: Money; withheld: Money; deducted: Money; remaining: Money; unpaid_count: number; working_count: number; tax_review_count: number };
+  totals: { gross: Money; paid: Money; withheld: Money; deducted: Money; remaining: Money; carry: Money; unpaid_count: number; working_count: number; tax_review_count: number };
   withholding_enabled: boolean;
   notice: string;
 };
@@ -842,6 +853,8 @@ export type CastContract = {
   calc_period: "daily" | "weekly" | "semimonthly" | "monthly" | "unset";
   calc_period_label: string;
   payment_method: string;
+  /** 日払い＋締め払い（mixed）の人の 1日の日払いの額 */
+  daily_pay_amount: string | null;
   payment_note: string;
   tax_category: "salary" | "hostess_fee" | "undetermined";
   tax_category_label: string;

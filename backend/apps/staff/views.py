@@ -634,7 +634,10 @@ class DailyPayoutsView(APIView):
                 "paid": str(sum((D(r["paid_amount"]) for r in rows), ZERO)),
                 "withheld": str(sum((D(r["withheld_amount"]) for r in rows), ZERO)),
                 "deducted": str(sum((D(r["deducted_amount"]) for r in rows), ZERO)),
-                "remaining": str(sum((D(r["remaining_amount"]) for r in due), ZERO)),
+                # お渡し待ちの合計は「今日渡す額」（日払い＋締め払いの人は固定額まで）
+                "remaining": str(sum((D(r["daily_due_amount"]) for r in due), ZERO)),
+                # 日払い＋締め払いの人の、締めに回す額（今日の分）
+                "carry": str(sum((D(r["carry_amount"]) for r in rows if r["pay_plan"] == "daily_settlement"), ZERO)),
                 "unpaid_count": len(due),
                 "working_count": sum(1 for r in rows if r["working"]),
                 "tax_review_count": sum(1 for r in rows if r.get("tax") and r["tax"]["status"] == "needs_review"),
@@ -680,6 +683,11 @@ class DailyPayoutPayView(APIView):
         remaining = D(info["remaining_amount"])
         if D(info["remaining_gross"]) <= 0 or remaining <= 0:
             raise ApiError("nothing_to_pay", f"{emp.display_name}さんに渡す金額はありません（渡し済み）。", status=409)
+        daily_due = D(info["daily_due_amount"])
+        has_custom = request.data.get("amount") not in (None, "")
+        if not has_custom and daily_due <= 0:
+            # 日払い＋締め払いの人で、その日の日払い分は渡し済み（残りは締めで渡す）
+            raise ApiError("nothing_to_pay", f"{emp.display_name}さんの日払い分は渡し済みです。残り ¥{D(info['carry_amount']):,.0f} は締めで渡します。", status=409)
         expected = request.data.get("expected_amount")
         if expected is not None and D(expected) != remaining:
             raise ApiError(
@@ -692,6 +700,8 @@ class DailyPayoutPayView(APIView):
             raise ApiError("validation_error", "金額は1円以上で入力してください。")
         if custom is not None and custom > remaining:
             raise ApiError("validation_error", f"未渡しの額（¥{remaining:,.0f}）より多くは渡せません。")
+        if custom is None and daily_due < remaining:
+            custom = daily_due  # 日払い＋締め払い: 固定額だけ渡し、残りは締めに回す
         day = require_open_business_day(store)
         now = timezone.now()
         from apps.accounting import services as accounting
@@ -720,6 +730,7 @@ class DailyPayoutPayView(APIView):
             "payment_id": ep.id,
             "withholding_record_id": rec.id if rec else None,
             "amount": str(amount),
+            "carry_amount": payroll.daily_payout(store, emp, work_date)["carry_amount"],
             "gross_amount": str(st.gross),
             "withholding_amount": str(st.withholding),
             "other_deduction_amount": str(st.other_deduction),

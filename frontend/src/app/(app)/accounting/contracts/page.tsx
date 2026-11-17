@@ -182,6 +182,7 @@ function ContractModal({
     end_date: contract?.end_date ?? "",
     calc_period: contract?.calc_period ?? "unset",
     payment_method: contract?.payment_method ?? "daily_cash",
+    daily_pay_amount: contract?.daily_pay_amount ? String(Math.round(Number(contract.daily_pay_amount))) : "",
     payment_note: contract?.payment_note ?? "",
   });
   const [deductions, setDeductions] = useState(contract?.deductions ?? []);
@@ -206,7 +207,7 @@ function ContractModal({
               setBusy(true);
               setErr(null);
               try {
-                const base = { ...f, end_date: f.end_date || null, deductions };
+                const base = { ...f, end_date: f.end_date || null, daily_pay_amount: f.payment_method === "mixed" && f.daily_pay_amount ? f.daily_pay_amount : null, deductions };
                 const body = !contract && isNew
                   ? { ...base, employee: undefined, new_employee: { display_name: person.display_name.trim(), full_name: person.full_name.trim(), role: person.role } }
                   : base;
@@ -302,6 +303,21 @@ function ContractModal({
             <option value="other">その他</option>
           </select>
         </Field>
+        {f.payment_method === "mixed" && (
+          <Field
+            label="日払いの額（1日あたり・円）"
+            hint="毎日の日払いでレジから渡す額です。残りは締めで渡す額（支払集計の「残額」）になります。その日の報酬がこの額より少ない日は全額を渡します。"
+          >
+            <input
+              className="input num"
+              inputMode="numeric"
+              placeholder="10000"
+              value={f.daily_pay_amount}
+              onChange={(e) => set("daily_pay_amount", e.target.value.replace(/[^\d]/g, ""))}
+              aria-label="日払いの額（1日あたり）"
+            />
+          </Field>
+        )}
         <Field label="支払に関するメモ">
           <input className="input" value={f.payment_note} onChange={(e) => set("payment_note", e.target.value)} />
         </Field>

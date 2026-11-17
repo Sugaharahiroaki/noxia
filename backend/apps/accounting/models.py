@@ -122,6 +122,8 @@ class CastContract(TimestampedModel):
     end_date = models.DateField("契約終了日", null=True, blank=True)
     calc_period = models.CharField("報酬計算期間", max_length=20, choices=CalcPeriodType.choices, default=CalcPeriodType.UNSET)
     payment_method = models.CharField("支払方法", max_length=20, default="daily_cash")  # daily_cash / monthly_bank / mixed / other
+    # 支払方法が「日払い＋締め払い」（mixed）のとき、毎日の日払いで渡す額（1日あたり・手渡し額）。残りは締めで渡す（staff.payroll.daily_payout）
+    daily_pay_amount = models.DecimalField("日払いの固定額（1日あたり）", max_digits=12, decimal_places=2, null=True, blank=True)
     payment_note = models.CharField(max_length=200, blank=True)
     tax_category = models.CharField(max_length=20, choices=TaxCategory.choices, default=TaxCategory.UNDETERMINED)
     tax_review_status = models.CharField(max_length=20, choices=TaxReviewStatus.choices, default=TaxReviewStatus.UNREVIEWED)
