@@ -507,14 +507,30 @@ export default function VisitDetailPage() {
 
       {/* 下端: 現在の金額と操作 */}
       <div className="fixed left-0 right-0 bottom-0 z-30 px-3 py-2 flex items-center gap-3" style={{ background: "var(--color-panel)", borderTop: "2px solid var(--color-border)" }}>
-        <div>
-          <div className="text-sm" style={{ color: "var(--color-muted)" }}>
-            現在の金額（税込）
+        {visit.quote?.by_method?.cash && visit.quote.by_method.card ? (
+          // 支払方法でサービス料率が変わる店: 現金とカードの金額を並べる（現金＋カードはカードの金額）
+          <div className="flex items-end gap-5">
+            {(["cash", "card"] as const).map((m) => (
+              <div key={m}>
+                <div className="text-sm" style={{ color: "var(--color-muted)" }}>
+                  {m === "cash" ? "現金" : "カード"}なら（税込・サービス料 {Number(visit.quote?.by_method?.[m]?.rate ?? 0)}%）
+                </div>
+                <div className="text-4xl font-bold num leading-none" data-testid={`visit-total-${m}`}>
+                  {yen(visit.quote?.by_method?.[m]?.total)}
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="text-4xl font-bold num leading-none" data-testid="visit-total">
-            {yen(total)}
+        ) : (
+          <div>
+            <div className="text-sm" style={{ color: "var(--color-muted)" }}>
+              現在の金額（税込）
+            </div>
+            <div className="text-4xl font-bold num leading-none" data-testid="visit-total">
+              {yen(total)}
+            </div>
           </div>
-        </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <button className="btn btn-xl" style={{ minWidth: 120 }} onClick={() => router.push(`/visits/${visit.id}/bill`)}>
             明細
@@ -538,16 +554,27 @@ const ROUND_LABEL: Record<string, string> = { floor: "切り捨て", ceil: "切�
 const SC_TARGET_LABEL: Record<string, string> = { all: "全明細", course_only: "セット・延長のみ", products_only: "商品のみ" };
 
 /**
- * いまの店舗の料金計算の設定（読み取り専用）。卓ごとの率の変更・カード用の別金額は出さない（UNIFIED_PLAN 6 章 Q1・Q2）。
- * 変更は設定画面（権限と再認証が必要）で行う。
+ * いまの店舗の料金計算の設定（読み取り専用）。卓ごとの率の変更は出さない（UNIFIED_PLAN 6 章 Q2）。
+ * 支払方法別の料率（S1）があれば並べて出す。変更は設定画面（権限と再認証が必要）で行う。
  */
 function PricingInfo({ st }: { st: StoreSettings }) {
+  const byMethod = (
+    [
+      ["現金", st.service_charge_rate_cash],
+      ["カード", st.service_charge_rate_card],
+      ["ツケ", st.service_charge_rate_receivable],
+    ] as const
+  ).filter(([, r]) => r !== null && r !== undefined && Number(r) !== Number(st.service_charge_rate));
   return (
     <section className="card text-sm" style={{ padding: "0.6rem 0.8rem" }} aria-label="料金計算の設定">
       <h2 className="font-bold mb-1">料金計算（店舗の設定・この画面では変更できません）</h2>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5">
         <dt style={{ color: "var(--color-muted)" }}>サービス料</dt>
-        <dd className="num">{st.service_charge_enabled ? `${Number(st.service_charge_rate)}%（${SC_TARGET_LABEL[st.service_charge_target] ?? st.service_charge_target}）` : "なし"}</dd>
+        <dd className="num">
+          {st.service_charge_enabled
+            ? `${byMethod.length ? "標準 " : ""}${Number(st.service_charge_rate)}%${byMethod.map(([label, r]) => `・${label} ${Number(r)}%`).join("")}（${SC_TARGET_LABEL[st.service_charge_target] ?? st.service_charge_target}）`
+            : "なし"}
+        </dd>
         <dt style={{ color: "var(--color-muted)" }}>消費税</dt>
         <dd className="num">
           {Number(st.default_tax_rate)}%（{st.prices_include_tax ? "内税" : "外税"}・{ROUND_LABEL[st.tax_rounding] ?? st.tax_rounding}）

@@ -10,6 +10,11 @@
         after_tax : 税込基準額 × 料率。サービス料には消費税をかけない。
  3. 税率グループごとに税額を計算する（丸め方は店舗設定: 既定は切り捨て）。
  4. 合計を丸め単位・丸め方で丸める。差分は「端数調整」として保存し、税額は変えない。
+
+サービス料率は支払方法で変えられる（店舗設定の service_charge_rate_cash / _card / _receivable。null は標準の料率）。
+ - 会計の料率: カードを含む支払い（現金＋カードも）はカード、ツケを含めばツケ、それ以外は現金（rate_method_for_payments）。
+ - 支払方法が決まる前（ホール・卓詳細・入店の見積）は標準の料率（method=None）。
+ - バックの計算は支払方法で変えない（confirm_checkout が標準の料率を渡す）。
 """
 from __future__ import annotations
 
@@ -22,6 +27,35 @@ from apps.core.money import D, ZERO, percent_of, round_yen, tax_from_included, t
 COURSE_TYPES = {"course_set", "extension", "course_change"}
 PRODUCT_TYPES = {"product"}
 FEE_TYPES = {"nomination", "jounai", "douhan"}
+
+# 支払方法 → 店舗設定の料率の項目
+RATE_FIELDS = {"cash": "service_charge_rate_cash", "card": "service_charge_rate_card", "receivable": "service_charge_rate_receivable"}
+RATE_METHODS = tuple(RATE_FIELDS)
+
+
+def service_charge_rate_for(st, method: str | None) -> Decimal:
+    """支払方法のサービス料率。method なし・その支払方法の料率が未設定なら標準の料率。"""
+    field = RATE_FIELDS.get(method or "")
+    value = getattr(st, field, None) if field else None
+    return D(value) if value is not None else D(st.service_charge_rate)
+
+
+def rate_method_for_payments(methods) -> str:
+    """会計の支払方法の組み合わせ → 料率を決める支払方法。カードを含めばカード（現金＋カードも）、次にツケ、それ以外は現金。"""
+    methods = set(methods)
+    if "card" in methods:
+        return "card"
+    if "receivable" in methods:
+        return "receivable"
+    return "cash"
+
+
+def has_method_rates(st) -> bool:
+    """支払方法で金額が変わる店か（サービス料が有効で、標準と違う料率の支払方法がある）。"""
+    if not st.service_charge_enabled:
+        return False
+    standard = D(st.service_charge_rate)
+    return any(service_charge_rate_for(st, m) != standard for m in RATE_METHODS)
 
 
 @dataclass
@@ -47,9 +81,15 @@ class BillTotals:
     total_excl_tax: Decimal = ZERO
     breakdown: dict = field(default_factory=dict)
     settings_snapshot: dict = field(default_factory=dict)
+    method: str = ""                         # 料率を決めた支払方法（"" = 標準の料率）
+    service_charge_rate: Decimal = ZERO      # 使った料率（サービス料が無効なら 0）
+    by_method: dict = field(default_factory=dict)  # 支払方法ごとの金額（支払方法で金額が変わる店だけ。services.quote が入れる）
 
     def as_dict(self) -> dict:
         return {
+            "method": self.method,
+            "service_charge_rate": str(self.service_charge_rate),
+            "by_method": self.by_method,
             "subtotal": str(self.subtotal),
             "discount_total": str(self.discount_total),
             "service_charge": str(self.service_charge),
@@ -65,13 +105,16 @@ class BillTotals:
         }
 
 
-def settings_snapshot(st) -> dict:
+def settings_snapshot(st, method: str | None = None) -> dict:
+    """会計に残す計算条件。service_charge_rate は実際に使った料率、service_charge_method はそれを決めた支払方法。"""
     return {
         "price_basis": st.price_basis,
         "prices_include_tax": st.prices_include_tax,
         "default_tax_rate": str(st.default_tax_rate),
         "service_charge_enabled": st.service_charge_enabled,
-        "service_charge_rate": str(st.service_charge_rate),
+        "service_charge_rate": str(service_charge_rate_for(st, method)),
+        "service_charge_method": method or "",
+        "service_charge_rate_standard": str(st.service_charge_rate),
         "service_charge_target": st.service_charge_target,
         "service_charge_order": st.service_charge_order,
         "service_charge_after_discount": st.service_charge_after_discount,
@@ -90,10 +133,16 @@ def _sc_applies(line_type: str, target: str) -> bool:
     return True
 
 
-def compute_totals(lines: Iterable[LineInput], st) -> BillTotals:
+def compute_totals(lines: Iterable[LineInput], st, method: str | None = None) -> BillTotals:
+    """method: 料率を決める支払方法（cash / card / receivable）。None なら標準の料率。"""
+    if method is not None and method not in RATE_FIELDS:
+        raise ValueError(f"unknown payment method: {method}")
     lines = list(lines)
     t = BillTotals()
-    t.settings_snapshot = settings_snapshot(st)
+    t.settings_snapshot = settings_snapshot(st, method)
+    t.method = method or ""
+    sc_rate = service_charge_rate_for(st, method)
+    t.service_charge_rate = sc_rate if st.service_charge_enabled else ZERO
     tax_mode = st.tax_rounding
     default_rate = D(st.default_tax_rate)
 
@@ -124,7 +173,7 @@ def compute_totals(lines: Iterable[LineInput], st) -> BillTotals:
     # --- 2. サービス料 ---
     sc = ZERO
     sc_tax = ZERO
-    if st.service_charge_enabled and D(st.service_charge_rate) > 0:
+    if st.service_charge_enabled and sc_rate > 0:
         basis_incl = ZERO
         basis_excl = ZERO
         for ln in lines:
@@ -144,13 +193,13 @@ def compute_totals(lines: Iterable[LineInput], st) -> BillTotals:
             mixed_incl = basis_incl
             if basis_excl:
                 mixed_incl += basis_excl + tax_on_excluded(basis_excl, default_rate, tax_mode)
-            sc = percent_of(mixed_incl, st.service_charge_rate, sc_mode)
+            sc = percent_of(mixed_incl, sc_rate, sc_mode)
             if sc:
                 grp(default_rate)["incl"] += sc
         else:
             if st.service_charge_order == "after_tax":
                 base = basis_excl + tax_on_excluded(basis_excl, default_rate, tax_mode) + basis_incl
-                sc = percent_of(base, st.service_charge_rate, sc_mode)
+                sc = percent_of(base, sc_rate, sc_mode)
                 # 税をかけない: 税率0のグループとして加える
                 if sc:
                     grp(ZERO)["excl"] += sc
@@ -158,7 +207,7 @@ def compute_totals(lines: Iterable[LineInput], st) -> BillTotals:
                 base = basis_excl
                 if basis_incl:
                     base += basis_incl - tax_from_included(basis_incl, default_rate, tax_mode)
-                sc = percent_of(base, st.service_charge_rate, sc_mode)
+                sc = percent_of(base, sc_rate, sc_mode)
                 if sc:
                     grp(default_rate)["excl"] += sc
                     sc_tax = tax_on_excluded(sc, default_rate, tax_mode)

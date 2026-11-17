@@ -27,6 +27,8 @@ type FieldSpec = {
   type: "text" | "int" | "money" | "moneyOrNull" | "minutesOrUnlimited" | "select" | "toggle" | "color" | "extOptions" | "readonly";
   options?: Option[] | ((ctx: Ctx) => Option[]);
   hint?: string;
+  /** 空欄のときの表示（既定: moneyOrNull は「未設定」） */
+  placeholder?: string;
   required?: boolean;
   format?: (row: Row) => string;
 };
@@ -196,7 +198,21 @@ const SECTIONS: Section[] = [
     intro: "ここを変えると、次の会計の見積から新しい計算になります。確定済みの会計は変わりません。営業中の伝票の金額は、会計前なら新しい設定で計算し直されます。",
     fields: [
       { key: "service_charge_enabled", label: "サービス料をかける", type: "toggle" },
-      { key: "service_charge_rate", label: "サービス料率（%）", type: "money" },
+      {
+        key: "service_charge_rate",
+        label: "サービス料率（%・標準）",
+        type: "money",
+        hint: "支払方法を選ぶ前の金額（ホール・卓詳細）と、キャストのバックの計算に使います。下の支払方法別の料率が空欄の支払方法もこの料率です。",
+      },
+      { key: "service_charge_rate_cash", label: "現金で払うときのサービス料率（%）", type: "moneyOrNull", placeholder: "空欄 = 標準の料率" },
+      {
+        key: "service_charge_rate_card",
+        label: "カードで払うときのサービス料率（%）",
+        type: "moneyOrNull",
+        placeholder: "空欄 = 標準の料率",
+        hint: "現金＋カードで払うときも、会計全体にこの料率をかけます。決済端末に送る金額もこの料率です。",
+      },
+      { key: "service_charge_rate_receivable", label: "ツケのときのサービス料率（%）", type: "moneyOrNull", placeholder: "空欄 = 標準の料率" },
       {
         key: "service_charge_target",
         label: "サービス料の対象",
@@ -618,7 +634,7 @@ function FieldInput({ spec, value, row, ctx, disabled, onChange }: { spec: Field
         inputMode={numeric ? "decimal" : undefined}
         value={shown}
         disabled={disabled}
-        placeholder={spec.type === "moneyOrNull" ? "未設定" : undefined}
+        placeholder={spec.placeholder ?? (spec.type === "moneyOrNull" ? "未設定" : undefined)}
         onChange={(e) => onChange(spec.type === "text" ? e.target.value : spec.type === "int" ? e.target.value.replace(/[^\d]/g, "") : digits(e.target.value))}
         onFocus={(e) => e.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" })}
         aria-label={spec.label}

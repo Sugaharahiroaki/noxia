@@ -132,6 +132,11 @@ class StoreSettings(TimestampedModel):
     service_charge_target = models.CharField(max_length=20, choices=ServiceChargeTarget.choices, default=ServiceChargeTarget.ALL)
     service_charge_order = models.CharField(max_length=20, choices=ServiceChargeOrder.choices, default=ServiceChargeOrder.BEFORE_TAX)
     service_charge_after_discount = models.BooleanField("値引き後の金額にサービス料をかける", default=True)
+    # 支払方法ごとの料率（null = 上の service_charge_rate と同じ）。現金＋カードはカードの料率（apps/sales/pricing.py）。
+    # 支払方法が決まる前の表示（ホール・卓詳細の合計）とバックの計算は service_charge_rate を使う
+    service_charge_rate_cash = models.DecimalField("現金のときのサービス料率(%)", max_digits=5, decimal_places=2, null=True, blank=True)
+    service_charge_rate_card = models.DecimalField("カードのときのサービス料率(%)", max_digits=5, decimal_places=2, null=True, blank=True)
+    service_charge_rate_receivable = models.DecimalField("ツケのときのサービス料率(%)", max_digits=5, decimal_places=2, null=True, blank=True)
 
     # 端数処理
     tax_rounding = models.CharField(max_length=10, choices=RoundingMode.choices, default=RoundingMode.FLOOR)

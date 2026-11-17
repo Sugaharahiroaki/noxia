@@ -80,6 +80,10 @@ export type StoreSettings = {
   default_tax_rate: Money;
   service_charge_enabled: boolean;
   service_charge_rate: Money;
+  /** 支払方法ごとの料率（null = 標準の service_charge_rate と同じ）。現金＋カードはカードの料率 */
+  service_charge_rate_cash: Money | null;
+  service_charge_rate_card: Money | null;
+  service_charge_rate_receivable: Money | null;
   service_charge_target: string;
   service_charge_order: string;
   service_charge_after_discount: boolean;
@@ -220,7 +224,15 @@ export type Quote = {
   total_excl_tax: Money;
   breakdown: Record<string, Money>;
   line_ids?: number[];
+  /** 料率を決めた支払方法（"" = 標準の料率） */
+  method?: "" | RateMethod;
+  service_charge_rate?: Money;
+  /** 支払方法で金額が変わる店だけ。支払方法ごとの料率・サービス料（税込）・合計 */
+  by_method?: Partial<Record<RateMethod, { rate: Money; service_charge: Money; tax_total: Money; rounding_adjustment: Money; total: Money }>>;
 };
+
+/** サービス料率を決める支払方法（現金＋カードは card） */
+export type RateMethod = "cash" | "card" | "receivable";
 
 export type Payment = {
   id: number;

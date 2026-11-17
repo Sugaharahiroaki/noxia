@@ -458,7 +458,7 @@ class VisitCancelView(APIView):
 
 
 class VisitQuoteView(APIView):
-    """会計前の金額見積（明細の一部を選ぶと分割・個別会計の金額）。"""
+    """会計前の金額見積（明細の一部を選ぶと分割・個別会計の金額）。method（cash / card / receivable）でその支払方法の料率になる。"""
 
     def get_permissions(self):
         return [StoreCaps(CAP_FLOOR)]
@@ -467,7 +467,7 @@ class VisitQuoteView(APIView):
         visit = Visit.objects.filter(id=visit_id, store=request.store).first()
         if visit is None:
             raise ApiError("not_found", "伝票が見つかりません。", status=404)
-        totals, lines = services.quote(visit, request.data.get("line_ids"))
+        totals, lines = services.quote(visit, request.data.get("line_ids"), request.data.get("method") or None)
         data = totals.as_dict()
         data["line_ids"] = [l.id for l in lines]
         return Response(data)

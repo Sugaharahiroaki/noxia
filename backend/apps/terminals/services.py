@@ -65,7 +65,8 @@ def request_payment(store, user, visit_id, data: dict) -> TerminalPayment:
         lines = open_lines
     if not lines:
         raise ApiError("validation_error", "会計する明細がありません。")
-    total = compute_totals(line_inputs_from_orderlines(lines), sales_services.store_settings(store)).total
+    # カード（現金＋カードも）の会計なのでカードのサービス料率。確定（finalize → confirm_checkout）も同じ料率になる
+    total = compute_totals(line_inputs_from_orderlines(lines), sales_services.store_settings(store), "card").total
 
     cash_amount = D(data.get("cash_amount") or 0)
     cash_tendered = D(data["cash_tendered"]) if data.get("cash_tendered") not in (None, "") else None

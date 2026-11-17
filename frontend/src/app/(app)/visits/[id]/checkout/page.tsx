@@ -9,11 +9,15 @@ import { useToast } from "@/components/Toast";
 import { ErrorBox, Modal, NumberPad, Spinner } from "@/components/ui";
 import { api, ApiError, errorMessage, newIdempotencyKey } from "@/lib/api";
 import { LINE_TYPE_LABELS, toInt, yen } from "@/lib/format";
-import type { Checkout, Quote, StoreSettings, TerminalPayment, TerminalStatusInfo, Visit } from "@/lib/types";
+import type { Checkout, Quote, RateMethod, StoreSettings, TerminalPayment, TerminalStatusInfo, Visit } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
 type Method = "cash" | "card" | "mixed" | "tsuke";
 type Field = "tendered" | "card";
+
+/** 画面の支払方法 → サービス料率を決める支払方法（現金＋カードはカードの料率。サーバーの rate_method_for_payments と同じ） */
+const RATE_METHOD: Record<Method, RateMethod> = { cash: "cash", card: "card", mixed: "card", tsuke: "receivable" };
+const RATE_LABEL: Record<RateMethod, string> = { cash: "現金", card: "カード", receivable: "ツケ" };
 
 /** お預かりのよくある金額（ちょうど・千円単位・5千円単位・1万円単位…） */
 function quickTendered(total: number): number[] {
@@ -55,7 +59,9 @@ export default function CheckoutPage() {
   const visit = visitQ.data;
   const openLines = useMemo(() => (visit?.lines ?? []).filter((l) => l.status === "active" && l.checkout === null), [visit]);
   const lineIds = split ? [...selected] : null;
+  const rateMethod = RATE_METHOD[method];
 
+  // 支払方法でサービス料率が変わる店があるので、見積は選んだ支払方法で取る
   const loadQuote = useCallback(async () => {
     if (!visit) return;
     if (split && selected.size === 0) {
@@ -63,13 +69,13 @@ export default function CheckoutPage() {
       return;
     }
     try {
-      setQuote(await api<Quote>(`/api/visits/${id}/quote`, { method: "POST", body: { line_ids: lineIds } }));
+      setQuote(await api<Quote>(`/api/visits/${id}/quote`, { method: "POST", body: { line_ids: lineIds, method: rateMethod } }));
       setQuoteError(null);
     } catch (e) {
       setQuoteError(e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, visit, split, selected]);
+  }, [id, visit, split, selected, rateMethod]);
 
   useEffect(() => {
     loadQuote();
@@ -105,7 +111,22 @@ export default function CheckoutPage() {
     setTerminalId((cur) => (cur !== null && ids.includes(cur) ? cur : rememberedTerminal(ids)));
   }, [term.data]);
 
-  const total = toInt(quote?.total);
+  // 見積が今の支払方法のものか（支払方法を切り替えた直後は前の方法の見積が残っている。そのあいだは会計させない）
+  const fresh = !!quote && (quote.method === undefined || quote.method === rateMethod);
+  const byMethod = quote?.by_method ?? {};
+  const hasRates = Object.keys(byMethod).length > 0;
+  // 表示は、取り直しを待たずに by_method（サーバーが計算した支払方法ごとの金額）で切り替える。前の方法の金額や ¥0 を出さない
+  // 支払方法で金額が変わらない店は、取り直し前の見積もそのまま正しい
+  const entry = byMethod[rateMethod];
+  const view: Quote | null = !quote
+    ? null
+    : fresh || !hasRates
+      ? quote
+      : entry
+        ? { ...quote, total: entry.total, service_charge: entry.service_charge, service_charge_tax: "0", service_charge_rate: entry.rate, tax_total: entry.tax_total, rounding_adjustment: entry.rounding_adjustment }
+        : null;
+  const usable = !!quote && (fresh || !hasRates); // この見積の金額で会計してよいか
+  const total = toInt(view?.total);
   const tenderedN = toInt(tendered);
   const cardN = toInt(card);
   const cashPart = method === "cash" ? total : method === "mixed" ? Math.max(0, total - cardN) : 0;
@@ -120,6 +141,7 @@ export default function CheckoutPage() {
 
   const terminalOn = !!term.data?.enabled && terminalId !== null && !manualCard && (method === "card" || method === "mixed");
   const ready =
+    usable &&
     total > 0 &&
     ((method === "cash" && tendered !== "" && tenderedN >= total) ||
       method === "card" ||
@@ -358,12 +380,18 @@ export default function CheckoutPage() {
             <div className="text-xl" style={{ color: "var(--color-muted)" }}>
               ご請求額（税込）{split && " ・ 選んだ明細のみ"}
             </div>
-            <div className="font-bold num" style={{ fontSize: "4rem", lineHeight: 1.05 }}>
-              {quote ? yen(quote.total) : split && selected.size === 0 ? <span className="text-2xl">下で明細を選んでください</span> : <span className="text-2xl">計算中…</span>}
+            <div className="font-bold num" style={{ fontSize: "4rem", lineHeight: 1.05 }} data-testid="checkout-total">
+              {view ? yen(view.total) : split && selected.size === 0 ? <span className="text-2xl">下で明細を選んでください</span> : <span className="text-2xl">計算中…</span>}
             </div>
-            {quote && (
+            {hasRates && (
+              <div className="text-lg font-semibold" style={{ color: "var(--color-accent)" }}>
+                {RATE_LABEL[rateMethod]}のお支払い（サービス料 {Number(byMethod[rateMethod]?.rate ?? 0)}%）
+                {method === "mixed" && " ・ 現金＋カードはカードの料率"}
+              </div>
+            )}
+            {view && (
               <div className="text-lg num space-y-0.5 pt-2" style={{ color: "var(--color-muted)" }}>
-                {Object.entries(quote.breakdown)
+                {Object.entries(view.breakdown)
                   .filter(([k]) => k !== "discount")
                   .map(([k, v]) => (
                     <div key={k} className="flex justify-between">
@@ -371,26 +399,26 @@ export default function CheckoutPage() {
                       <span>{yen(v)}</span>
                     </div>
                   ))}
-                {Number(quote.discount_total) > 0 && (
+                {Number(view.discount_total) > 0 && (
                   <div className="flex justify-between">
                     <span>値引き</span>
-                    <span>−{yen(quote.discount_total)}</span>
+                    <span>−{yen(view.discount_total)}</span>
                   </div>
                 )}
-                {Number(quote.service_charge) > 0 && (
+                {Number(view.service_charge) > 0 && (
                   <div className="flex justify-between">
-                    <span>サービス料</span>
-                    <span>{yen(Number(quote.service_charge) + Number(quote.service_charge_tax))}</span>
+                    <span>サービス料{view.service_charge_rate !== undefined && `（${Number(view.service_charge_rate)}%）`}</span>
+                    <span>{yen(Number(view.service_charge) + Number(view.service_charge_tax))}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span>うち消費税</span>
-                  <span>{yen(quote.tax_total)}</span>
+                  <span>{yen(view.tax_total)}</span>
                 </div>
-                {Number(quote.rounding_adjustment) !== 0 && (
+                {Number(view.rounding_adjustment) !== 0 && (
                   <div className="flex justify-between">
                     <span>端数調整</span>
-                    <span>{yen(quote.rounding_adjustment, { sign: true })}</span>
+                    <span>{yen(view.rounding_adjustment, { sign: true })}</span>
                   </div>
                 )}
               </div>
@@ -441,20 +469,29 @@ export default function CheckoutPage() {
         {/* 右: 支払い */}
         <div className="col-span-12 lg:col-span-7 space-y-3">
           <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                className={`btn btn-xl whitespace-nowrap ${method === t.key ? "btn-primary" : ""}`}
-                style={{ fontSize: t.label.length > 4 ? "1.15rem" : undefined, padding: "0 0.5rem" }}
-                onClick={() => {
-                  setMethod(t.key);
-                  setField(t.key === "mixed" ? "card" : "tendered");
-                }}
-                aria-pressed={method === t.key}
-              >
-                {t.label}
-              </button>
-            ))}
+            {tabs.map((t) => {
+              // 支払方法でサービス料率が変わる店は、ボタンにその方法の合計を出す（押す前に金額の違いが分かる）
+              const amount = byMethod[RATE_METHOD[t.key]]?.total;
+              return (
+                <button
+                  key={t.key}
+                  className={`btn btn-xl whitespace-nowrap ${method === t.key ? "btn-primary" : ""}`}
+                  style={{ fontSize: t.label.length > 4 ? "1.15rem" : undefined, padding: "0 0.5rem", flexDirection: "column", gap: 0 }}
+                  onClick={() => {
+                    setMethod(t.key);
+                    setField(t.key === "mixed" ? "card" : "tendered");
+                  }}
+                  aria-pressed={method === t.key}
+                >
+                  <span>{t.label}</span>
+                  {hasRates && amount !== undefined && (
+                    <span className="num text-base font-normal" data-testid={`method-total-${t.key}`}>
+                      {yen(amount)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <section className="card space-y-3">
@@ -633,6 +670,14 @@ export default function CheckoutPage() {
               <span>ご請求</span>
               <span>{yen(total)}</span>
             </div>
+            {hasRates && view && (
+              <div className="flex justify-between text-lg" style={{ color: "var(--color-muted)" }}>
+                <span>
+                  うちサービス料（{RATE_LABEL[rateMethod]} {Number(view.service_charge_rate ?? 0)}%）
+                </span>
+                <span>{yen(Number(view.service_charge) + Number(view.service_charge_tax))}</span>
+              </div>
+            )}
             {method === "card" && (
               <div className="flex justify-between">
                 <span>カード</span>

@@ -21,7 +21,7 @@ from .models import (
     Checkout, CheckoutStatus, CourseEntry, CourseEvent, LineStatus, LineType, OrderLine, OrderLineBackTarget, Payment,
     PaymentMethod, Receivable, ReceivableCollection, Refund, Visit, VisitStatus,
 )
-from .pricing import compute_totals, line_inputs_from_orderlines
+from .pricing import RATE_METHODS, compute_totals, has_method_rates, line_inputs_from_orderlines, rate_method_for_payments
 
 
 # --- 共通 ---------------------------------------------------------------------
@@ -708,13 +708,28 @@ def cancel_visit(store: Store, user, visit_id, reason: str) -> Visit:
 
 
 # --- 見積（会計前の金額表示） --------------------------------------------------
-def quote(visit: Visit, line_ids=None):
+def quote(visit: Visit, line_ids=None, method: str | None = None):
+    """
+    method: 料率を決める支払方法（cash / card / receivable）。None は標準の料率（支払方法が決まる前の表示）。
+    支払方法で金額が変わる店では by_method に支払方法ごとの料率・サービス料・合計を入れる（会計画面のボタン・卓詳細に出す）。
+    """
+    if method not in (None, *RATE_METHODS):
+        raise ApiError("validation_error", "支払方法が不正です。")
     st = store_settings(visit.store)
     qs = visit.lines.filter(status=LineStatus.ACTIVE, checkout__isnull=True)
     if line_ids:
         qs = qs.filter(id__in=line_ids)
     lines = list(qs)
-    return compute_totals(line_inputs_from_orderlines(lines), st), lines
+    inputs = line_inputs_from_orderlines(lines)
+    totals = compute_totals(inputs, st, method)
+    if has_method_rates(st):
+        for m in RATE_METHODS:
+            t = totals if m == method else compute_totals(inputs, st, m)
+            totals.by_method[m] = {
+                "rate": str(t.service_charge_rate), "service_charge": str(t.service_charge + t.service_charge_tax),
+                "tax_total": str(t.tax_total), "rounding_adjustment": str(t.rounding_adjustment), "total": str(t.total),
+            }
+    return totals, lines
 
 
 # --- 会計確定 -------------------------------------------------------------------
@@ -743,9 +758,6 @@ def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payme
     if not lines:
         raise ApiError("validation_error", "会計対象の明細がありません。")
     is_full = len(lines) == len(remaining) and not visit.checkouts.filter(status=CheckoutStatus.CONFIRMED).exists()
-    totals = compute_totals(line_inputs_from_orderlines(lines), st)
-    if totals.total < 0:
-        raise ApiError("validation_error", "値引きが明細合計を超えています。値引きを見直してください。")
 
     payments_in = data.get("payments") or []
     if not payments_in:
@@ -767,11 +779,16 @@ def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payme
             if tendered is not None and D(tendered) < amt:
                 raise ApiError("validation_error", "現金の預り額が充当額より少なくなっています。")
         paid_sum += amt
+    # サービス料率は支払方法で決まる（カードを含めばカードの料率。pricing.rate_method_for_payments）
+    rate_method = rate_method_for_payments(p.get("method") for p in payments_in)
+    totals = compute_totals(line_inputs_from_orderlines(lines), st, rate_method)
+    if totals.total < 0:
+        raise ApiError("validation_error", "値引きが明細合計を超えています。値引きを見直してください。")
     if paid_sum != totals.total:
         raise ApiError(
             "payment_mismatch",
             f"支払合計 {paid_sum:,.0f}円 が請求金額 {totals.total:,.0f}円 と一致しません。",
-            details={"paid": str(paid_sum), "total": str(totals.total)},
+            details={"paid": str(paid_sum), "total": str(totals.total), "method": rate_method},
         )
     if cash_count > 1:
         raise ApiError("validation_error", "現金の支払いは1件にまとめてください。")
@@ -810,6 +827,7 @@ def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payme
     gross = sum((D(l.amount) for l in lines if l.line_type != LineType.DISCOUNT), ZERO)
     net = gross - totals.discount_total
     discount_ratio = (net / gross).quantize(Decimal("0.000001")) if gross > 0 else Decimal("1")
+    # バックは支払方法で変えない: 支払方法別の料率があっても標準の料率で計算する
     sc_rate = D(st.service_charge_rate) if st.service_charge_enabled else ZERO
     backs_svc.settle_entries_for_checkout(checkout, lines, user=user, discount_ratio=discount_ratio, service_charge_rate=sc_rate, has_receivable=has_receivable, now=now)
 

@@ -57,17 +57,23 @@ export default function BillPage() {
         <div className="grid grid-cols-4 gap-x-6 gap-y-0.5 num text-lg flex-1">
           <Cell label="小計" value={yen(q?.subtotal)} testid="bill-subtotal" />
           <Cell label="値引き" value={q && Number(q.discount_total) > 0 ? `−${yen(q.discount_total)}` : "—"} hint={discounts.map((d) => d.discount_reason).filter(Boolean).join("・")} />
-          <Cell label="サービス料" value={q && Number(q.service_charge) > 0 ? yen(Number(q.service_charge) + Number(q.service_charge_tax)) : "—"} />
+          <Cell label={q?.by_method?.cash ? `サービス料（標準 ${Number(q.service_charge_rate ?? 0)}%）` : "サービス料"} value={q && Number(q.service_charge) > 0 ? yen(Number(q.service_charge) + Number(q.service_charge_tax)) : "—"} />
           <Cell label="消費税（うち）" value={yen(q?.tax_total)} />
         </div>
         <div className="text-right">
           <div className="text-sm" style={{ color: "var(--color-muted)" }}>
-            合計（税込）
+            合計（税込{q?.by_method?.cash ? "・標準の料率" : ""}）
             {q && Number(q.rounding_adjustment) !== 0 && <span className="ml-2">端数調整 {yen(q.rounding_adjustment, { sign: true })}</span>}
           </div>
           <div className="text-5xl font-bold num leading-none" data-testid="bill-total">
             {yen(q?.total)}
           </div>
+          {q?.by_method?.cash && q.by_method.card && (
+            // 支払方法でサービス料率が変わる店: 上は標準の料率の金額。現金・カードそれぞれの金額も出す
+            <div className="text-base num mt-1" data-testid="bill-total-by-method">
+              現金 {yen(q.by_method.cash.total)}（{Number(q.by_method.cash.rate)}%）・ カード {yen(q.by_method.card.total)}（{Number(q.by_method.card.rate)}%）
+            </div>
+          )}
         </div>
         <button className="btn btn-xl" style={{ minWidth: 130 }} onClick={() => router.replace(`/visits/${visit.id}`)}>
           戻る

@@ -42,6 +42,23 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
     def get_void_pin_set(self, obj) -> bool:
         return bool(obj.void_pin_hash)
 
+    def _rate(self, value, label):
+        if value is not None and not (Decimal("0") <= value <= Decimal("100")):
+            raise serializers.ValidationError(f"{label}は 0〜100 の範囲で入力してください。")
+        return value
+
+    def validate_service_charge_rate(self, value):
+        return self._rate(value, "サービス料率")
+
+    def validate_service_charge_rate_cash(self, value):
+        return self._rate(value, "現金のときのサービス料率")
+
+    def validate_service_charge_rate_card(self, value):
+        return self._rate(value, "カードのときのサービス料率")
+
+    def validate_service_charge_rate_receivable(self, value):
+        return self._rate(value, "ツケのときのサービス料率")
+
     def validate_cast_sales_split_mode(self, value):
         if value not in ("equal", "full_each"):
             raise serializers.ValidationError("キャスト売上の分け方は equal か full_each を指定してください。")

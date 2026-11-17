@@ -126,9 +126,27 @@ export default function StoreSettingsPage() {
             <h2 className="font-bold">サービス料</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Toggle checked={f.service_charge_enabled} onChange={(v) => set({ service_charge_enabled: v })} label="サービス料を加算する" />
-              <Field label="料率（%）">
+              <Field label="料率（%・標準）" hint="支払方法を選ぶ前の金額（ホール・卓詳細）とバックの計算に使います。下の支払方法別が空欄のときもこの料率です。">
                 <input className="input" inputMode="decimal" value={f.service_charge_rate} onChange={(e) => set({ service_charge_rate: e.target.value })} disabled={!canEdit} />
               </Field>
+              {(
+                [
+                  ["service_charge_rate_cash", "現金で払うときの料率（%）", ""],
+                  ["service_charge_rate_card", "カードで払うときの料率（%）", "現金＋カードもこの料率です。"],
+                  ["service_charge_rate_receivable", "ツケのときの料率（%）", ""],
+                ] as const
+              ).map(([key, label, hint]) => (
+                <Field key={key} label={label} hint={hint || undefined}>
+                  <input
+                    className="input"
+                    inputMode="decimal"
+                    value={f[key] ?? ""}
+                    placeholder="空欄 = 標準の料率"
+                    onChange={(e) => set({ [key]: e.target.value.trim() === "" ? null : e.target.value })}
+                    disabled={!canEdit}
+                  />
+                </Field>
+              ))}
               <Field label="計算対象">
                 <select className="input" value={f.service_charge_target} onChange={(e) => set({ service_charge_target: e.target.value })} disabled={!canEdit}>
                   <option value="all">全明細</option>
