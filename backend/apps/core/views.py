@@ -26,7 +26,7 @@ from .models import (
 )
 from .permissions import (
     CAP_AUDIT_VIEW, CAP_COMPANY_MANAGE, CAP_SETTINGS_EDIT, CAP_SETTINGS_VIEW, CAP_TAX_DECIDE, IsAuthenticatedUser, IsPlatformOperator,
-    StoreCaps, accessible_stores, company_role_for, is_reauthenticated, reauth_valid_seconds, resolve_store_access,
+    StoreCaps, accessible_stores, company_role_for, resolve_store_access,
 )
 from .serializers import (
     AuditLogSerializer, CompanyMembershipSerializer, CompanySerializer, InvitationSerializer, StoreMembershipSerializer,
@@ -95,14 +95,11 @@ def me_payload(request) -> dict:
     emp = getattr(user, "employee", None)
     if emp is not None:
         employee = {"id": emp.id, "display_name": emp.display_name, "company_id": emp.company_id}
-    reauth_until = request.session.get("reauth_until")
     return {
         "user": UserBriefSerializer(user).data,
         "stores": stores,
         "companies": companies,
         "employee": employee,
-        "reauth_until": reauth_until,
-        "reauth_valid": is_reauthenticated(request),
         "server_now": timezone.now().isoformat(),
     }
 
@@ -131,8 +128,6 @@ class LoginView(APIView):
         if not user.is_active:
             raise ApiError("login_failed", "このアカウントは無効化されています。", status=401)
         login(request, user)
-        request.session["reauth_until"] = timezone.now().timestamp() + reauth_valid_seconds()
-        request.session["reauth_source"] = "login"  # ログイン直後の自動付与（税務上の操作には使えない）
         audit(request, "auth.login", target=user)
         return Response(me_payload(request))
 
@@ -154,27 +149,9 @@ class MeView(APIView):
 
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
-            return Response({"user": None, "stores": [], "companies": [], "employee": None, "reauth_until": None, "reauth_valid": False,
+            return Response({"user": None, "stores": [], "companies": [], "employee": None,
                              "server_now": timezone.now().isoformat()})
         return Response(me_payload(request))
-
-
-class ReauthView(APIView):
-    """共有iPadで機微な操作を行う前のパスワード再確認。"""
-
-    permission_classes = [IsAuthenticatedUser]
-    throttle_classes = [LoginThrottle]
-
-    def post(self, request):
-        password = request.data.get("password") or ""
-        if not request.user.check_password(password):
-            audit(request, "auth.reauth_failed", target=request.user)
-            raise ApiError("reauth_failed", "パスワードが正しくありません。", status=401)
-        until = timezone.now().timestamp() + reauth_valid_seconds()
-        request.session["reauth_until"] = until
-        request.session["reauth_source"] = "explicit"  # パスワードを明示的に再確認した（申告・年度締めはこれが必要）
-        audit(request, "auth.reauth", target=request.user)
-        return Response({"reauth_until": until, "valid_minutes": reauth_valid_seconds() // 60})
 
 
 class SelectStoreView(APIView):
@@ -279,7 +256,7 @@ class StoreVoidPinView(APIView):
     """会計取消の暗証番号を設定・変更・解除する。店舗タブレットの共有アカウント（店長）では変えられないよう、オーナー・会社管理者だけ。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_SETTINGS_VIEW, write_caps=(CAP_SETTINGS_EDIT,), reauth=True)]
+        return [StoreCaps(CAP_SETTINGS_VIEW, write_caps=(CAP_SETTINGS_EDIT,))]
 
     def put(self, request):
         if request.store_access.role not in ("owner", "admin", "operator"):
@@ -301,8 +278,6 @@ def _company_for_manage(request, company_id) -> Company:
         return company
     if role != CompanyRole.OWNER and not (role == CompanyRole.ADMIN and request.method in ("GET", "HEAD")):
         raise ApiError("forbidden", "この会社を管理する権限がありません。", status=403)
-    if request.method not in ("GET", "HEAD") and not is_reauthenticated(request):
-        raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
     return company
 
 
@@ -698,7 +673,7 @@ class StoreTabletAccountsView(APIView):
     """
 
     def get_permissions(self):
-        return [StoreCaps(CAP_SETTINGS_EDIT, reauth=True)]
+        return [StoreCaps(CAP_SETTINGS_EDIT)]
 
     @idempotent
     @transaction.atomic
@@ -723,7 +698,7 @@ class StoreTabletAccountPasswordView(APIView):
     """タブレット用アカウントのパスワードを変える {password}（忘れたとき・入れ替えるとき）。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_SETTINGS_EDIT, reauth=True)]
+        return [StoreCaps(CAP_SETTINGS_EDIT)]
 
     @idempotent
     @transaction.atomic

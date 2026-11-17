@@ -303,8 +303,7 @@ class AggregationAndExportTests(TenancyBase):
         manager = client_for(self.manager_a1, self.a1.store)
         self.assertEqual(manager.get("/api/exports/sales.csv").status_code, 200)
         self.assertEqual(manager.get("/api/exports/payroll.csv").status_code, 403)
-        owner_noreauth = client_for(self.owner_a, self.a1.store, reauth=False)
-        self.assertEqual(owner_noreauth.get("/api/exports/payroll.csv").status_code, 403)
+        self.assertEqual(client_for(self.owner_a, self.a1.store).get("/api/exports/payroll.csv").status_code, 200)
         self.assertEqual(client_for(self.owner_b, self.a1.store).get("/api/exports/sales.csv").status_code, 403)
         self.assertEqual(owner.get("/api/exports/unknown.csv").status_code, 404)
 
@@ -338,11 +337,7 @@ class RoleTests(TenancyBase):
         self.assertEqual(c.post("/api/staff/employees", {"full_name": "x", "display_name": "x"}, format="json").status_code, 403)
         self.assertEqual(c.get("/api/staff/back-rules").status_code, 403)
         self.assertEqual(c.get("/api/audit/logs").status_code, 403)
-        # 店長: 設定変更は再認証が必要
-        m = client_for(self.manager_a1, self.a1.store, reauth=False)
-        r = m.put("/api/store/settings", {"nomination_fee": "1"}, format="json")
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
+        # 店長: 設定変更はパスワードを聞き直さずにできる
         m = client_for(self.manager_a1, self.a1.store)
         r = m.put("/api/store/settings", {"nomination_fee": "1200"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)

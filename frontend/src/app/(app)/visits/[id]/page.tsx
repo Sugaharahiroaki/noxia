@@ -568,7 +568,7 @@ const SC_TARGET_LABEL: Record<string, string> = { all: "全明細", course_only:
 
 /**
  * いまの店舗の料金計算の設定（読み取り専用）。卓ごとの率の変更は出さない（UNIFIED_PLAN 6 章 Q2）。
- * 支払方法別の料率（S1）があれば並べて出す。変更は設定画面（権限と再認証が必要）で行う。
+ * 支払方法別の料率（S1）があれば並べて出す。変更は設定画面（権限が必要）で行う。
  */
 function PricingInfo({ st }: { st: StoreSettings }) {
   const byMethod = (

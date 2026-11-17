@@ -94,14 +94,9 @@ def add_employee(fx: StoreFixture, key: str, *, role: str = "cast", wage: Decima
     return emp
 
 
-def client_for(user: User, store: Store | None = None, reauth: bool = True) -> APIClient:
+def client_for(user: User, store: Store | None = None) -> APIClient:
     c = APIClient()
     c.force_login(user)
-    if reauth:
-        session = c.session
-        session["reauth_until"] = timezone.now().timestamp() + 3600
-        session["reauth_source"] = "explicit"
-        session.save()
     if store is not None:
         c.credentials(HTTP_X_STORE_ID=str(store.id))
     return c

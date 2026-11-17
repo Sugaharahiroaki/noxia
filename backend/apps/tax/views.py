@@ -213,10 +213,6 @@ class YearConfigView(APIView):
 
     @transaction.atomic
     def put(self, request, year):
-        from apps.core.permissions import is_reauthenticated
-
-        if not is_reauthenticated(request, explicit=True):
-            raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
         cfg = config_mod.ensure_config(int(year))
         if cfg is None:
             raise ApiError("not_found", "年度の設定がありません。", status=404)
@@ -367,7 +363,7 @@ class GuideProgressView(APIView):
 
 class GuidePdfView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_RETURN_EXPORT, reauth=True)]
+        return [StoreCaps(CAP_TAX_RETURN_EXPORT)]
 
     def get(self, request, year):
         tr = get_return(request, int(year))
@@ -380,7 +376,7 @@ class GuidePdfView(APIView):
 # --- 出力 ---------------------------------------------------------------------------------------
 class ExportsView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_RETURN_EXPORT, reauth=True)]
+        return [StoreCaps(CAP_TAX_RETURN_EXPORT)]
 
     @idempotent
     @transaction.atomic
@@ -427,7 +423,7 @@ class ExportsView(APIView):
 
 class ExportFileView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_RETURN_EXPORT, reauth=True)]
+        return [StoreCaps(CAP_TAX_RETURN_EXPORT)]
 
     def get(self, request, year, export_id):
         tr = get_return(request, int(year), create=False)

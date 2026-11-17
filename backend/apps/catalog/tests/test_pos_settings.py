@@ -119,11 +119,7 @@ class MasterChangeDoesNotTouchExistingLinesTests(Base):
         new_line = OrderLine.objects.get(id=r2.json()["created_line_ids"][0])
         self.assertEqual((new_line.name, new_line.unit_price, new_line.tax_rate), ("CD 改", Decimal(9999), Decimal("8.00")))
 
-    def test_store_settings_save_still_requires_reauth(self):
-        no_reauth = client_for(self.fx.users["manager"], self.store, reauth=False)
-        r = no_reauth.put("/api/store/settings", {"jounai_fee": "1500"}, format="json")
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
+    def test_store_settings_save_without_password_prompt(self):
         r = self.manager.put("/api/store/settings", {"jounai_fee": "1500", "alarm_mode": "10"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual((Decimal(r.json()["jounai_fee"]), r.json()["alarm_mode"]), (Decimal(1500), "10"))

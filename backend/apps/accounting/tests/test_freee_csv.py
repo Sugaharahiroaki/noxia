@@ -102,7 +102,7 @@ class FreeeCsvTests(TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_manager_cannot_mark(self):
-        manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        manager = client_for(self.fx.users["manager"], self.fx.store)
         res = manager.get("/api/accounting/freee/csv-status?from=2026-06-01&to=2026-06-30")
         # 店長は経理閲覧の権限がないので 403
         self.assertEqual(res.status_code, 403)

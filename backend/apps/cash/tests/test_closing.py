@@ -264,9 +264,6 @@ class RevisionTests(ClosingBase):
         r = self.staff.post(f"/api/cash/days/{day['id']}/revise", body, format="json")
         self.assertEqual(r.status_code, 403)
         # 店舗の操作なのでパスワードの再確認は要らない（共有タブレットでログインしたまま使う運用）
-        manager_noreauth = client_for(self.fx.users["manager"], self.store, reauth=False)
-        r = manager_noreauth.post(f"/api/cash/days/{day['id']}/revise", {"changes": {"counted_cash": "32000"}}, format="json")
-        self.assertEqual(r.status_code, 400)
         r = self.manager.post(f"/api/cash/days/{day['id']}/revise", {"changes": {"counted_cash": "32000"}}, format="json")
         self.assertEqual(r.status_code, 400)
         r = self.manager.post(f"/api/cash/days/{day['id']}/revise", body, format="json")

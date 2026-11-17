@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from apps.core.business_date import current_business_date
 from apps.core.exceptions import ApiError
 from apps.core.permissions import (
-    CAP_CUSTOMERS_VIEW, CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_EXPORT_SALES, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps, is_reauthenticated,
+    CAP_CUSTOMERS_VIEW, CAP_DASHBOARD, CAP_EXPORT_PAYROLL, CAP_EXPORT_SALES, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_SALES_VIEW, StoreCaps,
 )
 
 from . import reports
@@ -127,7 +127,7 @@ class PeopleReportView(APIView):
     cast = True
 
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, reauth=True)]
+        return [StoreCaps(CAP_PAYROLL_VIEW_ALL)]
 
     def get(self, request):
         y, m = parse_month(request)
@@ -160,10 +160,7 @@ def person_for_request(request, employee_id):
     access = request.store_access
     own = getattr(request.user, "employee", None)
     is_own = own is not None and own.id == int(employee_id) and own.company_id == request.store.company_id
-    if CAP_PAYROLL_VIEW_ALL in access.caps:
-        if not is_own and not is_reauthenticated(request):
-            raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
-    elif not (is_own and CAP_PAYROLL_VIEW_SELF in access.caps):
+    if CAP_PAYROLL_VIEW_ALL not in access.caps and not (is_own and CAP_PAYROLL_VIEW_SELF in access.caps):
         raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
     emp = Employee.objects.filter(id=employee_id, company=request.store.company).first()
     if emp is None:
@@ -211,7 +208,7 @@ class PeopleCsvView(APIView):
     """キャスト（または スタッフ）集計の CSV。既存の支払 CSV と同じく export.payroll と再認証が必要。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_EXPORT_PAYROLL, reauth=True)]
+        return [StoreCaps(CAP_EXPORT_PAYROLL)]
 
     def get(self, request, kind):
         import csv
@@ -353,7 +350,7 @@ class DeletionHistoryView(APIView):
 
 
 class ReportXlsxView(APIView):
-    """集計画面の表の XLSX 出力。必要な権限は種類ごと（report_tables.KINDS）。キャスト・スタッフ集計は再認証が必要。"""
+    """集計画面の表の XLSX 出力。必要な権限は種類ごと（report_tables.KINDS）。"""
 
     def get_permissions(self):
         from .report_tables import KINDS
@@ -361,8 +358,8 @@ class ReportXlsxView(APIView):
         spec = KINDS.get(self.kwargs.get("kind"))
         if spec is None:
             return [StoreCaps()]
-        caps, reauth, _period = spec
-        return [StoreCaps(*caps, reauth=True if reauth else None)]
+        caps, _period = spec
+        return [StoreCaps(*caps)]
 
     def get(self, request, kind):
         from apps.accounting.exports import xlsx_response
@@ -371,7 +368,7 @@ class ReportXlsxView(APIView):
 
         if kind not in KINDS:
             raise ApiError("not_found", "出力種別が不正です。", status=404)
-        period = KINDS[kind][2]
+        period = KINDS[kind][1]
         kwargs = {"today": current_business_date(request.store)}
         if period == "range":
             kwargs["f"], kwargs["t"] = parse_range(request)

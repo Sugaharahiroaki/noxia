@@ -38,7 +38,7 @@ function plain(v: unknown): string {
 
 function GuideBody({ year }: { year: number }) {
   const q = useLoad<Guide>(`/api/tax/returns/${year}/guide`, [year], { refetchOnFocus: false });
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const [section, setSection] = useState("business");
   if (q.loading) return <Spinner />;
@@ -86,7 +86,7 @@ function GuideBody({ year }: { year: number }) {
         )}
         <div className="ml-auto flex gap-2">
           {can("tax.return.export") && (
-            <button className="btn btn-sm" onClick={() => withReauth(() => downloadFile(`/api/tax/returns/${year}/guide.pdf`)).catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>
+            <button className="btn btn-sm" onClick={() => downloadFile(`/api/tax/returns/${year}/guide.pdf`).catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>
               A4 の PDF にする
             </button>
           )}

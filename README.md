@@ -67,7 +67,7 @@ Docker を使える環境では、`docker run -e POSTGRES_USER=yorumiru -e POSTG
 | `owner_b` | B社オーナー（Bar B・別館） |
 | `staff_b1` | Bar B スタッフ |
 
-給与・バック設定などパソコンから行う管理操作は、パスワードの再確認（10分有効）を求めます。店舗のタブレットで行う操作（会計・取消・開店・日締め・締め後の修正・日払い・領収書）は再確認なしで、ログインは使い続ける限り切れません（店舗ごとに 1 アカウントでログインしたままにする運用）。
+操作の途中でログインのパスワードを聞き直すことはありません（キャスト・時給・バック・設定の登録も、ログインしたままそのまま行えます）。暗証番号を聞くのは会計（伝票）の取消だけです（店舗の 4 桁の暗証番号。オーナーが店舗設定で決める）。ログインは使い続ける限り切れません（店舗ごとに 1 アカウントでログインしたままにする運用）。
 
 ## 環境変数（backend/.env）
 `backend/.env.example` をコピーして使います。
@@ -79,7 +79,6 @@ Docker を使える環境では、`docker run -e POSTGRES_USER=yorumiru -e POSTG
 | `DJANGO_ALLOWED_HOSTS` | 例 `localhost,127.0.0.1,192.168.1.10` |
 | `CSRF_TRUSTED_ORIGINS` | フロントエンドのオリジン 例 `http://localhost:3000,http://192.168.1.10:3000` |
 | `SESSION_COOKIE_SECURE` / `CSRF_COOKIE_SECURE` | HTTPS 運用時は `1` |
-| `REAUTH_VALID_MINUTES` | 再認証の有効時間（既定 10） |
 | `SESSION_COOKIE_AGE` | ログインの有効秒数（既定 30 日。使うたびに延びる） |
 | `POSTGRES_DB/USER/PASSWORD/HOST/PORT` | 接続情報（既定は開発用 `yorumiru/yorumiru@localhost:5432/yorumiru`） |
 | `ALLOW_DEV_SEED` | `1` のとき `seed_dev` を実行できる。本番は `0` |
@@ -183,7 +182,7 @@ PC へのインストールは HTTPS（または localhost）のときだけ表�
 - **テナント**: `Company` → `Store`、`User` ↔ `CompanyMembership`（会社内権限） / `StoreMembership`（店舗内権限）。
   店舗データは必ず `store` を持ち、リクエストの `X-Store-Id` は所属と照合してから使う（`apps/core/permissions.py`）。
   関連付ける従業員・商品・伝票などの所属も検証する（`StorePK`、各サービス）。運営者（`is_platform_operator`）のアクセスは `OperatorAccessLog` に記録。
-- **権限**: ケイパビリティ（`floor.operate` など）を役割ごとに定義し API で検証。給与・設定・税務など管理操作は再認証必須（`REAUTH_CAPS`）。店舗の操作は再認証なし。
+- **権限**: ケイパビリティ（`floor.operate` など）を役割ごとに定義し API で検証。操作の途中でパスワードを聞き直す仕組み（再認証）は持たない。会計の取消だけ店舗の暗証番号（`apps/core/void_pin.py`）を求める。
 - **金額**: Django 側で `Decimal` 計算（`apps/sales/pricing.py`）。価格・税率・バック条件は取引時点を明細に保存。合計の丸めは「端数調整」として保存し税額は変えない。
 - **二重登録防止**: `Idempotency-Key`（`apps/core/idempotency.py`）＋ 行ロック ＋ 一意制約。処理中の再送は 409 を返し、クライアントは状態確認を促す。
 - **アラーム**: 保存された終了予定時刻と現在時刻から毎回再計算（サーバー `apps/sales/alarms.py`、クライアント `useServerClock.ts`）。

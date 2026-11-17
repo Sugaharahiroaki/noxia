@@ -508,7 +508,7 @@ function BacksTab() {
 }
 
 function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
-  const { withReauth, can } = useSession();
+  const { can } = useSession();
   const [range, setRange, bd] = useDateRange();
   const from = range?.from ?? "";
   const to = range?.to ?? "";
@@ -522,7 +522,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
     if (!range) return;
     setBusy(true);
     try {
-      const s = await withReauth(() => api<Statement[]>(`/api/staff/statements?from=${from}&to=${to}`));
+      const s = await api<Statement[]>(`/api/staff/statements?from=${from}&to=${to}`);
       setStatements(s);
       const p = await api<PayPeriod[]>("/api/staff/pay-periods");
       setPeriods(p);
@@ -565,7 +565,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
           集計する
         </button>
         {can("export.payroll") && (
-          <button className="btn btn-sm" onClick={() => withReauth(() => downloadFile(`/api/exports/payroll.csv?from=${from}&to=${to}`)).catch(setErr)}>
+          <button className="btn btn-sm" onClick={() => downloadFile(`/api/exports/payroll.csv?from=${from}&to=${to}`).catch(setErr)}>
             支払CSV
           </button>
         )}
@@ -643,7 +643,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
               setBusy(true);
               setSave({ kind: "saving" });
               try {
-                await withReauth(() => api("/api/staff/pay-periods", { method: "POST", body: { start_date: from, end_date: to } }));
+                await api("/api/staff/pay-periods", { method: "POST", body: { start_date: from, end_date: to } });
                 setSave({ kind: "saved", label: "締め期間を作成しました" });
                 await load();
               } catch (e) {
@@ -669,7 +669,7 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
                       ev.preventDefault();
                       setSave({ kind: "saving", label: "締め処理中…" });
                       try {
-                        await withReauth(() => api(`/api/staff/pay-periods/${p.id}/close`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: {} }));
+                        await api(`/api/staff/pay-periods/${p.id}/close`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: {} });
                         setSave({ kind: "saved", label: "締めました（明細を固定）" });
                         await load();
                       } catch (e) {
@@ -723,14 +723,13 @@ function PayTab({ setSave }: { setSave: (s: SaveState) => void }) {
             await load();
           }}
           setSave={setSave}
-          withReauth={withReauth}
         />
       )}
     </div>
   );
 }
 
-function PaymentModal({ statement, businessDate, onClose, onSaved, setSave, withReauth }: { statement: Statement; businessDate: string | null; onClose: () => void; onSaved: () => Promise<void>; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+function PaymentModal({ statement, businessDate, onClose, onSaved, setSave }: { statement: Statement; businessDate: string | null; onClose: () => void; onSaved: () => Promise<void>; setSave: (s: SaveState) => void }) {
   // 締め払いは締め日のあとに渡すことが多いので、集計している期間の最終日（今日より後なら今日）の分として記録する。
   // こうすると、その期間の支払集計・キャスト集計の残額が 0 になり、次の期間には入らない
   const recordOn = businessDate && statement.end_date > businessDate ? businessDate : statement.end_date;
@@ -756,7 +755,7 @@ function PaymentModal({ statement, businessDate, onClose, onSaved, setSave, with
               setBusy(true);
               setSave({ kind: "saving" });
               try {
-                await withReauth(() => api("/api/staff/payments", { method: "POST", idempotencyKey: newIdempotencyKey(), body: { employee_id: statement.employee_id, amount: toInt(amount), method, kind, note, business_date: recordOn } }));
+                await api("/api/staff/payments", { method: "POST", idempotencyKey: newIdempotencyKey(), body: { employee_id: statement.employee_id, amount: toInt(amount), method, kind, note, business_date: recordOn } });
                 setSave({ kind: "saved" });
                 await onSaved();
               } catch (e) {

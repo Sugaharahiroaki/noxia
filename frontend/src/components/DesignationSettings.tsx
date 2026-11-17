@@ -80,7 +80,7 @@ function sameBack(a: BackDraft, b: BackDraft) {
 }
 
 export function DesignationSettings({ variant, title = "指名・同伴（呼び・同伴・本指名・場内指名）" }: { variant: "page" | "pane"; title?: string }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const terms = useTerms();
   const canEdit = can("settings.edit");
@@ -143,13 +143,13 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
         // 名前（名称変更）を先に保存する。名前で断られたら料金・オンオフ・バックも保存しない
         const labels: Record<string, string> = Object.fromEntries(terms.rows.filter((r) => r.overridden).map((r) => [r.key, r.label]));
         for (const r of ROWS) labels[r.key] = draft[r.key].name.trim();
-        await withReauth(() => api("/api/store/terms", { method: "PUT", body: { labels } }));
+        await api("/api/store/terms", { method: "PUT", body: { labels } });
         const body: Record<string, unknown> = {};
         for (const r of ROWS) {
           body[FIELDS[r.key].enabled] = draft[r.key].enabled;
           body[FIELDS[r.key].fee] = draft[r.key].fee === "" ? null : draft[r.key].fee;
         }
-        st.setData(await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body })));
+        st.setData(await api<StoreSettings>("/api/store/settings", { method: "PUT", body }));
       }
       if (canEditBacks) {
         const items: Record<string, unknown>[] = [];
@@ -163,7 +163,7 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
               : { target: `${r.key}_subtotal`, mode: "none" },
           );
         }
-        if (items.length) backs.setData(await withReauth(() => api<{ business_date: string; backs: BackApiRow[] }>("/api/staff/designation-backs", { method: "PUT", body: { backs: items } })));
+        if (items.length) backs.setData(await api<{ business_date: string; backs: BackApiRow[] }>("/api/staff/designation-backs", { method: "PUT", body: { backs: items } }));
       }
       await terms.reload();
       toast.show({ message: "指名・同伴の設定を保存しました" });
@@ -360,7 +360,7 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
   const footer = (
     <div className="flex items-center gap-3">
       <span className="text-sm flex-1" style={{ color: error || issue ? "var(--color-danger)" : "var(--color-muted)" }} role={error ? "alert" : undefined}>
-        {error ?? issue ?? "保存のときにパスワードの再確認が出ることがあります。"}
+        {error ?? issue}
       </span>
       {(canEdit || canEditBacks) && (
         <button className="btn btn-lg btn-primary" style={{ minWidth: 220 }} onClick={save} disabled={busy || !draft || !!issue}>

@@ -45,7 +45,7 @@ function Inner() {
         actions={
           <>
             {q.month && <MonthPicker value={q.month} onChange={q.setMonth} />}
-            {q.month && d && <ExportButton path={`/api/reports/people/${id}.pdf?month=${q.month}`} label="PDF 出力" reauth={can("payroll.view_all")} />}
+            {q.month && d && <ExportButton path={`/api/reports/people/${id}.pdf?month=${q.month}`} label="PDF 出力" />}
             {can("payroll.view_all") && (
               <Link href={cast === false ? "/reports/staff" : "/reports/cast"} className="btn btn-sm">
                 ← 集計表

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from django.conf import settings
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
 
@@ -151,16 +150,8 @@ ROLE_CAPS = {
     StoreRole.CAST: CAST_CAPS,
 }
 
-# 共有iPad対策: 以下のケイパビリティを使う更新系操作は再認証(reauth)を要求する
-# 店舗のタブレットは店舗ごとに 1 アカウントでログインしたままにする運用（2026-11-12）なので、
-# 店舗の操作（会計・取消・開店・日締め・締め後の修正・レジからの日払い・領収書）には再確認を求めない。
-# 再確認が要るのは、パソコンから行う設定・給与・バックのルール・集計の閲覧・会社管理・税務・freee・会計設定。
-REAUTH_CAPS = frozenset({CAP_WAGES_VIEW, CAP_WAGES_EDIT, CAP_BACK_RULES_EDIT, CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_PAY,
-                         CAP_EXPORT_PAYROLL, CAP_SETTINGS_EDIT, CAP_COMPANY_MANAGE,
-                         CAP_TAX_DECIDE, CAP_ACCOUNTING_FREEE, CAP_ACCOUNTING_SETTINGS,
-                         CAP_YEAREND_CONFIRM, CAP_TAX_RETURN_EDIT, CAP_TAX_RETURN_EXPORT, CAP_TAX_CONFIG_MANAGE})
-# 申告・年度締めは、ログイン直後の自動の再認証では足りず、パスワードを明示的に再確認した記録が必要
-EXPLICIT_REAUTH_CAPS = frozenset({CAP_YEAREND_CONFIRM, CAP_TAX_RETURN_EDIT, CAP_TAX_RETURN_EXPORT, CAP_TAX_CONFIG_MANAGE})
+# 操作の途中でログインのパスワードを聞き直すことはしない（2026-11-17。キャスト・バックの登録などで毎回聞かれて面倒なため）。
+# 暗証番号を聞くのは会計の取消だけ（apps/core/void_pin.py）。
 
 
 @dataclass(frozen=True)
@@ -270,32 +261,15 @@ def ensure_store_access(request) -> StoreAccess:
     return access
 
 
-def is_reauthenticated(request, *, explicit: bool = False) -> bool:
-    """
-    再認証済みか。explicit=True のときは、ログイン時の自動付与ではなく「パスワードを再確認した」記録（reauth_source=explicit）を要求する
-    （申告・年度締めなどの税務上の操作）。
-    """
-    until = request.session.get("reauth_until")
-    if not until:
-        return False
-    if timezone.now().timestamp() >= float(until):
-        return False
-    if explicit and request.session.get("reauth_source") != "explicit":
-        return False
-    return True
-
-
 class StoreCaps(BasePermission):
     """
     使い方: permission_classes = [StoreCaps("floor.operate")]
     X-Store-Id の所属検証を行い、必要なケイパビリティを確認する。
-    更新系(POST/PUT/PATCH/DELETE)で REAUTH_CAPS を要求する場合は再認証も確認する。
     """
 
-    def __init__(self, *caps: str, write_caps: tuple[str, ...] = (), reauth: bool | None = None):
+    def __init__(self, *caps: str, write_caps: tuple[str, ...] = ()):
         self.caps = caps
         self.write_caps = write_caps
-        self.reauth = reauth
 
     def __call__(self):  # DRF は permission_classes の要素をインスタンス化しようとする
         return self
@@ -313,10 +287,6 @@ class StoreCaps(BasePermission):
                 raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
         if is_write and access.read_only:
             raise ApiError("store_inactive", "停止中の店舗では更新できません。", status=403)
-        need_reauth = self.reauth if self.reauth is not None else (is_write and any(c in REAUTH_CAPS for c in needed))
-        need_explicit = need_reauth and any(c in EXPLICIT_REAUTH_CAPS for c in needed)
-        if need_reauth and not is_reauthenticated(request, explicit=need_explicit):
-            raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
         return True
 
 
@@ -334,7 +304,3 @@ class IsPlatformOperator(BasePermission):
         if not request.user.is_platform_operator:
             raise ApiError("forbidden", "運営者権限が必要です。", status=403)
         return True
-
-
-def reauth_valid_seconds() -> int:
-    return int(settings.REAUTH_VALID_MINUTES) * 60

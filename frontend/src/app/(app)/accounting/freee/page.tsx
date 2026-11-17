@@ -38,7 +38,7 @@ export default function FreeePage() {
 }
 
 function FreeeInner() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const params = useSearchParams();
   const status = useLoad<FreeeStatus>("/api/accounting/freee");
@@ -56,20 +56,20 @@ function FreeeInner() {
     const state = params.get("state");
     if (!code || !state || callbackDone.current || !canManage) return;
     callbackDone.current = true;
-    withReauth(() => api<FreeeStatus>("/api/accounting/freee/callback", { method: "POST", body: { code, state } }))
+    api<FreeeStatus>("/api/accounting/freee/callback", { method: "POST", body: { code, state } })
       .then((s) => {
         status.setData(s);
         toast.show({ message: "freee と接続しました" });
         window.history.replaceState(null, "", "/accounting/freee");
       })
       .catch(setErr);
-  }, [params, canManage, withReauth, status, toast]);
+  }, [params, canManage, status, toast]);
 
   async function action(name: string, body: Record<string, unknown> = {}) {
     setBusy(true);
     setErr(null);
     try {
-      const r = await withReauth(() => api<FreeeStatus & { authorize_url?: string }>(`/api/accounting/freee/${name}`, { method: "POST", body }));
+      const r = await api<FreeeStatus & { authorize_url?: string }>(`/api/accounting/freee/${name}`, { method: "POST", body });
       if (r.authorize_url) {
         window.location.href = r.authorize_url;
         return;
@@ -215,7 +215,6 @@ function FreeeInner() {
 }
 
 function ResolveUnknown({ syncId, onDone }: { syncId: number; onDone: () => void }) {
-  const { withReauth } = useSession();
   const [err, setErr] = useState<unknown>(null);
   return (
     <span className="flex flex-col gap-1">
@@ -225,7 +224,7 @@ function ResolveUnknown({ syncId, onDone }: { syncId: number; onDone: () => void
           const id = window.prompt("freee 側にこの仕訳がありましたか？ あった場合は freee の振替伝票IDを、なかった場合は空欄のまま OK を押してください（未送信に戻します）。", "");
           if (id === null) return;
           try {
-            await withReauth(() => api(`/api/accounting/freee/syncs/${syncId}/resolve`, { method: "POST", body: { freee_id: id.trim() || null } }));
+            await api(`/api/accounting/freee/syncs/${syncId}/resolve`, { method: "POST", body: { freee_id: id.trim() || null } });
             onDone();
           } catch (e) {
             setErr(e);
@@ -240,7 +239,7 @@ function ResolveUnknown({ syncId, onDone }: { syncId: number; onDone: () => void
 }
 
 function Mapping() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const q = useLoad<Mappings>("/api/accounting/account-mappings");
   const [edit, setEdit] = useState<Mappings | null>(null);
   const [freeeAccounts, setFreeeAccounts] = useState<{ id: number; name: string }[] | null>(null);
@@ -359,7 +358,7 @@ function Mapping() {
           className="btn btn-primary"
           onClick={async () => {
             try {
-              const saved = await withReauth(() => api<Mappings>("/api/accounting/account-mappings", { method: "PUT", body: edit }));
+              const saved = await api<Mappings>("/api/accounting/account-mappings", { method: "PUT", body: edit });
               q.setData(saved);
               setEdit(null);
             } catch (e) {

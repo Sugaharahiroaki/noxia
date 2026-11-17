@@ -11,7 +11,7 @@ import { useLoad } from "@/lib/useLoad";
 type Wages = { current: string; history: { id: number; hourly_wage: string; effective_from: string; note: string; created_by_name: string; created_at: string }[] };
 
 export default function EmployeesPage() {
-  const { can, withReauth, store } = useSession();
+  const { can, store } = useSession();
   const [showCompany, setShowCompany] = useState(false);
   const list = useLoad<Employee[]>(`/api/staff/employees${showCompany ? "?company=1" : ""}`);
   const [editing, setEditing] = useState<Employee | "new" | null>(null);
@@ -119,10 +119,9 @@ export default function EmployeesPage() {
             await list.reload();
           }}
           setSave={setSave}
-          withReauth={withReauth}
         />
       )}
-      {wageFor && <WageModal employee={wageFor} onClose={() => setWageFor(null)} canEdit={can("wages.edit")} withReauth={withReauth} setSave={setSave} />}
+      {wageFor && <WageModal employee={wageFor} onClose={() => setWageFor(null)} canEdit={can("wages.edit")} setSave={setSave} />}
     </div>
   );
 }
@@ -220,7 +219,7 @@ function EmployeeModal({ employee, onClose, onSaved, setSave }: { employee: Empl
   );
 }
 
-function LoginModal({ employee, onClose, onSaved, setSave, withReauth }: { employee: Employee; onClose: () => void; onSaved: () => Promise<void>; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+function LoginModal({ employee, onClose, onSaved, setSave }: { employee: Employee; onClose: () => void; onSaved: () => Promise<void>; setSave: (s: SaveState) => void }) {
   const [username, setUsername] = useState(employee.user_username ?? "");
   const [password, setPassword] = useState("");
   const [enabled, setEnabled] = useState(employee.user_username ? employee.login_enabled : true);
@@ -243,7 +242,7 @@ function LoginModal({ employee, onClose, onSaved, setSave, withReauth }: { emplo
               setErr(null);
               setSave({ kind: "saving" });
               try {
-                await withReauth(() => api(`/api/staff/employees/${employee.id}/login-account`, { method: "POST", body: { username, password, enabled } }));
+                await api(`/api/staff/employees/${employee.id}/login-account`, { method: "POST", body: { username, password, enabled } });
                 setSave({ kind: "saved" });
                 await onSaved();
               } catch (e) {
@@ -261,7 +260,7 @@ function LoginModal({ employee, onClose, onSaved, setSave, withReauth }: { emplo
     >
       <ErrorBox error={err} />
       <p className="text-sm mb-3" style={{ color: "var(--color-muted)" }}>
-        ログイン権限は配属店舗の役割（{employee.assignments.filter((a) => a.is_active).map((a) => `${a.store_name}: ${ROLE_LABELS[a.role]}`).join("、") || "配属なし"}）に従います。パスワードの再確認が必要です。
+        ログイン権限は配属店舗の役割（{employee.assignments.filter((a) => a.is_active).map((a) => `${a.store_name}: ${ROLE_LABELS[a.role]}`).join("、") || "配属なし"}）に従います。
       </p>
       <div className="space-y-3">
         <Field label="ユーザー名">
@@ -276,7 +275,7 @@ function LoginModal({ employee, onClose, onSaved, setSave, withReauth }: { emplo
   );
 }
 
-function WageModal({ employee, onClose, canEdit, withReauth, setSave }: { employee: Employee; onClose: () => void; canEdit: boolean; withReauth: <T>(fn: () => Promise<T>) => Promise<T>; setSave: (s: SaveState) => void }) {
+function WageModal({ employee, onClose, canEdit, setSave }: { employee: Employee; onClose: () => void; canEdit: boolean; setSave: (s: SaveState) => void }) {
   const [data, setData] = useState<Wages | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [wage, setWage] = useState("");
@@ -287,7 +286,7 @@ function WageModal({ employee, onClose, canEdit, withReauth, setSave }: { employ
 
   if (!loaded) {
     setLoaded(true);
-    withReauth(() => api<Wages>(`/api/staff/employees/${employee.id}/wages`))
+    api<Wages>(`/api/staff/employees/${employee.id}/wages`)
       .then(setData)
       .catch(setErr);
   }
@@ -342,7 +341,7 @@ function WageModal({ employee, onClose, canEdit, withReauth, setSave }: { employ
                   setBusy(true);
                   setSave({ kind: "saving" });
                   try {
-                    await withReauth(() => api(`/api/staff/employees/${employee.id}/wages`, { method: "POST", body: { hourly_wage: wage, effective_from: from, note } }));
+                    await api(`/api/staff/employees/${employee.id}/wages`, { method: "POST", body: { hourly_wage: wage, effective_from: from, note } });
                     const d = await api<Wages>(`/api/staff/employees/${employee.id}/wages`);
                     setData(d);
                     setWage("");

@@ -24,7 +24,7 @@ class TabletSettingsTests(APITestCase):
     def setUp(self):
         self.fx = standard_fixture()
         self.store = self.fx.store
-        self.owner = client_for(self.fx.users["owner"], self.store, reauth=True)
+        self.owner = client_for(self.fx.users["owner"], self.store)
         self.manager_sm = StoreMembership.objects.get(user=self.fx.users["manager"], store=self.store)
 
     def me(self, user):
@@ -44,8 +44,8 @@ class TabletSettingsTests(APITestCase):
         self.assertEqual((d["menu"], d["is_default"], d["default_menu"]), (tablet.DEFAULT_TABLET_MENU, True, tablet.DEFAULT_TABLET_MENU))
         self.assertTrue(any(i["key"] == "/settings/pos" and i["group"] == "設定" for i in d["items"]))
         self.assertEqual(client_for(self.fx.users["cast"], self.store).get("/api/store/tablet").status_code, 403)
-        # 変更は再認証が必要
-        self.assertEqual(client_for(self.fx.users["owner"], self.store, reauth=False).put("/api/store/tablet", {"menu": ["/floor"]}, format="json").status_code, 403)
+        # 変更は settings.edit が必要（スタッフは不可）。パスワードの聞き直しはない
+        self.assertEqual(client_for(self.fx.users["staff"], self.store).put("/api/store/tablet", {"menu": ["/floor"]}, format="json").status_code, 403)
 
     def test_put_members_and_menu(self):
         r = self.owner.put("/api/store/tablet", {"tablet_membership_ids": [self.manager_sm.id], "menu": ["/sales", "/floor"]}, format="json")
@@ -72,7 +72,7 @@ class TabletSettingsTests(APITestCase):
         self.assertEqual(self.owner.put("/api/store/tablet", {"tablet_membership_ids": [other_sm.id]}, format="json").status_code, 400)
         self.assertFalse(StoreMembership.objects.get(id=other_sm.id).is_tablet)
         # 別店舗のオーナーからは、この店舗の配属は見えない
-        oc = client_for(other.users["owner"], other.store, reauth=True)
+        oc = client_for(other.users["owner"], other.store)
         self.assertNotIn("manager", [m["username"] for m in oc.get("/api/store/tablet").json()["members"] if m["user_id"] == self.fx.users["manager"].id])
 
 
@@ -84,7 +84,7 @@ class TabletAccountCreateTests(APITestCase):
     def setUp(self):
         self.fx = standard_fixture()
         self.store = self.fx.store
-        self.owner = client_for(self.fx.users["owner"], self.store, reauth=True)
+        self.owner = client_for(self.fx.users["owner"], self.store)
 
     def create(self, client=None, **body):
         data = {"username": "rivon-tablet", "password": self.PASSWORD, "display_name": "店のタブレット", **body}
@@ -113,24 +113,22 @@ class TabletAccountCreateTests(APITestCase):
         self.assertEqual(self.create(username="", password=self.PASSWORD).status_code, 400)
         self.assertFalse(User.objects.filter(username="t2").exists())
 
-    def test_only_company_owner_with_reauth(self):
+    def test_only_company_owner(self):
         # 店舗管理者は店舗設定を変えられても、アカウントは作れない
-        mgr = client_for(self.fx.users["manager"], self.store, reauth=True)
+        mgr = client_for(self.fx.users["manager"], self.store)
         self.assertEqual(self.create(client=mgr).status_code, 403)
-        self.assertEqual(self.create(client=client_for(self.fx.users["cast"], self.store, reauth=True)).status_code, 403)
-        # オーナーでも再認証が必要
-        self.assertEqual(self.create(client=client_for(self.fx.users["owner"], self.store, reauth=False)).status_code, 403)
+        self.assertEqual(self.create(client=client_for(self.fx.users["cast"], self.store)).status_code, 403)
         self.assertFalse(User.objects.filter(username="rivon-tablet").exists())
 
     def test_other_store_owner_cannot_create_here(self):
         other = standard_fixture("s2", "c2")
         # 別会社のオーナーが X-Store-Id をこの店舗にしても拒否される
-        oc = client_for(other.users["owner"], self.store, reauth=True)
+        oc = client_for(other.users["owner"], self.store)
         r = oc.post("/api/store/tablet/accounts", {"username": "x-tablet", "password": self.PASSWORD}, format="json")
         self.assertEqual(r.status_code, 403)
         self.assertFalse(User.objects.filter(username="x-tablet").exists())
         # 自分の店舗で作れば、自分の店舗にだけ配属される
-        r = client_for(other.users["owner"], other.store, reauth=True).post(
+        r = client_for(other.users["owner"], other.store).post(
             "/api/store/tablet/accounts", {"username": "x-tablet", "password": self.PASSWORD}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(list(StoreMembership.objects.filter(user__username="x-tablet").values_list("store_id", flat=True)), [other.store.id])
@@ -146,7 +144,7 @@ class TabletAccountCreateTests(APITestCase):
     def test_change_password(self):
         sm_id = [x["id"] for x in self.create().json()["members"] if x["username"] == "rivon-tablet"][0]
         url = f"/api/store/tablet/accounts/{sm_id}/password"
-        self.assertEqual(client_for(self.fx.users["manager"], self.store, reauth=True).post(url, {"password": "New-tablet-pass-9"}, format="json").status_code, 403)
+        self.assertEqual(client_for(self.fx.users["manager"], self.store).post(url, {"password": "New-tablet-pass-9"}, format="json").status_code, 403)
         self.assertEqual(self.owner.post(url, {"password": "1"}, format="json").status_code, 400)
         self.assertEqual(self.owner.post(url, {"password": "New-tablet-pass-9"}, format="json").status_code, 200)
         self.assertTrue(User.objects.get(username="rivon-tablet").check_password("New-tablet-pass-9"))

@@ -20,7 +20,7 @@ D = Decimal
 class DailySettlementTests(TestCase):
     def setUp(self):
         self.fx = standard_fixture()
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
         self.cast = self.fx.employees["cast1"]   # 時給 1,500
         # 日払いは勤務した営業日に渡す（支払集計は渡した営業日で数える）

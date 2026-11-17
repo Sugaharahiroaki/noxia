@@ -17,7 +17,7 @@ class MonthlyTests(TestCase):
     def setUp(self):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
         self.d = prev_month_first()
         self.c1, self.c2 = self.fx.employees["cast1"], self.fx.employees["cast2"]
@@ -44,7 +44,7 @@ class MonthlyTests(TestCase):
         StoreTaxProfile.objects.create(store=fx2.store, taxpayer=self.tp)
         EmployeeStoreAssignment.objects.create(employee=self.c1, store=fx2.store, role="cast")
         WageSetting.objects.create(employee=self.c1, store=fx2.store, hourly_wage=Decimal(2000), effective_from=self.d - timedelta(days=30))
-        m2 = client_for(add_user(fx2, "manager", store_role="manager", username="m_s2"), fx2.store, reauth=False)
+        m2 = client_for(add_user(fx2, "manager", store_role="manager", username="m_s2"), fx2.store)
         work(fx2.store, self.c1, self.d + timedelta(days=1), hours=5)  # 10,000
         pay(m2, self.c1, self.d + timedelta(days=1))
         # 別の事業者の店舗の支払いは含まれない
@@ -53,7 +53,7 @@ class MonthlyTests(TestCase):
         StoreTaxProfile.objects.create(store=fx3.store, taxpayer=tp3)
         e3 = add_employee(fx3, "other", wage=Decimal(1500))
         contract(fx3, e3, period="daily")
-        m3 = client_for(add_user(fx3, "manager", store_role="manager", username="m_s3"), fx3.store, reauth=False)
+        m3 = client_for(add_user(fx3, "manager", store_role="manager", username="m_s3"), fx3.store)
         work(fx3.store, e3, self.d, hours=8)
         pay(m3, e3, self.d)
         v = self.month().json()

@@ -226,7 +226,7 @@ class SlipListTests(Base):
         a = self.visit()
         self.assertEqual([r["id"] for r in self.slips()["rows"]], [a.id])
 
-    def test_report_settings_are_saved_with_reauth(self):
+    def test_report_settings_are_saved(self):
         owner = client_for(self.fx.users["owner"], self.store)
         r = owner.put("/api/store/settings", {"cast_sales_split_mode": "full_each", "nomination_count_mode": "per_set"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)

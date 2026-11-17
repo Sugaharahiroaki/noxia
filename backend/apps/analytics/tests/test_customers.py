@@ -148,7 +148,7 @@ class CustomerReportTests(APITestCase):
         self.assertTrue(any(l.startswith("田中様,店舗s1,C,0,1,1,") for l in lines), lines)
 
     def test_rank_thresholds_setting_is_validated(self):
-        owner = client_for(self.fx.users["owner"], self.store, reauth=True)
+        owner = client_for(self.fx.users["owner"], self.store)
         ok = owner.put("/api/store/settings", {"customer_rank_thresholds": [{"label": "B", "min_visits": 5}, {"label": "S", "min_visits": 20}]}, format="json")
         self.assertEqual(ok.status_code, 200, ok.content)
         self.assertEqual(ok.json()["customer_rank_thresholds"], [{"label": "S", "min_visits": 20}, {"label": "B", "min_visits": 5}])

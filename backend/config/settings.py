@@ -170,9 +170,6 @@ CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", False)
 CSRF_USE_SESSIONS = False
 
-# 共有iPadで機微な管理操作（給与等）を行う前に再認証を求める有効時間（分）
-REAUTH_VALID_MINUTES = int(os.environ.get("REAUTH_VALID_MINUTES", "10"))
-
 # 開発用シードデータの投入を許可するか（本番では必ず false）
 ALLOW_DEV_SEED = env_bool("ALLOW_DEV_SEED", DEBUG)
 

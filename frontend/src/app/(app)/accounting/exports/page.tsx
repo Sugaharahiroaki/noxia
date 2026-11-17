@@ -8,7 +8,6 @@ import { useToast } from "@/components/Toast";
 import { ErrorBox, PageHeader } from "@/components/ui";
 import { downloadFile, errorMessage } from "@/lib/api";
 import { fmtDate } from "@/lib/format";
-import { useSession } from "@/lib/session";
 
 const LEDGERS = [
   { key: "sales", label: "売上帳" },
@@ -27,7 +26,6 @@ function jstToday(): string {
 }
 
 export default function ExportsPage() {
-  const { withReauth } = useSession();
   const toast = useToast();
   const today = jstToday();
   const [from, setFrom] = useState(`${today.slice(0, 4)}-01-01`);
@@ -38,12 +36,11 @@ export default function ExportsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const q = `from=${from}&to=${to}`;
 
-  async function dl(key: string, path: string, reauth = false) {
+  async function dl(key: string, path: string) {
     setBusy(key);
     setErr(null);
     try {
-      const run = () => downloadFile(path);
-      await (reauth ? withReauth(run) : run());
+      await downloadFile(path);
       toast.show({ message: "ファイルを保存しました" });
     } catch (e) {
       setErr(e);
@@ -158,7 +155,7 @@ export default function ExportsPage() {
           <Link href="/accounting/tax-return" className="underline mx-1">
             確定申告
           </Link>
-          の画面で、計算した版から出力します（経営者本人・パスワードの再確認が必要）。
+          の画面で、計算した版から出力します（経営者本人）。
         </p>
         <ul className="text-sm space-y-1" style={{ color: "var(--color-muted)" }}>
           <li>・XTX（e-Tax の申告データ）は、公式ソフトでの取込試験が完了するまで公開していません。</li>

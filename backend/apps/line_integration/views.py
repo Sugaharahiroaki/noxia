@@ -35,7 +35,7 @@ def _integration(store) -> LineIntegration:
 
 class IntegrationView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_LINE_VIEW, write_caps=(CAP_LINE_MANAGE,), reauth=self.request.method not in ("GET", "HEAD", "OPTIONS"))]
+        return [StoreCaps(CAP_LINE_VIEW, write_caps=(CAP_LINE_MANAGE,))]
 
     def get(self, request):
         return Response(LineIntegrationSerializer(_integration(request.store)).data)

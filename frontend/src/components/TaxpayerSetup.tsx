@@ -11,7 +11,7 @@ import { useSession } from "@/lib/session";
 import type { TaxPayer } from "@/lib/types";
 
 export function TaxpayerSetup() {
-  const { store, can, withReauth } = useSession();
+  const { store, can } = useSession();
   const canEdit = can("accounting.settings");
   const [list, setList] = useState<TaxPayer[] | null>(null);
   const [mode, setMode] = useState<"existing" | "new">("new");
@@ -39,14 +39,12 @@ export function TaxpayerSetup() {
     setBusy(true);
     setErr(null);
     try {
-      await withReauth(async () => {
-        let id = mode === "existing" ? Number(existingId) : 0;
-        if (mode === "new") {
-          const tp = await api<TaxPayer>("/api/accounting/taxpayers", { method: "POST", body: { name: name.trim(), entity_type: entity } });
-          id = tp.id;
-        }
-        await api(`/api/accounting/stores/${store.id}/taxpayer`, { method: "PUT", body: { taxpayer_id: id } });
-      });
+      let id = mode === "existing" ? Number(existingId) : 0;
+      if (mode === "new") {
+        const tp = await api<TaxPayer>("/api/accounting/taxpayers", { method: "POST", body: { name: name.trim(), entity_type: entity } });
+        id = tp.id;
+      }
+      await api(`/api/accounting/stores/${store.id}/taxpayer`, { method: "PUT", body: { taxpayer_id: id } });
       // 店舗の事業者はセッション情報（メニューの出し分け）にも入っているので、画面ごと読み直す
       window.location.reload();
     } catch (e) {

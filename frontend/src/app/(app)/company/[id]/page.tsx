@@ -189,7 +189,7 @@ function useLoadNoStore<T>(path: string) {
 }
 
 function StoresTab({ companyId, canManage }: { companyId: number; canManage: boolean }) {
-  const { withReauth, refresh } = useSession();
+  const { refresh } = useSession();
   const q = useLoadNoStore<Store[]>(`/api/companies/${companyId}/stores`);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
   const [adding, setAdding] = useState(false);
@@ -202,7 +202,7 @@ function StoresTab({ companyId, canManage }: { companyId: number; canManage: boo
   async function addStore() {
     setSave({ kind: "saving" });
     try {
-      await withReauth(() => api(`/api/companies/${companyId}/stores`, { method: "POST", body: { name: name.trim(), code: code.trim() }, idempotencyKey: newIdempotencyKey(), ...NONE }));
+      await api(`/api/companies/${companyId}/stores`, { method: "POST", body: { name: name.trim(), code: code.trim() }, idempotencyKey: newIdempotencyKey(), ...NONE });
       setSave({ kind: "saved", label: "店舗を追加しました" });
       setAdding(false);
       setName("");
@@ -217,7 +217,7 @@ function StoresTab({ companyId, canManage }: { companyId: number; canManage: boo
   async function patchStore(s: Store, body: Record<string, unknown>) {
     setSave({ kind: "saving" });
     try {
-      await withReauth(() => api(`/api/companies/${companyId}/stores/${s.id}`, { method: "PATCH", body, ...NONE }));
+      await api(`/api/companies/${companyId}/stores/${s.id}`, { method: "PATCH", body, ...NONE });
       setSave({ kind: "saved" });
       q.reload();
       await refresh();
@@ -286,7 +286,7 @@ function StoresTab({ companyId, canManage }: { companyId: number; canManage: boo
                 キャンセル
               </button>
               <button className="btn btn-primary" onClick={addStore} disabled={!name.trim() || !code.trim() || save.kind === "saving"}>
-                追加する（パスワード再確認）
+                追加する
               </button>
             </>
           }
@@ -372,7 +372,6 @@ const COMPANY_ROLES: { value: "owner" | "admin" | "member"; label: string }[] = 
 ];
 
 function MembersTab({ companyId, canManage }: { companyId: number; canManage: boolean }) {
-  const { withReauth } = useSession();
   const members = useLoadNoStore<Members>(`/api/companies/${companyId}/members`);
   const stores = useLoadNoStore<Store[]>(`/api/companies/${companyId}/stores`);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
@@ -381,7 +380,7 @@ function MembersTab({ companyId, canManage }: { companyId: number; canManage: bo
   async function post(body: Record<string, unknown>) {
     setSave({ kind: "saving" });
     try {
-      await withReauth(() => api(`/api/companies/${companyId}/members`, { method: "POST", body, ...NONE }));
+      await api(`/api/companies/${companyId}/members`, { method: "POST", body, ...NONE });
       setSave({ kind: "saved" });
       members.reload();
     } catch (e) {
@@ -482,7 +481,7 @@ function MembersTab({ companyId, canManage }: { companyId: number; canManage: bo
                   }
                 }}
               >
-                保存する（パスワード再確認）
+                保存する
               </button>
             </>
           }
@@ -516,7 +515,6 @@ function MembersTab({ companyId, canManage }: { companyId: number; canManage: bo
 }
 
 function InvitationsTab({ companyId, canManage }: { companyId: number; canManage: boolean }) {
-  const { withReauth } = useSession();
   const invitations = useLoadNoStore<Invitation[]>(`/api/companies/${companyId}/invitations`);
   const stores = useLoadNoStore<Store[]>(`/api/companies/${companyId}/stores`);
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
@@ -535,7 +533,7 @@ function InvitationsTab({ companyId, canManage }: { companyId: number; canManage
       const store_roles = Object.entries(storeRoles)
         .filter(([, role]) => role)
         .map(([sid, role]) => ({ store_id: Number(sid), role }));
-      await withReauth(() => api(`/api/companies/${companyId}/invitations`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { display_name: displayName.trim(), email, company_role: companyRole, store_roles }, ...NONE }));
+      await api(`/api/companies/${companyId}/invitations`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { display_name: displayName.trim(), email, company_role: companyRole, store_roles }, ...NONE });
       setSave({ kind: "saved", label: "招待を作成しました" });
       setOpen(false);
       setDisplayName("");
@@ -615,7 +613,7 @@ function InvitationsTab({ companyId, canManage }: { companyId: number; canManage
                 キャンセル
               </button>
               <button className="btn btn-primary" onClick={create} disabled={save.kind === "saving"}>
-                招待を作成（パスワード再確認）
+                招待を作成
               </button>
             </>
           }
@@ -662,7 +660,7 @@ function InvitationsTab({ companyId, canManage }: { companyId: number; canManage
 }
 
 function InfoTab({ companyId, canManage }: { companyId: number; canManage: boolean }) {
-  const { withReauth, refresh } = useSession();
+  const { refresh } = useSession();
   const q = useLoadNoStore<Company>(`/api/companies/${companyId}`);
   const [name, setName] = useState("");
   const [sharing, setSharing] = useState(false);
@@ -709,7 +707,7 @@ function InfoTab({ companyId, canManage }: { companyId: number; canManage: boole
             onClick={async () => {
               setSave({ kind: "saving" });
               try {
-                const r = await withReauth(() => api<Company>(`/api/companies/${companyId}`, { method: "PATCH", body: { name: name.trim(), customer_sharing_enabled: sharing, note }, ...NONE }));
+                const r = await api<Company>(`/api/companies/${companyId}`, { method: "PATCH", body: { name: name.trim(), customer_sharing_enabled: sharing, note }, ...NONE });
                 q.setData(r);
                 setSave({ kind: "saved" });
                 await refresh();
@@ -718,7 +716,7 @@ function InfoTab({ companyId, canManage }: { companyId: number; canManage: boole
               }
             }}
           >
-            保存する（パスワード再確認）
+            保存する
           </button>
         </div>
       )}

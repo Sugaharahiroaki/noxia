@@ -751,7 +751,7 @@ function PaymentModal({ payable, onClose, onSaved }: { payable: Payable; onClose
 }
 
 function AiSettingsPanel() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const q = useLoad<AiSettings>("/api/expenses/settings/ai");
   const [err, setErr] = useState<unknown>(null);
@@ -763,7 +763,7 @@ function AiSettingsPanel() {
   async function save(body: Record<string, unknown>) {
     setErr(null);
     try {
-      await withReauth(() => api("/api/expenses/settings/ai", { method: "PUT", body }));
+      await api("/api/expenses/settings/ai", { method: "PUT", body });
       toast.show({ message: "保存しました" });
       await q.reload();
     } catch (e) {

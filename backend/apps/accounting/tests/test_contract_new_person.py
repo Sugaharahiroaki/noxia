@@ -12,8 +12,8 @@ class ContractNewPersonTests(TestCase):
     def setUp(self):
         self.fx = standard_fixture()
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
-        self.staff = client_for(self.fx.users["staff"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
+        self.staff = client_for(self.fx.users["staff"], self.fx.store)
 
     def post(self, c, data):
         return c.post("/api/accounting/contracts", data, format="json", **key())

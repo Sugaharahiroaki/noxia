@@ -47,7 +47,6 @@ export default function AccountingSettingsPage() {
 
 // --- 事業者・店舗・権限（従来の内容） ---------------------------------------------------------
 function TaxPayersTab({ q, canEdit }: { q: ReturnType<typeof useLoad<AccountingOverview>>; canEdit: boolean }) {
-  const { withReauth } = useSession();
   const toast = useToast();
   const [editing, setEditing] = useState<TaxPayer | "new" | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -117,7 +116,7 @@ function TaxPayersTab({ q, canEdit }: { q: ReturnType<typeof useLoad<AccountingO
                 value={s.taxpayer_id ?? ""}
                 onChange={async (e) => {
                   try {
-                    await withReauth(() => api(`/api/accounting/stores/${s.id}/taxpayer`, { method: "PUT", body: { taxpayer_id: Number(e.target.value) } }));
+                    await api(`/api/accounting/stores/${s.id}/taxpayer`, { method: "PUT", body: { taxpayer_id: Number(e.target.value) } });
                     toast.show({ message: `${s.name} の事業者を設定しました` });
                     await q.reload();
                   } catch (er) {
@@ -155,7 +154,6 @@ function TaxPayersTab({ q, canEdit }: { q: ReturnType<typeof useLoad<AccountingO
 }
 
 function TaxPayerModal({ taxpayer, onClose, onSaved }: { taxpayer: TaxPayer | null; onClose: () => void; onSaved: () => void }) {
-  const { withReauth } = useSession();
   const [f, setF] = useState({
     name: taxpayer?.name ?? "",
     entity_type: taxpayer?.entity_type ?? "corporation",
@@ -189,9 +187,7 @@ function TaxPayerModal({ taxpayer, onClose, onSaved }: { taxpayer: TaxPayer | nu
               setBusy(true);
               setErr(null);
               try {
-                await withReauth(() =>
-                  taxpayer ? api(`/api/accounting/taxpayers/${taxpayer.id}`, { method: "PATCH", body: f }) : api("/api/accounting/taxpayers", { method: "POST", body: f }),
-                );
+                await (taxpayer ? api(`/api/accounting/taxpayers/${taxpayer.id}`, { method: "PATCH", body: f }) : api("/api/accounting/taxpayers", { method: "POST", body: f }));
                 onSaved();
               } catch (e) {
                 setErr(e);
@@ -261,7 +257,6 @@ function TaxPayerModal({ taxpayer, onClose, onSaved }: { taxpayer: TaxPayer | nu
 }
 
 function Grants() {
-  const { withReauth } = useSession();
   const q = useLoad<Grant[]>("/api/accounting/grants");
   const [f, setF] = useState({ username: "", role: "bookkeeper", expires_on: "", note: "" });
   const [err, setErr] = useState<unknown>(null);
@@ -294,7 +289,7 @@ function Grants() {
           disabled={!f.username}
           onClick={async () => {
             try {
-              await withReauth(() => api("/api/accounting/grants", { method: "POST", body: f }));
+              await api("/api/accounting/grants", { method: "POST", body: f });
               setF({ ...f, username: "", note: "" });
               await q.reload();
             } catch (e) {
@@ -316,7 +311,7 @@ function Grants() {
             className="btn btn-sm ml-auto"
             onClick={async () => {
               try {
-                await withReauth(() => api(`/api/accounting/grants/${g.id}`, { method: "PATCH", body: { is_active: !g.is_active } }));
+                await api(`/api/accounting/grants/${g.id}`, { method: "PATCH", body: { is_active: !g.is_active } });
                 await q.reload();
               } catch (e) {
                 setErr(e);
@@ -608,7 +603,6 @@ function AddAccountModal({ lines, taxes, onClose, onSaved }: { lines: Record<str
 
 // --- AI 読取 ------------------------------------------------------------------------------------
 function AiSettingsTab({ canEdit }: { canEdit: boolean }) {
-  const { withReauth } = useSession();
   const toast = useToast();
   const q = useLoad<AiSettings>("/api/expenses/settings/ai");
   const [f, setF] = useState<{ ai_enabled: boolean; ai_monthly_budget_jpy: string } | null>(null);
@@ -669,7 +663,7 @@ function AiSettingsTab({ canEdit }: { canEdit: boolean }) {
           onClick={async () => {
             setErr(null);
             try {
-              await withReauth(() => api("/api/expenses/settings/ai", { method: "PUT", body: { ai_enabled: f.ai_enabled, ai_monthly_budget_jpy: Number(f.ai_monthly_budget_jpy || 0) } }));
+              await api("/api/expenses/settings/ai", { method: "PUT", body: { ai_enabled: f.ai_enabled, ai_monthly_budget_jpy: Number(f.ai_monthly_budget_jpy || 0) } });
               toast.show({ message: "AI 読取の設定を保存しました" });
               await q.reload();
             } catch (e) {
@@ -691,7 +685,6 @@ const EMPTY_PROFILE: TaxProfile = {
 };
 
 function TaxProfileTab({ taxpayer, canEdit }: { taxpayer: TaxPayer | null; canEdit: boolean }) {
-  const { withReauth } = useSession();
   const toast = useToast();
   const q = useLoad<TaxProfileResponse>(taxpayer ? "/api/tax/profile" : null, [taxpayer?.id]);
   const [f, setF] = useState<TaxProfile | null>(null);
@@ -771,7 +764,7 @@ function TaxProfileTab({ taxpayer, canEdit }: { taxpayer: TaxPayer | null; canEd
           onClick={async () => {
             setErr(null);
             try {
-              await withReauth(() => api("/api/tax/profile", { method: "PUT", body: f }));
+              await api("/api/tax/profile", { method: "PUT", body: f });
               toast.show({ message: "申告情報を保存しました" });
               await q.reload();
             } catch (e) {
@@ -779,7 +772,7 @@ function TaxProfileTab({ taxpayer, canEdit }: { taxpayer: TaxPayer | null; canEd
             }
           }}
         >
-          保存する（パスワードの再確認）
+          保存する
         </button>
       ) : (
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -792,7 +785,7 @@ function TaxProfileTab({ taxpayer, canEdit }: { taxpayer: TaxPayer | null; canEd
 
 // --- 店舗の承認設定 ------------------------------------------------------------------------------
 function StoreApprovalTab({ canEdit }: { canEdit: boolean }) {
-  const { withReauth, store } = useSession();
+  const { store } = useSession();
   const toast = useToast();
   const q = useLoad<StoreSettings>("/api/store/settings");
   const [f, setF] = useState<{ receipt_capture_enabled: boolean; manager_can_approve_expenses: boolean; manager_approve_limit: string } | null>(null);
@@ -827,16 +820,14 @@ function StoreApprovalTab({ canEdit }: { canEdit: boolean }) {
           onClick={async () => {
             setErr(null);
             try {
-              await withReauth(() =>
-                api("/api/store/settings", {
-                  method: "PUT",
-                  body: {
-                    receipt_capture_enabled: f.receipt_capture_enabled,
-                    manager_can_approve_expenses: f.manager_can_approve_expenses,
-                    manager_approve_limit: f.manager_approve_limit === "" ? null : f.manager_approve_limit,
-                  },
-                }),
-              );
+              await api("/api/store/settings", {
+                method: "PUT",
+                body: {
+                  receipt_capture_enabled: f.receipt_capture_enabled,
+                  manager_can_approve_expenses: f.manager_can_approve_expenses,
+                  manager_approve_limit: f.manager_approve_limit === "" ? null : f.manager_approve_limit,
+                },
+              });
               toast.show({ message: "店舗の設定を保存しました" });
               await q.reload();
             } catch (e) {

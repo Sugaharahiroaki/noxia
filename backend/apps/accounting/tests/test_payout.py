@@ -20,7 +20,7 @@ class PayoutWithholdingTests(TestCase):
     def setUp(self):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
         self.cast = self.fx.employees["cast1"]
         self.d = prev_month_first()
@@ -118,7 +118,7 @@ class PayoutWithholdingTests(TestCase):
 
         WageSetting.objects.create(employee=self.cast, store=fx2.store, hourly_wage=Decimal(1500), effective_from=self.d - timedelta(days=30))
         m2 = add_user(fx2, "manager", store_role="manager", username="manager_s2")
-        c2 = client_for(m2, fx2.store, reauth=False)
+        c2 = client_for(m2, fx2.store)
         days = calendar.monthrange(self.d.year, self.d.month)[1]
         work(self.fx.store, self.cast, self.d, hours=10, back=5000 * days - 15000)  # 店舗1で控除額ちょうど
         self.assertEqual(Decimal(pay(self.manager, self.cast, self.d).json()["withholding_amount"]), Decimal(0))
@@ -232,7 +232,7 @@ class EmployeeCashMovementTests(TestCase):
     def test_manual_cash_daily_pay_marked_for_review(self):
         fx = standard_fixture()
         make_taxpayer(fx)
-        m = client_for(fx.users["manager"], fx.store, reauth=False)
+        m = client_for(fx.users["manager"], fx.store)
         cast = fx.employees["cast1"]
         contract(fx, cast, period="daily")
         r = m.post("/api/cash/movements", {"kind": "daily_pay", "amount": "5000", "reason": "前払い", "employee_id": cast.id}, format="json", **key())

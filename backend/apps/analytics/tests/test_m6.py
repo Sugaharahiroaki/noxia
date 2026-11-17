@@ -53,7 +53,7 @@ class Base(APITestCase):
         self.store = self.fx.store
         self.user = self.fx.users["manager"]
         self.c = client_for(self.user, self.store)
-        self.owner = client_for(self.fx.users["owner"], self.store, reauth=True)
+        self.owner = client_for(self.fx.users["owner"], self.store)
         self.staff = client_for(self.fx.users["staff"], self.store)
         self.today = business_date_now(self.store)
         self.month = f"{self.today.year}-{self.today.month:02d}"
@@ -176,8 +176,6 @@ class TermTests(Base):
             self.assertEqual(self.owner.put("/api/store/terms", {"labels": bad}, format="json").status_code, 400, bad)
         self.assertEqual(self.staff.put("/api/store/terms", {"labels": {"nomination": "指名"}}, format="json").status_code, 403)
         self.assertEqual(self.staff.delete("/api/store/terms").status_code, 403)
-        # 再認証していないオーナーは変えられない
-        self.assertEqual(client_for(self.fx.users["owner"], self.store, reauth=False).put("/api/store/terms", {"labels": {"nomination": "指名"}}, format="json").status_code, 403)
         # 別店舗には影響しない
         self.owner.put("/api/store/terms", {"labels": {"nomination": "指名"}}, format="json")
         other = standard_fixture("s2", "c2")
@@ -309,10 +307,9 @@ class ExportTests(Base):
         for kind in ("slips", "tags", "items", "customers", "deletions", "monthly", "cash", "cash-history", "cast", "staff"):
             self.assertEqual(cast.get(f"/api/reports/export/{kind}.xlsx").status_code, 403, kind)
             self.assertEqual(self.staff.get(f"/api/reports/export/{kind}.xlsx").status_code, 403, kind)
-        # キャスト・スタッフ集計は再認証が必要
-        no_reauth = client_for(self.fx.users["owner"], self.store, reauth=False)
-        self.assertEqual(no_reauth.get("/api/reports/export/cast.xlsx").status_code, 403)
-        self.assertEqual(no_reauth.get("/api/reports/export/slips.xlsx").status_code, 200)
+        # キャスト・スタッフ集計もパスワードを聞き直さずに出せる
+        self.assertEqual(self.owner.get("/api/reports/export/cast.xlsx").status_code, 200)
+        self.assertEqual(self.owner.get("/api/reports/export/slips.xlsx").status_code, 200)
 
     def test_headers_follow_term_overrides(self):
         self.owner.put("/api/store/terms", {"labels": {"nomination": "指名", "jounai": "場内", "tag": "ラベル"}}, format="json")
@@ -338,5 +335,3 @@ class ExportTests(Base):
 
         stranger = add_employee(other, "他社の人", role="cast")
         self.assertEqual(self.owner.get(f"/api/reports/people/{stranger.id}.pdf").status_code, 404)
-        # 全員分を見られる人でも、再認証していなければ他人の分は出せない
-        self.assertEqual(client_for(self.fx.users["owner"], self.store, reauth=False).get(f"/api/reports/people/{cast1.id}.pdf").status_code, 403)

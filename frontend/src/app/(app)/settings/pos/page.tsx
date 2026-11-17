@@ -17,7 +17,7 @@ import { useLoad } from "@/lib/useLoad";
  * POS 設定（タブレット用）: 左＝設定項目｜中央＝一覧・検索・追加｜右＝詳細。
  * 項目が 1 つだけの設定（料金・会計アラート・料金計算）は、中央と右を合わせた広いフォームにする。
  * すべて既存の API（store/tables・courses・categories・products・tags、store/settings）につなぐ。
- * 読むのは settings.view、書くのは catalog.edit（マスタ）／settings.edit＋パスワードの再確認（店舗設定）。
+ * 読むのは settings.view、書くのは catalog.edit（マスタ）／settings.edit（店舗設定）。
  * プリンター（レシートプリンター 1 台・Bluetooth はエプソンのアプリ経由）は 2026-11-17 に追加（UNIFIED_PLAN 6 章 Q11 を変更）。
  * キッチン印刷・注文チャイム・名称変更は出さない。
  */
@@ -449,9 +449,9 @@ function MasterEditor({ section, ctx, onCategoriesChanged, pane }: { section: Ma
   );
 }
 
-/** 項目が 1 つだけの設定: 中央と右を合わせた広いフォーム（店舗設定。保存にはパスワードの再確認が必要） */
+/** 項目が 1 つだけの設定: 中央と右を合わせた広いフォーム（店舗設定） */
 function SettingsForm({ section, pane }: { section: FormSection; pane: React.CSSProperties }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const canEdit = can("settings.edit");
   const st = useLoad<StoreSettings>("/api/store/settings");
@@ -474,7 +474,7 @@ function SettingsForm({ section, pane }: { section: FormSection; pane: React.CSS
         if (f.type === "int") v = Number(v || 0);
         body[f.key] = v;
       }
-      const d = await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body }));
+      const d = await api<StoreSettings>("/api/store/settings", { method: "PUT", body });
       st.setData(d);
       toast.show({ message: `${section.label} を保存しました` });
     } catch (e) {
@@ -502,7 +502,7 @@ function SettingsForm({ section, pane }: { section: FormSection; pane: React.CSS
       </div>
       <div className="p-2 border-t flex items-center gap-3" style={{ borderColor: "var(--color-border)" }}>
         <span className="text-sm flex-1" style={{ color: error ? "var(--color-danger)" : "var(--color-muted)" }} role={error ? "alert" : undefined}>
-          {error ?? "保存のときにパスワードの再確認が出ることがあります。"}
+          {error}
         </span>
         {canEdit && (
           <button className="btn btn-lg btn-primary" style={{ minWidth: 220 }} onClick={save} disabled={busy || !form}>

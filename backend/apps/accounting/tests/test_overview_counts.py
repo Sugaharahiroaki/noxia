@@ -13,7 +13,7 @@ class OverviewCountsTests(TestCase):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx, name="個人 夜子", entity_type="sole_proprietor")
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
 
     def test_counts_and_month_pl_present(self):
         # 科目の付いていない現金経費 1 件、営業日は開いている

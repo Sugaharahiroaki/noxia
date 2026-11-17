@@ -24,7 +24,7 @@ const KINDS: { kind: string; label: string; needsEmployee?: boolean; cap?: strin
 ];
 
 export default function ClosingPage() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const { reload: reloadFloor } = useFloor();
   const cur = useLoad<CashCurrent>("/api/cash/current", [], { intervalMs: 30000 });
   const employees = useLoad<Employee[]>("/api/staff/employees?active=1");
@@ -125,7 +125,7 @@ export default function ClosingPage() {
           onSubmit={async (reason) => {
             setSave({ kind: "saving", label: "再開中…" });
             try {
-              await withReauth(() => api(`/api/cash/days/${reopenModal.id}/reopen`, { method: "POST", body: { reason } }));
+              await api(`/api/cash/days/${reopenModal.id}/reopen`, { method: "POST", body: { reason } });
               setSave({ kind: "saved", label: "営業日を再開しました" });
               setReopenModal(null);
               await cur.reload();
@@ -213,7 +213,7 @@ export default function ClosingPage() {
           onSubmit={async (changes, reason) => {
             setSave({ kind: "saving" });
             try {
-              await withReauth(() => api(`/api/cash/days/${reviseModal.id}/revise`, { method: "POST", body: { changes, reason } }));
+              await api(`/api/cash/days/${reviseModal.id}/revise`, { method: "POST", body: { changes, reason } });
               setSave({ kind: "saved", label: "修正を記録しました" });
               setReviseModal(null);
               await cur.reload();
@@ -936,7 +936,7 @@ function ReopenModal({ day, onClose, onSubmit }: { day: BusinessDay; onClose: ()
   return (
     <ConfirmDialog
       title={`営業日 ${fmtDate(day.date)} を再開する`}
-      message="締め前の状態に戻し、入店・会計・入出金を続けられるようにします。締めの数値は履歴に残り、再度日締めが必要です。パスワード再確認が必要です。"
+      message="締め前の状態に戻し、入店・会計・入出金を続けられるようにします。締めの数値は履歴に残り、再度日締めが必要です。"
       confirmLabel="再開する"
       danger
       busy={busy}

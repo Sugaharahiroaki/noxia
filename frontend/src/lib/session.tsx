@@ -15,9 +15,6 @@ type SessionState = {
   setStore: (id: number | null) => Promise<void>;
   logout: () => Promise<void>;
   can: (...caps: string[]) => boolean;
-  reauthValid: boolean;
-  requestReauth: () => Promise<boolean>;
-  withReauth: <T>(fn: () => Promise<T>) => Promise<T>;
 };
 
 const SessionContext = createContext<SessionState | null>(null);
@@ -27,9 +24,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [storeId, setStoreId] = useState<number | null>(null);
   const [storeEpoch, setStoreEpoch] = useState(0);
-  const [reauthUntil, setReauthUntil] = useState<number | null>(null);
-  const [reauthOpen, setReauthOpen] = useState(false);
-  const reauthResolver = useRef<((ok: boolean) => void) | null>(null);
   const storeIdRef = useRef<number | null>(null);
   storeIdRef.current = storeId;
 
@@ -46,7 +40,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
       setMe(data);
-      setReauthUntil(data.reauth_until);
       let sid: number | null = null;
       try {
         const saved = localStorage.getItem(STORE_KEY);
@@ -112,38 +105,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const can = useCallback((...caps: string[]) => !!store && caps.every((c) => store.caps.includes(c)), [store]);
 
-  const reauthValid = reauthUntil !== null && Date.now() / 1000 < reauthUntil;
-
-  const requestReauth = useCallback(() => {
-    return new Promise<boolean>((resolve) => {
-      reauthResolver.current = resolve;
-      setReauthOpen(true);
-    });
-  }, []);
-
-  const finishReauth = useCallback((ok: boolean, until?: number) => {
-    setReauthOpen(false);
-    if (ok && until) setReauthUntil(until);
-    reauthResolver.current?.(ok);
-    reauthResolver.current = null;
-  }, []);
-
-  const withReauth = useCallback(
-    async <T,>(fn: () => Promise<T>): Promise<T> => {
-      try {
-        return await fn();
-      } catch (e) {
-        if (e instanceof ApiError && e.code === "reauth_required") {
-          const ok = await requestReauth();
-          if (!ok) throw e;
-          return await fn();
-        }
-        throw e;
-      }
-    },
-    [requestReauth],
-  );
-
   const value: SessionState = {
     me,
     loading,
@@ -153,15 +114,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setStore,
     logout,
     can,
-    reauthValid,
-    requestReauth,
-    withReauth,
   };
 
   return (
     <SessionContext.Provider value={value}>
       {children}
-      {reauthOpen && <ReauthDialog onDone={finishReauth} />}
     </SessionContext.Provider>
   );
 }
@@ -170,45 +127,4 @@ export function useSession(): SessionState {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error("SessionProvider が必要です");
   return ctx;
-}
-
-function ReauthDialog({ onDone }: { onDone: (ok: boolean, until?: number) => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api<{ reauth_until: number }>("/api/auth/reauth", { method: "POST", body: { password }, storeId: "none" });
-      onDone(true, r.reauth_until);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "再認証に失敗しました。");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-      <form onSubmit={submit} className="card w-full max-w-md space-y-4">
-        <h2 className="text-xl font-bold">パスワードの再確認</h2>
-        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-          給与・バック設定などの管理操作です。共有端末での誤操作を防ぐため、ログイン中のユーザーのパスワードを入力してください。
-        </p>
-        <input className="input" type="password" autoFocus autoComplete="current-password" placeholder="パスワード" value={password} onChange={(e) => setPassword(e.target.value)} />
-        {error && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{error}</p>}
-        <div className="flex gap-3 justify-end">
-          <button type="button" className="btn" onClick={() => onDone(false)} disabled={busy}>
-            キャンセル
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || !password}>
-            {busy ? "確認中…" : "確認する"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
 }

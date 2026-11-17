@@ -49,13 +49,13 @@ const LINE_TYPE_LABELS: Record<string, string> = {
   discount: "値引き",
 };
 
-const EXPORTS: { kind: string; label: string; cap: string; reauth?: boolean }[] = [
+const EXPORTS: { kind: string; label: string; cap: string }[] = [
   { kind: "sales", label: "売上（会計）", cap: "export.sales" },
   { kind: "payments", label: "支払い", cap: "export.sales" },
   { kind: "cash", label: "現金出納", cap: "export.cash" },
   { kind: "backs", label: "バック", cap: "export.backs" },
   { kind: "attendance", label: "勤怠", cap: "export.attendance" },
-  { kind: "payroll", label: "従業員支払い", cap: "export.payroll", reauth: true },
+  { kind: "payroll", label: "従業員支払い", cap: "export.payroll" },
   { kind: "inventory", label: "在庫変動", cap: "export.inventory" },
   { kind: "purchases", label: "発注", cap: "export.inventory" },
 ];
@@ -70,7 +70,7 @@ function Bar({ value, max, color }: { value: number; max: number; color?: string
 }
 
 export default function DashboardPage() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const today = todayJst();
   const [from, setFrom] = useState(monthStart(today));
   const [to, setTo] = useState(today);
@@ -97,12 +97,10 @@ export default function DashboardPage() {
     }
   }
 
-  async function exportCsv(kind: string, reauth?: boolean) {
+  async function exportCsv(kind: string) {
     setSave({ kind: "saving", label: "CSV を作成中…" });
     try {
-      const run = () => downloadFile(`/api/exports/${kind}.csv?${q}`);
-      if (reauth) await withReauth(run);
-      else await run();
+      await downloadFile(`/api/exports/${kind}.csv?${q}`);
       setSave({ kind: "saved", label: "ダウンロードしました" });
     } catch (e) {
       setSave({ kind: "error", error: e });
@@ -393,8 +391,8 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {EXPORTS.filter((e) => can(e.cap)).map((e) => (
-            <button key={e.kind} className="btn btn-sm" onClick={() => exportCsv(e.kind, e.reauth)} disabled={save.kind === "saving"}>
-              {e.label} CSV{e.reauth ? "（再認証）" : ""}
+            <button key={e.kind} className="btn btn-sm" onClick={() => exportCsv(e.kind)} disabled={save.kind === "saving"}>
+              {e.label} CSV
             </button>
           ))}
           {EXPORTS.every((e) => !can(e.cap)) && <span style={{ color: "var(--color-muted)" }}>CSV 出力の権限がありません。</span>}

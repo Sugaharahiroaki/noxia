@@ -25,7 +25,7 @@ const MODE_TEXT: Record<TerminalMode, { text: string; tone: "ok" | "warn" | "dan
 };
 
 export function TerminalSettingsTab() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const canEdit = can("settings.edit");
   const cfgQ = useLoad<TerminalConfig>("/api/terminals/config");
   const devQ = useLoad<CardTerminalDevice[]>("/api/terminals/devices");
@@ -63,7 +63,7 @@ export function TerminalSettingsTab() {
       };
       if (token) body.square_access_token = token;
       if (sigKey) body.square_webhook_signature_key = sigKey;
-      const d = await withReauth(() => api<TerminalConfig>("/api/terminals/config", { method: "PUT", body }));
+      const d = await api<TerminalConfig>("/api/terminals/config", { method: "PUT", body });
       setForm(d);
       cfgQ.setData(d);
       setToken("");
@@ -79,7 +79,7 @@ export function TerminalSettingsTab() {
     setDevBusy(true);
     setDevErr(null);
     try {
-      await withReauth(fn);
+      await fn();
       await devQ.reload();
     } catch (e) {
       setDevErr(errorMessage(e));

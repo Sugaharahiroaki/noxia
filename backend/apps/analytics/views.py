@@ -28,7 +28,7 @@ from apps.core.models import Company, OperatorAccessLog, Store
 from apps.core.money import D, ZERO
 from apps.core.permissions import (
     CAP_DASHBOARD, CAP_EXPORT_ATTENDANCE, CAP_EXPORT_BACKS, CAP_EXPORT_CASH, CAP_EXPORT_INVENTORY, CAP_EXPORT_PAYROLL, CAP_EXPORT_SALES,
-    IsAuthenticatedUser, StoreCaps, company_role_for, is_reauthenticated, resolve_store_access,
+    IsAuthenticatedUser, StoreCaps, company_role_for, resolve_store_access,
 )
 from apps.inventory.models import GoodsReceiptLine, PurchaseOrder, StockMovement
 from apps.sales.models import Checkout, OrderLine, Payment, Refund, Visit
@@ -259,7 +259,7 @@ class ExportView(APIView):
         cap = self.CAPS.get(kind)
         if cap is None:
             return [StoreCaps(CAP_DASHBOARD)]
-        return [StoreCaps(cap, reauth=(kind == "payroll"))]
+        return [StoreCaps(cap)]
 
     def get(self, request, kind):
         f, t = _range(request)

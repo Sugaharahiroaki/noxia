@@ -222,16 +222,14 @@ class ReportTests(Base):
         self.seed()
         manager = client_for(self.fx.users["manager"], self.store)   # payroll.view_all なし
         cast = client_for(self.fx.users["cast"], self.store)         # 自分（cast1）の分だけ
-        no_reauth = client_for(self.fx.users["owner"], self.store, reauth=False)
         for path in ("/api/reports/cast", "/api/reports/staff", "/api/reports/people-cast.csv"):
             self.assertEqual(manager.get(path).status_code, 403, path)
             self.assertEqual(cast.get(path).status_code, 403, path)
-            self.assertEqual(no_reauth.get(path).status_code, 403, path)   # 全員分は再認証が必要
+            self.assertEqual(self.owner.get(path).status_code, 200, path)   # 全員分（パスワードの聞き直しなし）
         self.assertEqual(self.person(self.cast1, cast).status_code, 200)   # 本人は自分の分を見られる
         self.assertEqual(self.person(self.cast2, cast).status_code, 403)   # 他人の分は見られない
         self.assertEqual(self.person(self.staff1, cast).status_code, 403)
         self.assertEqual(self.person(self.cast1, manager).status_code, 403)
-        self.assertEqual(self.person(self.cast1, no_reauth).status_code, 403)
         self.assertEqual(self.person(self.cast1).status_code, 200)
 
     def test_other_company_employee_and_other_store_data(self):
@@ -312,7 +310,7 @@ class SubtotalBackBasisTests(Base):
         self.assertEqual([self.back(co2, c).basis_amount for c in (self.cast1, self.cast2)], [D(2500), D(2500)])
 
     def test_rule_api_accepts_and_validates_new_fields(self):
-        c = client_for(self.fx.users["owner"], self.store, reauth=True)
+        c = client_for(self.fx.users["owner"], self.store)
         body = {"name": "呼びバック", "target_type": "nomination_subtotal", "calc_type": "percent", "value": "10",
                 "subtotal_basis": "set_extension", "split_mode": "full_each", "effective_from": str(PAST)}
         r = c.post("/api/staff/back-rules", body, format="json", **key())
@@ -352,7 +350,7 @@ class DesignationSwitchTests(Base):
         self.assertEqual(services.quote(v)[0].subtotal, D(2500))                 # 会計は増えない
 
     def test_settings_api_switches(self):
-        c = client_for(self.fx.users["owner"], self.store, reauth=True)
+        c = client_for(self.fx.users["owner"], self.store)
         r = c.put("/api/store/settings", {"jounai_enabled": False, "nomination_enabled": True}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual((r.json()["jounai_enabled"], r.json()["nomination_enabled"], r.json()["douhan_enabled"]), (False, True, True))
@@ -414,7 +412,7 @@ class YobiDesignationTests(Base):
         self.assertEqual(getattr(cm.exception, "code", None), "fee_unset")
 
     def test_nomination_cannot_be_named_yobi_now_that_yobi_is_its_own_type(self):
-        c = client_for(self.fx.users["owner"], self.store, reauth=True)
+        c = client_for(self.fx.users["owner"], self.store)
         r = c.put("/api/store/terms", {"labels": {"nomination": "呼び"}}, format="json")
         self.assertEqual(r.status_code, 400)
         self.assertIn("呼び", r.json()["error"]["message"])

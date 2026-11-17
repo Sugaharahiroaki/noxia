@@ -31,7 +31,7 @@ from apps.core.models import Store, User
 from apps.core.money import D
 from apps.core.permissions import (
     CAP_ACCOUNTING_BOOKKEEP, CAP_ACCOUNTING_FREEE, CAP_ACCOUNTING_SETTINGS, CAP_ACCOUNTING_VIEW, CAP_CONTRACTS_EDIT, CAP_EMPLOYEES_EDIT, CAP_PAYROLL_PAY,
-    CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_TAX_ADVISE, CAP_TAX_DECIDE, CAP_TAX_VIEW, StoreCaps, ensure_store_access, is_reauthenticated,
+    CAP_PAYROLL_VIEW_ALL, CAP_PAYROLL_VIEW_SELF, CAP_TAX_ADVISE, CAP_TAX_DECIDE, CAP_TAX_VIEW, StoreCaps, ensure_store_access,
 )
 from apps.staff.models import Employee, EmployeeStoreAssignment
 
@@ -61,11 +61,6 @@ def require_any(request, *caps: str):
         raise ApiError("forbidden", "この操作を行う権限がありません。", status=403)
     if request.method not in ("GET", "HEAD", "OPTIONS") and access.read_only:
         raise ApiError("store_inactive", "停止中の店舗では更新できません。", status=403)
-
-
-def require_reauth(request):
-    if not is_reauthenticated(request):
-        raise ApiError("reauth_required", "この操作にはパスワードの再確認が必要です。", status=403)
 
 
 def get_taxpayer(request, *, required: bool = True) -> TaxPayer | None:
@@ -596,7 +591,6 @@ class MonthActionView(APIView):
             m = services.aggregate_month(tp, category, d, request.user)
         elif action == "confirm":
             require_any(request, CAP_TAX_DECIDE)
-            require_reauth(request)
             m = services.confirm_month(_month_obj(tp, category, d), request.user)
         elif action == "awaiting":
             require_any(request, CAP_TAX_DECIDE)
@@ -618,7 +612,7 @@ class RemittancesView(APIView):
     """納付の記録（経営者が e-Tax 等で納付した後に記録する）。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_DECIDE, reauth=True)]
+        return [StoreCaps(CAP_TAX_DECIDE)]
 
     @idempotent
     def post(self, request):
@@ -651,7 +645,7 @@ class RemittancesView(APIView):
 
 class RemittanceVoidView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_DECIDE, reauth=True)]
+        return [StoreCaps(CAP_TAX_DECIDE)]
 
     @transaction.atomic
     def post(self, request, remittance_id):
@@ -698,7 +692,7 @@ class RecordResolveView(APIView):
     """要確認の支払いを経営者が確認して確定する。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_DECIDE, reauth=True)]
+        return [StoreCaps(CAP_TAX_DECIDE)]
 
     def post(self, request, record_id):
         rec = WithholdingRecord.objects.filter(id=record_id, company=request.store.company).first()
@@ -715,7 +709,7 @@ class RecordResolveView(APIView):
 
 class AdjustmentsView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_DECIDE, reauth=True)]
+        return [StoreCaps(CAP_TAX_DECIDE)]
 
     @idempotent
     @transaction.atomic
@@ -735,7 +729,7 @@ class AdjustmentsView(APIView):
 
 class AdjustmentVoidView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_TAX_DECIDE, reauth=True)]
+        return [StoreCaps(CAP_TAX_DECIDE)]
 
     @transaction.atomic
     def post(self, request, adjustment_id):
@@ -1270,7 +1264,7 @@ class FreeeCsvView(APIView):
 
 class FreeeActionView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_ACCOUNTING_FREEE, reauth=True)]
+        return [StoreCaps(CAP_ACCOUNTING_FREEE)]
 
     def post(self, request, action):
         tp = get_taxpayer(request)
@@ -1377,7 +1371,7 @@ class AccountMappingsView(APIView):
 
 class FreeeSyncResolveView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_ACCOUNTING_FREEE, reauth=True)]
+        return [StoreCaps(CAP_ACCOUNTING_FREEE)]
 
     def post(self, request, sync_id):
         tp = get_taxpayer(request)

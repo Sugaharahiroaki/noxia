@@ -333,11 +333,6 @@ class BackApiTests(BackBase):
         self.assertEqual(r.json()["kind"], "adjustment")
         self.assertEqual(r.json()["status"], "confirmed")
         self.assertEqual(Decimal(r.json()["amount"]), Decimal("-300"))
-        # 再認証なしでは拒否
-        owner_noreauth = client_for(self.fx.users["owner"], self.store, reauth=False)
-        r = owner_noreauth.post("/api/staff/backs/adjust", {"employee_id": self.cast1.id, "amount": "1", "reason": "x"}, format="json", **key())
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
 
     def test_back_entries_summary(self):
         self.rule(target_type="category_kind", category_kind="cast_drink", value=Decimal(50), confirm_timing="order")

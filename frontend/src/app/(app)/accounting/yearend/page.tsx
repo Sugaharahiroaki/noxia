@@ -242,7 +242,7 @@ function PlTab({ year }: { year: number }) {
 }
 
 function CloseTab({ year }: { year: number }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const q = useLoad<ChecklistResponse>(`/api/closing/years/${year}/checklist`, [year]);
   const [confirm, setConfirm] = useState<"close" | "reopen" | null>(null);
@@ -259,7 +259,7 @@ function CloseTab({ year }: { year: number }) {
     setBusy(true);
     setErr(null);
     try {
-      await withReauth(() => api(`/api/accounting/fiscal-years/${year}/${action}`, { method: "POST", body: { reason, force }, idempotencyKey: newIdempotencyKey() }));
+      await api(`/api/accounting/fiscal-years/${year}/${action}`, { method: "POST", body: { reason, force }, idempotencyKey: newIdempotencyKey() });
       toast.show({ message: action === "close" ? `${year}年度を締めました。この年度の仕訳は変更できません。` : `${year}年度を再開しました。` });
       setConfirm(null);
       setReason("");
@@ -278,7 +278,7 @@ function CloseTab({ year }: { year: number }) {
           {fy.closed_at && <span className="text-sm" style={{ color: "var(--color-muted)" }}>締め: {fmtDate(fy.closed_at)}　再開 {fy.reopen_count} 回</span>}
         </div>
         <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-          年度を締めると、その年の仕訳は作り直し・追加・取消ができなくなり、確定申告の数字が固定されます。締めた後に元の記録が変わると「締め後の変更」として記録されます。締め・再開はオーナー本人がパスワードを再確認して行います。
+          年度を締めると、その年の仕訳は作り直し・追加・取消ができなくなり、確定申告の数字が固定されます。締めた後に元の記録が変わると「締め後の変更」として記録されます。締め・再開はオーナー本人が行います。
         </p>
         {!canClose && <p className="badge badge-warn">年度の締め・再開はオーナーだけが行えます。</p>}
         {!fy.is_locked && blocking.length > 0 && (

@@ -65,8 +65,8 @@ class ReceiptFlowTests(TestCase):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx, name="個人 夜子", entity_type="sole_proprietor", withholding=False)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
-        self.staff = client_for(self.fx.users["staff"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
+        self.staff = client_for(self.fx.users["staff"], self.fx.store)
         self.today = business_date_now(self.fx.store)  # 暦日ではなく営業日（深夜 0〜6 時のずれを避ける）
         self.yesterday = self.today - timedelta(days=1)
 
@@ -445,7 +445,7 @@ class ReceiptFlowTests(TestCase):
     def test_staff_sees_only_own_store_and_own_submissions(self):
         mine = self.submit_receipt()
         other_user = add_user(self.fx, "staff2", store_role="staff", username="staff2_x")
-        c2 = client_for(other_user, self.fx.store, reauth=False)
+        c2 = client_for(other_user, self.fx.store)
         theirs = self.submit_receipt(client=c2, data=pattern_png(21))
         ids = {x["id"] for x in self.staff.get("/api/expenses/receipts").json()["items"]}
         self.assertEqual(ids, {mine["id"]})
@@ -456,7 +456,7 @@ class ReceiptFlowTests(TestCase):
         # 他店舗のスタッフは見られない
         fx2 = make_store("s2", company=self.fx.company)
         u2 = add_user(fx2, "staff", store_role="staff", username="staff_s2")
-        c3 = client_for(u2, fx2.store, reauth=False)
+        c3 = client_for(u2, fx2.store)
         self.assertEqual(c3.get(f"/api/expenses/receipts/{mine['id']}").status_code, 404)
         self.assertEqual(c3.get(f"/api/expenses/receipts/{mine['id']}/file").status_code, 404)
         # スタッフは承認・却下できない
@@ -468,7 +468,7 @@ class ReceiptFlowTests(TestCase):
         self.assertIn("inline", r["Content-Disposition"])
         self.assertEqual(r["X-Content-Type-Options"], "nosniff")
         # キャストは何も見られない
-        cast = client_for(self.fx.users["cast"], self.fx.store, reauth=False)
+        cast = client_for(self.fx.users["cast"], self.fx.store)
         self.assertEqual(cast.get("/api/expenses/receipts").status_code, 403)
         # 他社のオーナーには見えない
         fxb = standard_fixture("sb", company_code="cb")
@@ -483,7 +483,7 @@ class ReceiptFlowTests(TestCase):
         self.fx.settings.manager_can_approve_expenses = True
         self.fx.settings.manager_approve_limit = Decimal("50000")
         self.fx.settings.save()
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         r = self.manager.post(f"/api/expenses/receipts/{d['id']}/approve", {"account": "supplies", "version": d["version"]}, format="json", **key())
         self.assertEqual(r.status_code, 403)  # 上限超え
         self.assertIn("までです", r.json()["error"]["message"])
@@ -561,7 +561,7 @@ class PayableTests(TestCase):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx, name="個人 夜子", entity_type="sole_proprietor", withholding=False)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.today = business_date_now(self.fx.store)  # 暦日ではなく営業日（深夜 0〜6 時のずれを避ける）
 
     def test_payable_and_payments_journals(self):

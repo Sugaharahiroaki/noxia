@@ -18,7 +18,7 @@ const GROUPS = ["営業", "管理", "経理", "設定"];
  * タブレット用アカウントでログインすると、ここで選んだ画面だけがメニューに出る。管理・経理・設定は PC から。
  */
 export function TabletSettingsTab() {
-  const { can, withReauth, refresh, me, store } = useSession();
+  const { can, refresh, me, store } = useSession();
   const toast = useToast();
   const q = useLoad<TabletData>("/api/store/tablet");
   const [menu, setMenu] = useState<string[]>([]);
@@ -45,7 +45,7 @@ export function TabletSettingsTab() {
   async function put(body: Record<string, unknown>, done: string) {
     setBusy(true);
     try {
-      const r = await withReauth(() => api<TabletData>("/api/store/tablet", { method: "PUT", body }));
+      const r = await api<TabletData>("/api/store/tablet", { method: "PUT", body });
       q.setData(r);
       await refresh();
       toast.show({ message: done });
@@ -217,7 +217,7 @@ function TabletAccountDialog({
   onClose: () => void;
   onDone: (data: TabletData, username: string) => Promise<void>;
 }) {
-  const { withReauth, store } = useSession();
+  const { store } = useSession();
   const [displayName, setDisplayName] = useState(store ? `${store.name} タブレット` : "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -236,16 +236,12 @@ function TabletAccountDialog({
     try {
       const data =
         target.mode === "create"
-          ? await withReauth(() =>
-              api<TabletData>("/api/store/tablet/accounts", {
-                method: "POST",
-                body: { username: username.trim(), password, display_name: displayName.trim() },
-                idempotencyKey: key,
-              }),
-            )
-          : await withReauth(() =>
-              api<TabletData>(`/api/store/tablet/accounts/${target.member.id}/password`, { method: "POST", body: { password }, idempotencyKey: key }),
-            );
+          ? await api<TabletData>("/api/store/tablet/accounts", {
+              method: "POST",
+              body: { username: username.trim(), password, display_name: displayName.trim() },
+              idempotencyKey: key,
+            })
+          : await api<TabletData>(`/api/store/tablet/accounts/${target.member.id}/password`, { method: "POST", body: { password }, idempotencyKey: key });
       await onDone(data, target.mode === "create" ? username.trim() : target.member.username);
     } catch (e) {
       setError(errorMessage(e));
@@ -264,7 +260,7 @@ function TabletAccountDialog({
             キャンセル
           </button>
           <button className="btn btn-primary" disabled={busy || !ready} onClick={submit}>
-            {creating ? "作る（パスワード再確認）" : "変更する（パスワード再確認）"}
+            {creating ? "作る" : "変更する"}
           </button>
         </>
       }

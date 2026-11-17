@@ -136,15 +136,6 @@ class TaxReturnTests(TestCase):
         self.assertEqual(a.post(f"/api/tax/returns/{self.year}/compute", {}, format="json", **key()).status_code, 403)
         manager = client_for(self.fx.users["manager"], self.fx.store)
         self.assertEqual(manager.get(f"/api/tax/returns/{self.year}").status_code, 403)
-        # ログイン直後の自動再認証では入力できない
-        c = client_for(self.fx.users["owner"], self.fx.store, reauth=False)
-        s = c.session
-        s["reauth_until"] = timezone.now().timestamp() + 3600
-        s["reauth_source"] = "login"
-        s.save()
-        r = c.put(f"/api/tax/returns/{self.year}/inputs", {"inputs": {}}, format="json")
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
         # 税理士は閲覧のみ、記帳代行は閲覧のみ
         from apps.accounting.models import AccountingAccessGrant
 

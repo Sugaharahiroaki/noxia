@@ -2,7 +2,7 @@
 
 /**
  * 確定申告（所得税）: 事業所得の集計、所得控除などの入力、計算（版）、未対応項目、完成、出力。
- * 税務上の入力・計算・完成・出力はオーナー本人（tax.return.edit / export、パスワードの再確認）。
+ * 税務上の入力・計算・完成・出力はオーナー本人（tax.return.edit / export）。
  */
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -37,7 +37,7 @@ export default function TaxReturnPage() {
 
 function ReturnBody({ year }: { year: number }) {
   const q = useLoad<TaxReturnData>(`/api/tax/returns/${year}`, [year], { refetchOnFocus: false });
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const [tab, setTab] = useState("summary");
   const [busy, setBusy] = useState(false);
@@ -59,7 +59,7 @@ function ReturnBody({ year }: { year: number }) {
     setBusy(true);
     setErr(null);
     try {
-      const res = await withReauth(() => api<TaxReturnData>(`/api/tax/returns/${year}/${path}`, { method: "POST", body, idempotencyKey: newIdempotencyKey() }));
+      const res = await api<TaxReturnData>(`/api/tax/returns/${year}/${path}`, { method: "POST", body, idempotencyKey: newIdempotencyKey() });
       q.setData(res);
       toast.show({ message: "完了しました", tone: "ok" });
     } catch (e) {
@@ -224,7 +224,6 @@ function num(v: string | number | undefined | null): string {
 }
 
 function InputsTab({ d, year, canEdit, onSaved }: { d: TaxReturnData; year: number; canEdit: boolean; onSaved: (d: TaxReturnData) => void }) {
-  const { withReauth } = useSession();
   const toast = useToast();
   const [f, setF] = useState<TaxInputs>(d.inputs ?? {});
   const [filing, setFiling] = useState(d.filing_type);
@@ -239,7 +238,7 @@ function InputsTab({ d, year, canEdit, onSaved }: { d: TaxReturnData; year: numb
     setBusy(true);
     setErr(null);
     try {
-      const res = await withReauth(() => api<TaxReturnData>(`/api/tax/returns/${year}/inputs`, { method: "PUT", body: { inputs: f, filing_type: filing, version: d.version } }));
+      const res = await api<TaxReturnData>(`/api/tax/returns/${year}/inputs`, { method: "PUT", body: { inputs: f, filing_type: filing, version: d.version } });
       onSaved(res);
       toast.show({ message: "入力を保存しました。「計算する」で税額を計算します。", tone: "ok" });
     } catch (e) {
@@ -412,7 +411,6 @@ function TraceTab({ d }: { d: TaxReturnData }) {
 }
 
 function VersionsTab({ d, year, canEdit, onChanged }: { d: TaxReturnData; year: number; canEdit: boolean; onChanged: (d: TaxReturnData) => void }) {
-  const { withReauth } = useSession();
   const [confirm, setConfirm] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -447,7 +445,7 @@ function VersionsTab({ d, year, canEdit, onChanged }: { d: TaxReturnData; year: 
           onConfirm={async () => {
             setBusy(true);
             try {
-              onChanged(await withReauth(() => api<TaxReturnData>(`/api/tax/returns/${year}/mark-filed`, { method: "POST", body: { version_id: confirm }, idempotencyKey: newIdempotencyKey() })));
+              onChanged(await api<TaxReturnData>(`/api/tax/returns/${year}/mark-filed`, { method: "POST", body: { version_id: confirm }, idempotencyKey: newIdempotencyKey() }));
               setConfirm(null);
             } catch (e) {
               setErr(e);
@@ -462,7 +460,7 @@ function VersionsTab({ d, year, canEdit, onChanged }: { d: TaxReturnData; year: 
 }
 
 function ExportsTab({ d, year }: { d: TaxReturnData; year: number }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const q = useLoad<TaxExportRow[]>(`/api/tax/returns/${year}/exports`, [year, d.versions.length], { refetchOnFocus: false });
   const [busy, setBusy] = useState<string | null>(null);
@@ -474,9 +472,9 @@ function ExportsTab({ d, year }: { d: TaxReturnData; year: number }) {
     setBusy(format);
     setErr(null);
     try {
-      const res = await withReauth(() => api<{ id: number; filename: string }>(`/api/tax/returns/${year}/exports`, { method: "POST", body: { format }, idempotencyKey: newIdempotencyKey() }));
+      const res = await api<{ id: number; filename: string }>(`/api/tax/returns/${year}/exports`, { method: "POST", body: { format }, idempotencyKey: newIdempotencyKey() });
       await q.reload();
-      await withReauth(() => downloadFile(`/api/tax/returns/${year}/exports/${res.id}/file`, res.filename));
+      await downloadFile(`/api/tax/returns/${year}/exports/${res.id}/file`, res.filename);
       toast.show({ message: "出力しました", tone: "ok" });
     } catch (e) {
       setErr(e);
@@ -519,7 +517,7 @@ function ExportsTab({ d, year }: { d: TaxReturnData; year: number }) {
               { key: "filename", label: "ファイル" },
               { key: "sha256", label: "SHA-256", render: (r) => <span className="text-xs">{r.sha256.slice(0, 16)}…</span> },
               { key: "download_count", label: "DL", align: "right" },
-              { key: "dl", label: "", render: (r) => (r.is_released ? <button className="btn btn-sm" onClick={() => withReauth(() => downloadFile(`/api/tax/returns/${year}/exports/${r.id}/file`, r.filename)).catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>ダウンロード</button> : <span className="badge">非公開</span>) },
+              { key: "dl", label: "", render: (r) => (r.is_released ? <button className="btn btn-sm" onClick={() => downloadFile(`/api/tax/returns/${year}/exports/${r.id}/file`, r.filename).catch((e) => toast.show({ message: errorMessage(e), tone: "error" }))}>ダウンロード</button> : <span className="badge">非公開</span>) },
             ]}
             rows={q.data ?? []}
             rowKey={(r) => r.id}

@@ -35,7 +35,7 @@ class JournalFreeeTests(TestCase):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.cast = self.fx.employees["cast1"]
         contract(self.fx, self.cast, period="daily")
         self.d = prev_month_first()

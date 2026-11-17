@@ -25,8 +25,6 @@ export type Me = {
   stores: StoreInfo[];
   companies: { id: number; name: string; role: string; is_active: boolean }[];
   employee: { id: number; display_name: string; company_id: number } | null;
-  reauth_until: number | null;
-  reauth_valid: boolean;
   server_now: string;
 };
 

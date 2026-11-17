@@ -49,7 +49,7 @@ class BooksTests(TestCase):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx, name="個人 夜子", entity_type="sole_proprietor")
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.d = prev_month_first()
         self.today = timezone.localdate()
 
@@ -177,7 +177,7 @@ class BooksTests(TestCase):
         fy.refresh_from_db()
         self.assertEqual(fy.reopen_count, 1)
 
-    def test_year_close_requires_owner_and_explicit_reauth(self):
+    def test_year_close_requires_owner_without_password_prompt(self):
         year = self.today.year
         # 会社管理者は年度を締められない
         admin = make_user("admin_y")
@@ -186,16 +186,7 @@ class BooksTests(TestCase):
         CompanyMembership.objects.create(user=admin, company=self.fx.company, role="admin")
         r = client_for(admin, self.fx.store).post(f"/api/accounting/fiscal-years/{year}/close", {"force": True}, format="json", **key())
         self.assertEqual(r.status_code, 403)
-        # ログイン直後の自動再認証（reauth_source=login）では足りない
-        c = client_for(self.fx.users["owner"], self.fx.store, reauth=False)
-        s = c.session
-        s["reauth_until"] = timezone.now().timestamp() + 3600
-        s["reauth_source"] = "login"
-        s.save()
-        r = c.post(f"/api/accounting/fiscal-years/{year}/close", {"force": True}, format="json", **key())
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
-        # 明示の再認証なら可
+        # オーナーはパスワードを聞き直されずに締められる
         r = self.owner.post(f"/api/accounting/fiscal-years/{year}/close", {"force": True}, format="json", **key())
         self.assertEqual(r.status_code, 200, r.content)
 

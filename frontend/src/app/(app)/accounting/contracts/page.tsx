@@ -362,7 +362,6 @@ function ContractModal({
 }
 
 function ReviewModal({ contract, checklist, onClose, onSaved }: { contract: CastContract; checklist: { key: string; label: string }[]; onClose: () => void; onSaved: () => void }) {
-  const { withReauth } = useSession();
   const toast = useToast();
   const [category, setCategory] = useState(contract.tax_category === "undetermined" ? "" : contract.tax_category);
   const [status, setStatus] = useState<"confirmed" | "needs_review">("confirmed");
@@ -388,12 +387,10 @@ function ReviewModal({ contract, checklist, onClose, onSaved }: { contract: Cast
               setBusy(true);
               setErr(null);
               try {
-                const r = await withReauth(() =>
-                  api<CastContract & { warnings: string[] }>(`/api/accounting/contracts/${contract.id}/review`, {
-                    method: "POST",
-                    body: { tax_category: category || "undetermined", tax_review_status: status, review_checklist: checks, review_note: note },
-                  }),
-                );
+                const r = await api<CastContract & { warnings: string[] }>(`/api/accounting/contracts/${contract.id}/review`, {
+                  method: "POST",
+                  body: { tax_category: category || "undetermined", tax_review_status: status, review_checklist: checks, review_note: note },
+                });
                 toast.show({ message: `${contract.employee_name}: ${r.tax_category_label}（${r.tax_review_status_label}）`, tone: r.warnings.length ? "error" : undefined });
                 onSaved();
               } catch (e) {
@@ -497,7 +494,7 @@ function AdviceModal({ contract, onClose, onSaved }: { contract: CastContract; o
 }
 
 function PayItems() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const q = useLoad<PayItemRow[]>("/api/accounting/pay-items");
   const [rows, setRows] = useState<PayItemRow[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -540,7 +537,7 @@ function PayItems() {
           className="btn btn-primary"
           onClick={async () => {
             try {
-              const saved = await withReauth(() => api<PayItemRow[]>("/api/accounting/pay-items", { method: "PUT", body: { items: rows } }));
+              const saved = await api<PayItemRow[]>("/api/accounting/pay-items", { method: "PUT", body: { items: rows } });
               q.setData(saved);
               setRows(null);
             } catch (e) {

@@ -220,24 +220,18 @@ class SelfServiceTests(PayrollBase):
         self.assertEqual(r.json()["corrections"][0]["reason"], "打刻忘れ")
         self.assertEqual(r.json()["corrections"][0]["before"]["clock_in"], s.clock_in.isoformat())
 
-    def test_wages_require_cap_and_reauth(self):
+    def test_wages_require_cap_without_password_prompt(self):
         self.assertEqual(self.staff.get(f"/api/staff/employees/{self.cast1.id}/wages").status_code, 403)
         self.assertEqual(self.manager.get(f"/api/staff/employees/{self.cast1.id}/wages").status_code, 403)
-        owner_noreauth = client_for(self.fx.users["owner"], self.store, reauth=False)
-        r = owner_noreauth.get(f"/api/staff/employees/{self.cast1.id}/wages")
-        self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
-        r = owner_noreauth.post("/api/auth/reauth", {"password": "wrong"}, format="json")
-        self.assertEqual(r.status_code, 401)
-        r = owner_noreauth.post("/api/auth/reauth", {"password": "Test-pass-1234"}, format="json")
-        self.assertEqual(r.status_code, 200, r.content)
-        r = owner_noreauth.get(f"/api/staff/employees/{self.cast1.id}/wages")
+        # パスワードの聞き直しはなく、ログインしたままのオーナーがそのまま見て・登録できる
+        owner = client_for(self.fx.users["owner"], self.store)
+        r = owner.get(f"/api/staff/employees/{self.cast1.id}/wages")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["current"], "1500.00")
-        r = owner_noreauth.post(f"/api/staff/employees/{self.cast1.id}/wages", {"hourly_wage": "1700", "effective_from": self.today.isoformat()}, format="json")
+        r = owner.post(f"/api/staff/employees/{self.cast1.id}/wages", {"hourly_wage": "1700", "effective_from": self.today.isoformat()}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(payroll.wage_for(self.cast1, self.store, self.today), Decimal("1700"))
-        self.assertEqual(len(owner_noreauth.get(f"/api/staff/employees/{self.cast1.id}/wages").json()["history"]), 2)
+        self.assertEqual(len(owner.get(f"/api/staff/employees/{self.cast1.id}/wages").json()["history"]), 2)
 
     def test_overnight_shift_minutes(self):
         start = timezone.now().replace(hour=22, minute=0, second=0, microsecond=0).astimezone(TOKYO)

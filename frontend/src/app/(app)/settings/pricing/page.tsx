@@ -54,7 +54,7 @@ const SPLIT_LABELS: Record<string, string> = { equal: "人数で均等に割る"
 const KIND_LABELS: Record<string, string> = { drink: "ドリンク", cast_drink: "キャストドリンク", bottle: "ボトル", shot: "ショット", food: "フード", other: "その他" };
 
 export default function PricingPage() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const [tab, setTab] = useState<"courses" | "designations" | "fees" | "backs">("courses");
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
   return (
@@ -87,8 +87,8 @@ export default function PricingPage() {
       />
       {tab === "courses" && <CoursesTab canEdit={can("catalog.edit")} setSave={setSave} />}
       {tab === "designations" && <DesignationSettings variant="page" title="呼び・同伴・本指名・場内指名（お客様の料金・キャストのバック）" />}
-      {tab === "fees" && <FeesTab canEdit={can("settings.edit")} setSave={setSave} withReauth={withReauth} />}
-      {tab === "backs" && <BacksTab canEdit={can("backs.rules.edit")} setSave={setSave} withReauth={withReauth} />}
+      {tab === "fees" && <FeesTab canEdit={can("settings.edit")} setSave={setSave} />}
+      {tab === "backs" && <BacksTab canEdit={can("backs.rules.edit")} setSave={setSave} />}
     </div>
   );
 }
@@ -229,7 +229,7 @@ function CoursesTab({ canEdit, setSave }: { canEdit: boolean; setSave: (s: SaveS
   );
 }
 
-function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+function FeesTab({ canEdit, setSave }: { canEdit: boolean; setSave: (s: SaveState) => void }) {
   const q = useLoad<StoreSettings>("/api/store/settings");
   const courses = useLoad<Course[]>("/api/store/courses?active=1");
   const [f, setF] = useState<StoreSettings | null>(null);
@@ -295,7 +295,7 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
                 default_unlimited_course: f.default_unlimited_course, unlimited_change_mode: f.unlimited_change_mode, unlimited_change_price: f.unlimited_change_price || null,
                 unlimited_change_after_ext_mode: f.unlimited_change_after_ext_mode, unlimited_change_after_ext_price: f.unlimited_change_after_ext_price || null,
               };
-              const d = await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body }));
+              const d = await api<StoreSettings>("/api/store/settings", { method: "PUT", body });
               setF(d);
               setSave({ kind: "saved" });
             } catch (e) {
@@ -303,14 +303,14 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
             }
           }}
         >
-          保存（パスワード再確認）
+          保存
         </button>
       )}
     </div>
   );
 }
 
-function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: (s: SaveState) => void; withReauth: <T>(fn: () => Promise<T>) => Promise<T> }) {
+function BacksTab({ canEdit, setSave }: { canEdit: boolean; setSave: (s: SaveState) => void }) {
   const tx = useTx();
   const rules = useLoad<BackRule[]>("/api/staff/back-rules");
   const employees = useLoad<Employee[]>("/api/staff/employees?active=1");
@@ -428,8 +428,8 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
                   setSave({ kind: "saving" });
                   try {
                     const body = { ...form, category: form.target_type === "category" ? form.category : null, product: form.target_type === "product" ? form.product : null, category_kind: form.target_type === "category_kind" ? form.category_kind : "" };
-                    if (editing === "new") await withReauth(() => api("/api/staff/back-rules", { method: "POST", body }));
-                    else await withReauth(() => api(`/api/staff/back-rules/${editing.id}`, { method: "PATCH", body }));
+                    if (editing === "new") await api("/api/staff/back-rules", { method: "POST", body });
+                    else await api(`/api/staff/back-rules/${editing.id}`, { method: "PATCH", body });
                     setSave({ kind: "saved" });
                     setEditing(null);
                     await rules.reload();
@@ -441,7 +441,7 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
                   }
                 }}
               >
-                保存（パスワード再確認）
+                保存
               </button>
             </>
           }

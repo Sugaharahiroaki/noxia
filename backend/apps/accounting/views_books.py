@@ -178,7 +178,7 @@ class FiscalYearActionView(APIView):
     """年度の締め・再開（経営者本人・明示の再認証）。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_YEAREND_CONFIRM, reauth=True)]
+        return [StoreCaps(CAP_YEAREND_CONFIRM)]
 
     @idempotent
     def post(self, request, year, action):

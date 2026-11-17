@@ -210,9 +210,9 @@ function Inner() {
   );
 }
 
-/** ランクのしきい値（店舗の設定）。変更は店舗設定の編集権限と再認証が必要 */
+/** ランクのしきい値（店舗の設定）。変更は店舗設定の編集権限が必要 */
 function RankSettingsCard({ ranks, months, onSaved }: { ranks: Rank[]; months: number; onSaved: () => void }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const canEdit = can("settings.edit");
   const [list, setList] = useState<{ label: string; min_visits: string }[]>(ranks.map((r) => ({ label: r.label, min_visits: String(r.min_visits) })));
@@ -223,7 +223,7 @@ function RankSettingsCard({ ranks, months, onSaved }: { ranks: Rank[]; months: n
     setBusy(true);
     try {
       const body = { customer_rank_thresholds: list.map((x) => ({ label: x.label.trim(), min_visits: Number(x.min_visits) })) };
-      await withReauth(() => api("/api/store/settings", { method: "PUT", body }));
+      await api("/api/store/settings", { method: "PUT", body });
       toast.show({ message: "ランクの設定を保存しました" });
       onSaved();
     } catch (e) {

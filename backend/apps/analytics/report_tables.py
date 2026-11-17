@@ -15,18 +15,18 @@ from apps.core.permissions import CAP_CUSTOMERS_VIEW, CAP_EXPORT_CASH, CAP_EXPOR
 
 from . import reports
 
-# 出力の種類 → （必要なケイパビリティ, 再認証が要るか, 期間の指定の仕方）
-KINDS: dict[str, tuple[tuple[str, ...], bool, str]] = {
-    "slips": ((CAP_EXPORT_SALES,), False, "range"),
-    "tags": ((CAP_EXPORT_SALES,), False, "range"),
-    "items": ((CAP_EXPORT_SALES,), False, "range"),
-    "customers": ((CAP_EXPORT_SALES, CAP_CUSTOMERS_VIEW), False, "none"),
-    "deletions": ((CAP_EXPORT_SALES,), False, "range"),
-    "monthly": ((CAP_EXPORT_CASH,), False, "month"),
-    "cash": ((CAP_EXPORT_CASH,), False, "month"),
-    "cash-history": ((CAP_EXPORT_CASH,), False, "month"),
-    "cast": ((CAP_EXPORT_PAYROLL,), True, "month"),
-    "staff": ((CAP_EXPORT_PAYROLL,), True, "month"),
+# 出力の種類 → （必要なケイパビリティ, 期間の指定の仕方）
+KINDS: dict[str, tuple[tuple[str, ...], str]] = {
+    "slips": ((CAP_EXPORT_SALES,), "range"),
+    "tags": ((CAP_EXPORT_SALES,), "range"),
+    "items": ((CAP_EXPORT_SALES,), "range"),
+    "customers": ((CAP_EXPORT_SALES, CAP_CUSTOMERS_VIEW), "none"),
+    "deletions": ((CAP_EXPORT_SALES,), "range"),
+    "monthly": ((CAP_EXPORT_CASH,), "month"),
+    "cash": ((CAP_EXPORT_CASH,), "month"),
+    "cash-history": ((CAP_EXPORT_CASH,), "month"),
+    "cast": ((CAP_EXPORT_PAYROLL,), "month"),
+    "staff": ((CAP_EXPORT_PAYROLL,), "month"),
 }
 
 _NUMERIC = re.compile(r"^-?\d+(\.\d+)?$")

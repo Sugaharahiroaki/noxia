@@ -12,9 +12,8 @@ import { Tx } from "@/lib/terms";
 import { useSession } from "@/lib/session";
 import { useToast } from "./Toast";
 
-/** 月と、再認証つきの読み込み（全員分の報酬は、既存の支払集計と同じくパスワードの再確認が要る） */
+/** 月を選んで読み込む集計 */
 export function useMonthReport<T>(path: (month: string) => string, initialMonth: string | null = null) {
-  const { withReauth } = useSession();
   const bd = useBusinessDate();
   const [month, setMonth] = useState<string | null>(initialMonth);
   const [data, setData] = useState<T | null>(null);
@@ -27,7 +26,7 @@ export function useMonthReport<T>(path: (month: string) => string, initialMonth:
     if (!month) return;
     setLoading(true);
     try {
-      setData(await withReauth(() => api<T>(path(month))));
+      setData(await api<T>(path(month)));
       setError(null);
     } catch (e) {
       setError(e);
@@ -117,7 +116,7 @@ export function GroupToggles({ all, hidden, onChange }: { all: PayGroup[]; hidde
 export function PeopleReportPage({ kind }: { kind: "cast" | "staff" }) {
   const cast = kind === "cast";
   const toast = useToast();
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const q = useMonthReport<PeopleReport>((m) => `/api/reports/${kind}?month=${m}`);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const d = q.data;
@@ -138,7 +137,7 @@ export function PeopleReportPage({ kind }: { kind: "cast" | "staff" }) {
                 className="btn btn-sm"
                 onClick={async () => {
                   try {
-                    await withReauth(() => downloadFile(`/api/reports/people-${kind}.csv?month=${q.month}`));
+                    await downloadFile(`/api/reports/people-${kind}.csv?month=${q.month}`);
                   } catch (e) {
                     toast.show({ message: errorMessage(e), tone: "error" });
                   }
@@ -147,7 +146,7 @@ export function PeopleReportPage({ kind }: { kind: "cast" | "staff" }) {
                 CSV 出力
               </button>
             )}
-            {q.month && <ExportButton path={`/api/reports/export/${kind}.xlsx?month=${q.month}`} cap="export.payroll" reauth />}
+            {q.month && <ExportButton path={`/api/reports/export/${kind}.xlsx?month=${q.month}`} cap="export.payroll" />}
           </>
         }
       />

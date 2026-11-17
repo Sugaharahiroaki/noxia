@@ -166,9 +166,6 @@ class DesignationBacksTests(APITestCase):
         self.assertEqual(self.put([{"target": "nomination", "mode": "fixed", "value": "1"}], client=manager).status_code, 403)
         staff = client_for(self.fx.users["staff"], self.store)
         self.assertEqual(staff.get(URL).status_code, 403)
-        no_reauth = client_for(self.fx.users["owner"], self.store, reauth=False)
-        r = self.put([{"target": "nomination", "mode": "fixed", "value": "1"}], client=no_reauth)
-        self.assertEqual((r.status_code, r.json()["error"]["code"]), (403, "reauth_required"))
         self.assertFalse(BackRule.objects.exists())
 
     def test_other_store_is_rejected_and_untouched(self):

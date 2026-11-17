@@ -15,7 +15,7 @@ type Editable = Omit<PrinterConfig, "connection" | "shop_name_default" | "update
  * Bluetooth の接続（ペアリング・プリンターの選択）は iPad とエプソンのアプリ側で行う。ここでは「何を出すか」と印字する店の情報だけ。
  */
 export function PrinterSettingsTab() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const canEdit = can("settings.edit");
   const q = useLoad<PrinterConfig>("/api/printing/config");
   const [form, setForm] = useState<PrinterConfig | null>(null);
@@ -52,7 +52,7 @@ export function PrinterSettingsTab() {
         ryoshusho_proviso: form.ryoshusho_proviso,
         stamp_box_from: form.stamp_box_from === "" ? null : form.stamp_box_from,
       };
-      const d = await withReauth(() => api<PrinterConfig>("/api/printing/config", { method: "PUT", body }));
+      const d = await api<PrinterConfig>("/api/printing/config", { method: "PUT", body });
       setForm(d);
       q.setData(d);
       setSave({ kind: "saved" });

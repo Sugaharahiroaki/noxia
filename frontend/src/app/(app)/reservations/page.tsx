@@ -585,7 +585,6 @@ function LineTab() {
 }
 
 function IntegrationSection({ canManage }: { canManage: boolean }) {
-  const { withReauth } = useSession();
   const q = useLoad<LineIntegration>("/api/line/integration");
   const [channelId, setChannelId] = useState("");
   const [secret, setSecret] = useState("");
@@ -612,7 +611,7 @@ function IntegrationSection({ canManage }: { canManage: boolean }) {
       const body: Record<string, unknown> = { channel_id: channelId, official_account_name: accountName, webhook_enabled: webhook, send_enabled: sendEnabled, note };
       if (secret) body.channel_secret = secret;
       if (token) body.channel_access_token = token;
-      const r = await withReauth(() => api<LineIntegration>("/api/line/integration", { method: "PUT", body }));
+      const r = await api<LineIntegration>("/api/line/integration", { method: "PUT", body });
       q.setData(r);
       setSecret("");
       setToken("");
@@ -651,7 +650,7 @@ function IntegrationSection({ canManage }: { canManage: boolean }) {
         </div>
       </section>
       <section className="card space-y-3">
-        <h2 className="font-bold">接続設定（店舗別・パスワード再確認が必要）</h2>
+        <h2 className="font-bold">接続設定（店舗別）</h2>
         {!canManage && <p style={{ color: "var(--color-muted)" }}>変更には LINE 連携の管理権限が必要です。</p>}
         <Field label="チャネルID">
           <input className="input" value={channelId} onChange={(e) => setChannelId(e.target.value)} disabled={!canManage} />

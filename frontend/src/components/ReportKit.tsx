@@ -110,10 +110,9 @@ export function ReportNote({ children }: { children: React.ReactNode }) {
 
 /**
  * 出力ボタン（XLSX・PDF）。path はダウンロードする API。cap が無い人には出さない。
- * reauth: 給与に関わる出力（キャスト・スタッフ集計、他人の報酬支払明細）はパスワードの再確認を挟む。
  */
-export function ExportButton({ path, label = "XLSX 出力", cap, reauth = false }: { path: string | null; label?: string; cap?: string; reauth?: boolean }) {
-  const { can, withReauth } = useSession();
+export function ExportButton({ path, label = "XLSX 出力", cap }: { path: string | null; label?: string; cap?: string }) {
+  const { can } = useSession();
   const toast = useToast();
   if (!path || (cap && !can(cap))) return null;
   return (
@@ -121,8 +120,7 @@ export function ExportButton({ path, label = "XLSX 出力", cap, reauth = false 
       className="btn btn-sm"
       onClick={async () => {
         try {
-          if (reauth) await withReauth(() => downloadFile(path));
-          else await downloadFile(path);
+          await downloadFile(path);
         } catch (e) {
           toast.show({ message: errorMessage(e), tone: "error" });
         }

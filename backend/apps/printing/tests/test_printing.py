@@ -256,11 +256,11 @@ class ConfigTests(PrintBase):
         self.assertTrue(PrinterConfig.objects.get(store=self.store).enabled)
         self.assertEqual(self.c.put("/api/printing/config", {"paper_width": 70}, format="json").status_code, 400)
 
-    def test_edit_needs_reauth(self):
-        c = client_for(self.fx.users["manager"], self.store, reauth=False)
+    def test_edit_needs_settings_edit(self):
+        c = client_for(self.fx.users["staff"], self.store)
         r = c.put("/api/printing/config", {"enabled": True}, format="json")
         self.assertEqual(r.status_code, 403)
-        self.assertEqual(r.json()["error"]["code"], "reauth_required")
+        self.assertEqual(r.json()["error"]["code"], "forbidden")
 
     def test_test_print(self):
         r = self.c.get("/api/printing/test")

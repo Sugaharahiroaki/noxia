@@ -27,7 +27,7 @@ class ClosingBase(TestCase):
         self.fx = standard_fixture()
         self.tp = make_taxpayer(self.fx, name="個人 夜子", entity_type="sole_proprietor", withholding=False)
         self.owner = client_for(self.fx.users["owner"], self.fx.store)
-        self.manager = client_for(self.fx.users["manager"], self.fx.store, reauth=False)
+        self.manager = client_for(self.fx.users["manager"], self.fx.store)
         self.fy = books.get_fiscal_year(self.tp, YEAR, create=True)
 
     def asset(self, **kw):

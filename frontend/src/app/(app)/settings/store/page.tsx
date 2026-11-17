@@ -34,7 +34,7 @@ const ROLE_MATRIX: { cap: string; label: string; owner: boolean; manager: boolea
 ];
 
 export default function StoreSettingsPage() {
-  const { can, withReauth, store } = useSession();
+  const { can, store } = useSession();
   const q = useLoad<StoreSettings>("/api/store/settings");
   const tables = useLoad<Table[]>("/api/store/tables");
   const [form, setForm] = useState<StoreSettings | null>(null);
@@ -50,7 +50,7 @@ export default function StoreSettingsPage() {
     if (!form) return;
     setSave({ kind: "saving" });
     try {
-      const d = await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body: form }));
+      const d = await api<StoreSettings>("/api/store/settings", { method: "PUT", body: form });
       setForm(d);
       q.setData(d);
       setSave({ kind: "saved" });
@@ -209,7 +209,7 @@ export default function StoreSettingsPage() {
           </p>
           {canEdit && (
             <button className="btn btn-primary btn-lg" onClick={submit} disabled={save.kind === "saving"}>
-              設定を保存（パスワード再確認）
+              設定を保存
             </button>
           )}
         </div>
@@ -257,7 +257,7 @@ export default function StoreSettingsPage() {
 
 /** 会計取消の 4 桁の暗証番号。店舗タブレットは店長の共有アカウントなので、設定・変更はオーナーだけ */
 function VoidPinSection({ isSet, onChanged }: { isSet: boolean; onChanged: (v: boolean) => void }) {
-  const { store, withReauth } = useSession();
+  const { store } = useSession();
   const isOwner = !!store && ["owner", "admin", "operator"].includes(store.role);
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
@@ -269,7 +269,7 @@ function VoidPinSection({ isSet, onChanged }: { isSet: boolean; onChanged: (v: b
     setErr(null);
     setMsg("");
     try {
-      const r = await withReauth(() => api<{ void_pin_set: boolean }>("/api/store/void-pin", { method: "PUT", body: { pin: value } }));
+      const r = await api<{ void_pin_set: boolean }>("/api/store/void-pin", { method: "PUT", body: { pin: value } });
       onChanged(r.void_pin_set);
       setMsg(r.void_pin_set ? "暗証番号を設定しました" : "暗証番号を解除しました");
       setPin("");

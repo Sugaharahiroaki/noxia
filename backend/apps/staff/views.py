@@ -140,7 +140,7 @@ class EmployeeLoginAccountView(APIView):
     """従業員のログインアカウント作成・有効化・無効化（在籍情報とは分離）。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_EMPLOYEES_EDIT, reauth=True)]
+        return [StoreCaps(CAP_EMPLOYEES_EDIT)]
 
     @transaction.atomic
     def post(self, request, employee_id):
@@ -181,7 +181,7 @@ class EmployeeLoginAccountView(APIView):
 
 class EmployeeWagesView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_WAGES_VIEW, write_caps=(CAP_WAGES_EDIT,), reauth=True)]
+        return [StoreCaps(CAP_WAGES_VIEW, write_caps=(CAP_WAGES_EDIT,))]
 
     def get(self, request, employee_id):
         emp = _get_employee(request, employee_id)
@@ -490,7 +490,7 @@ class ShiftCorrectView(APIView):
 # --- 支払い・締め -----------------------------------------------------------------
 class EmployeePaymentsView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, write_caps=(CAP_PAYROLL_PAY,), reauth=True)]
+        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, write_caps=(CAP_PAYROLL_PAY,))]
 
     def get(self, request):
         f = parse_date(request.query_params.get("from") or "") or (current_business_date(request.store) - timedelta(days=30))
@@ -558,7 +558,7 @@ class StatementsView(APIView):
     """期間別・個人別の支払集計（締め前のプレビュー）。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, reauth=True)]
+        return [StoreCaps(CAP_PAYROLL_VIEW_ALL)]
 
     def get(self, request):
         f = parse_date(request.query_params.get("from") or "")
@@ -573,7 +573,7 @@ class StatementsView(APIView):
 
 class PayPeriodsView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, write_caps=(CAP_PAYROLL_PAY,), reauth=True)]
+        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, write_caps=(CAP_PAYROLL_PAY,))]
 
     def get(self, request):
         return Response(PayPeriodSerializer(PayPeriod.objects.filter(store=request.store).prefetch_related("statements__employee"), many=True).data)
@@ -592,7 +592,7 @@ class PayPeriodsView(APIView):
 
 class PayPeriodDetailView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_VIEW_ALL, reauth=True)]
+        return [StoreCaps(CAP_PAYROLL_VIEW_ALL)]
 
     def get(self, request, period_id):
         pp = PayPeriod.objects.filter(id=period_id, store=request.store).prefetch_related("statements__employee").first()
@@ -607,7 +607,7 @@ class PayPeriodDetailView(APIView):
 
 class PayPeriodCloseView(APIView):
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_PAY, reauth=True)]
+        return [StoreCaps(CAP_PAYROLL_PAY)]
 
     @idempotent
     @transaction.atomic
@@ -638,7 +638,7 @@ class DailyPayoutsView(APIView):
     """その日の出勤者ごとのお渡し額（時給×勤務時間＋確定バック）と、渡し済み／未渡し。"""
 
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_PAY, reauth=False)]
+        return [StoreCaps(CAP_PAYROLL_PAY)]
 
     def get(self, request):
         work_date = _payout_date(request)
@@ -680,7 +680,7 @@ class DailyPayoutPayView(APIView):
     """
 
     def get_permissions(self):
-        return [StoreCaps(CAP_PAYROLL_PAY, reauth=False)]
+        return [StoreCaps(CAP_PAYROLL_PAY)]
 
     @idempotent
     @transaction.atomic

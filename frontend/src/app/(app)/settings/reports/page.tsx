@@ -10,7 +10,7 @@ import { useTerms } from "@/lib/terms";
 import type { CashItem, TermRow } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
-/** 入出金項目のマスタと名称変更（POS・集計画面の業務用語）。変更は店舗設定の編集権限と再認証が必要 */
+/** 入出金項目のマスタと名称変更（POS・集計画面の業務用語）。変更は店舗設定の編集権限が必要 */
 export default function ReportSettingsPage() {
   return (
     <RequireCaps caps={["settings.view"]}>
@@ -24,7 +24,7 @@ export default function ReportSettingsPage() {
 }
 
 function CashItemsCard() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const canEdit = can("settings.edit");
   const q = useLoad<CashItem[]>(can("closing.operate") ? "/api/store/cash-items" : null);
@@ -36,7 +36,7 @@ function CashItemsCard() {
   async function run(fn: () => Promise<unknown>, done: string) {
     setBusy(true);
     try {
-      await withReauth(fn);
+      await fn();
       toast.show({ message: done });
       await q.reload(true);
     } catch (e) {
@@ -148,7 +148,7 @@ function CashItemsCard() {
 }
 
 function TermsCard() {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const terms = useTerms();
   const canEdit = can("settings.edit");
@@ -163,7 +163,7 @@ function TermsCard() {
   async function run(fn: () => Promise<unknown>, done: string) {
     setBusy(true);
     try {
-      await withReauth(fn);
+      await fn();
       await terms.reload();
       toast.show({ message: done });
     } catch (e) {

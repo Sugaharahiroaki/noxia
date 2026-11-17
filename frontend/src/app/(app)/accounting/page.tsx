@@ -163,7 +163,7 @@ export default function WithholdingPage() {
 }
 
 function MonthDetail({ month, category, canDecide, onChanged }: { month: string; category: string; canDecide: boolean; onChanged: () => Promise<void> | void }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const q = useLoad<WithholdingMonthView>(`/api/accounting/withholding/month?month=${month}&category=${category}`);
   const [err, setErr] = useState<unknown>(null);
@@ -179,8 +179,7 @@ function MonthDetail({ month, category, canDecide, onChanged }: { month: string;
     setBusy(true);
     setErr(null);
     try {
-      const run = () => api<WithholdingMonthView>(`/api/accounting/withholding/month/${action}`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { month, category, ...body } });
-      const v = action === "confirm" ? await withReauth(run) : await run();
+      const v = await api<WithholdingMonthView>(`/api/accounting/withholding/month/${action}`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { month, category, ...body } });
       q.setData({ ...(q.data as WithholdingMonthView), ...v });
       await Promise.all([q.reload(), onChanged()]);
       toast.show({ message: `${v.label}: ${v.status_label}` });
@@ -641,7 +640,6 @@ function AdvisorNote({ v, month, category, onSaved }: { v: WithholdingMonthView;
 }
 
 function ResolveModal({ record, onClose, onDone }: { record: WithholdingRecordBrief; onClose: () => void; onDone: () => void }) {
-  const { withReauth } = useSession();
   const [category, setCategory] = useState("hostess_fee");
   const [start, setStart] = useState(record.period_start ?? record.work_date ?? record.paid_on);
   const [end, setEnd] = useState(record.period_end ?? record.work_date ?? record.paid_on);
@@ -664,9 +662,7 @@ function ResolveModal({ record, onClose, onDone }: { record: WithholdingRecordBr
               setBusy(true);
               setErr(null);
               try {
-                await withReauth(() =>
-                  api(`/api/accounting/withholding/records/${record.id}/resolve`, { method: "POST", body: { category, period_start: start, period_end: end, note } }),
-                );
+                await api(`/api/accounting/withholding/records/${record.id}/resolve`, { method: "POST", body: { category, period_start: start, period_end: end, note } });
                 onDone();
               } catch (e) {
                 setErr(e);
@@ -712,7 +708,6 @@ function ResolveModal({ record, onClose, onDone }: { record: WithholdingRecordBr
 }
 
 function RemitModal({ v, month, category, onClose, onDone }: { v: WithholdingMonthView; month: string; category: string; onClose: () => void; onDone: () => void }) {
-  const { withReauth } = useSession();
   const [paidOn, setPaidOn] = useState(todayJst());
   const [amount, setAmount] = useState(String(toInt(v.unpaid_total)));
   const [method, setMethod] = useState("etax_direct");
@@ -742,13 +737,11 @@ function RemitModal({ v, month, category, onClose, onDone }: { v: WithholdingMon
                 setBusy(true);
                 setErr(null);
                 try {
-                  const r = await withReauth(() =>
-                    api<{ check: { matched: boolean; difference: string } }>("/api/accounting/withholding/remittances", {
-                      method: "POST",
-                      idempotencyKey: newIdempotencyKey(),
-                      body: { month, category, paid_on: paidOn, amount, method, paid_from: paidFrom, note },
-                    }),
-                  );
+                  const r = await api<{ check: { matched: boolean; difference: string } }>("/api/accounting/withholding/remittances", {
+                    method: "POST",
+                    idempotencyKey: newIdempotencyKey(),
+                    body: { month, category, paid_on: paidOn, amount, method, paid_from: paidFrom, note },
+                  });
                   setResult(r.check);
                 } catch (e) {
                   setErr(e);
@@ -810,7 +803,6 @@ function RemitModal({ v, month, category, onClose, onDone }: { v: WithholdingMon
 }
 
 function AdjustmentModal({ month, category, onClose, onDone }: { month: string; category: string; onClose: () => void; onDone: () => void }) {
-  const { withReauth } = useSession();
   const [kind, setKind] = useState("refund");
   const [appliesOn, setAppliesOn] = useState(`${month}-01`);
   const [amount, setAmount] = useState("");
@@ -836,13 +828,11 @@ function AdjustmentModal({ month, category, onClose, onDone }: { month: string; 
               setBusy(true);
               setErr(null);
               try {
-                await withReauth(() =>
-                  api("/api/accounting/withholding/adjustments", {
-                    method: "POST",
-                    idempotencyKey: newIdempotencyKey(),
-                    body: { category, kind, applies_on: appliesOn, amount_delta: amount, target_delta: target || "0", deduction_delta: deduction || "0", reason },
-                  }),
-                );
+                await api("/api/accounting/withholding/adjustments", {
+                  method: "POST",
+                  idempotencyKey: newIdempotencyKey(),
+                  body: { category, kind, applies_on: appliesOn, amount_delta: amount, target_delta: target || "0", deduction_delta: deduction || "0", reason },
+                });
                 onDone();
               } catch (e) {
                 setErr(e);

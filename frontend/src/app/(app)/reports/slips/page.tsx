@@ -163,16 +163,16 @@ function Inner() {
   );
 }
 
-/** 集計の設定（キャスト売上の分け方・指名回数の数え方）。集計画面の表示だけに効く。変更は店舗設定の編集権限と再認証が必要 */
+/** 集計の設定（キャスト売上の分け方・指名回数の数え方）。集計画面の表示だけに効く。変更は店舗設定の編集権限が必要 */
 function ReportSettingsCard({ settings, onSaved }: { settings: SlipList["settings"]; onSaved: () => void }) {
-  const { can, withReauth } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const canEdit = can("settings.edit");
   async function save(body: Partial<Pick<StoreSettings, never>> & Record<string, string>) {
     setBusy(true);
     try {
-      await withReauth(() => api("/api/store/settings", { method: "PUT", body }));
+      await api("/api/store/settings", { method: "PUT", body });
       toast.show({ message: "集計の設定を保存しました" });
       onSaved();
     } catch (e) {

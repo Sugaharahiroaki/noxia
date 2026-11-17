@@ -213,8 +213,6 @@ class TerminalPermissionTests(TerminalBase):
     def test_config_requires_settings_edit_and_masks_secrets(self):
         staff = client_for(self.fx.users["staff"], self.store)
         self.assertEqual(staff.put("/api/terminals/config", {"provider": "none"}, format="json").status_code, 403)
-        no_reauth = client_for(self.fx.users["manager"], self.store, reauth=False)
-        self.assertEqual(no_reauth.put("/api/terminals/config", {"provider": "none"}, format="json").status_code, 403)
         r = self.c.put("/api/terminals/config", {"provider": "square", "square_environment": "sandbox", "square_location_id": "L1",
                                                  "square_access_token": "EAAAsecret-token-9876"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
