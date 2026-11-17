@@ -20,6 +20,7 @@ export type SlipRow = {
   tags: { name: string; color: string }[];
   nomination: string[];
   jounai: string[];
+  yobi: string[];
   douhan: string[];
   subtotal: Money;
   service_charge: Money;
@@ -92,6 +93,7 @@ export type SlipDetail = SlipRow & {
     douhan_total: Money;
     nomination_count: string;
     jounai_count: string;
+    yobi_count: string;
     douhan_count: string;
   }[];
   settings: ReportSettings;

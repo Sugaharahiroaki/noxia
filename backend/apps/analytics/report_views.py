@@ -196,6 +196,7 @@ CAST_CSV_COLUMNS = [
     ("勤務日数", "days"), ("勤務分", "minutes"), ("平均時給", "avg_hourly"), ("時間報酬", "wage"),
     ("本指名 組数", "nomination_groups"), ("本指名 回数", "nomination_count"), ("本指名バック", "back_nomination"),
     ("場内 組数", "jounai_groups"), ("場内 回数", "jounai_count"), ("場内バック", "back_jounai"),
+    ("呼び 組数", "yobi_groups"), ("呼び 回数", "yobi_count"), ("呼びバック", "back_yobi"),
     ("同伴 組数", "douhan_groups"), ("同伴 回数", "douhan_count"), ("同伴バック", "back_douhan"),
     ("呼び小計バック", "back_yobi_subtotal"), ("同伴小計バック", "back_douhan_subtotal"),
     ("ドリンク売上", "sales_drink"), ("ドリンク本数", "qty_drink"), ("ドリンクバック", "back_drink"),
@@ -308,14 +309,14 @@ class ReportCsvView(APIView):
             d = reports.customer_report(request.store, current_business_date(request.store))
             rows = [[r["name"], r["store_name"], r["rank"], r["keep_count"], r["visits"], r["visits_recent"], r["first_visit"] or "", r["last_visit"] or "",
                      r["avg_minutes"] if r["avg_minutes"] is not None else "", r["unit_price"] or "", r["total"], r["cash"], r["card"], r["receivable"],
-                     r["nomination"], r["jounai"], r["douhan"], r["assigned_employee_name"]] for r in d["rows"]]
+                     r["nomination"], r["jounai"], r["yobi"], r["douhan"], r["assigned_employee_name"]] for r in d["rows"]]
             return _csv(request, f"customers_{request.store.code}_{d['as_of']}.csv", CUSTOMER_CSV_HEADER, rows, "export.report.customers")
         raise ApiError("not_found", "出力種別が不正です。", status=404)
 
 
 # --- M5: お客様分析 -----------------------------------------------------------
 CUSTOMER_CSV_HEADER = ["お客様", "登録店舗", "ランク", "キープ", "来店回数", "直近3か月の来店", "初回来店日", "最終来店日", "平均滞在(分)", "単価",
-                       "会計", "現金", "カード", "売掛", "本指名", "場内指名", "同伴", "担当"]
+                       "会計", "現金", "カード", "売掛", "本指名", "場内指名", "呼び", "同伴", "担当"]
 
 
 class CustomerReportView(APIView):

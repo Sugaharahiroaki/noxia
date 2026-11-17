@@ -147,6 +147,9 @@ function Inner() {
                   <Tx>場内</Tx>
                 </th>
                 <th className="r">
+                  <Tx>呼び</Tx>
+                </th>
+                <th className="r">
                   <Tx>同伴</Tx>
                 </th>
               </tr>
@@ -154,7 +157,7 @@ function Inner() {
             <tbody>
               {d.cast_sales.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ color: "var(--color-muted)" }}>
+                  <td colSpan={9} style={{ color: "var(--color-muted)" }}>
                     指名・同伴のキャストはいません（または未会計です）。
                   </td>
                 </tr>
@@ -168,13 +171,14 @@ function Inner() {
                   <td className="r">{amt(c.douhan_total)}</td>
                   <td className="r">{cnt(c.nomination_count)}</td>
                   <td className="r">{cnt(c.jounai_count)}</td>
+                  <td className="r">{cnt(c.yobi_count)}</td>
                   <td className="r">{cnt(c.douhan_count)}</td>
                 </tr>
               ))}
             </tbody>
           </ReportTable>
           <ReportNote>
-            指名（本指名・場内）のある伝票の小計・本計を「呼び」として、同伴のある伝票の小計・本計を「同伴」として、そのキャストに計上します。 対象のキャストが複数のときは
+            本指名・場内・呼びのある伝票の小計・本計を「呼び」として、同伴のある伝票の小計・本計を「同伴」として、そのキャストに計上します。 対象のキャストが複数のときは
             <strong>{equal ? "均等割り（仮）" : "全員に全額"}</strong>
             です（余りは先頭の人に足します）。指名回数は{d.settings.nomination_count_mode === "per_set" ? `セット数ぶん（この伝票は ${d.set_count} セット）` : "1 伝票 1 回"}。設定は伝票一覧の下で変えられます。
           </ReportNote>

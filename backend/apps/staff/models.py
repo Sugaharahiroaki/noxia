@@ -70,10 +70,14 @@ class BackTargetType(models.TextChoices):
     PRODUCT = "product", "商品"
     NOMINATION = "nomination", "本指名"
     JOUNAI = "jounai", "場内指名"
+    YOBI = "yobi", "呼び"
     DOUHAN = "douhan", "同伴"
-    # 伝票の小計に対するバック（呼び売上バック率・同伴売上バック率）。会計の確定時に、指名（本指名・場内）／同伴の対象の人に付く
-    NOMINATION_SUBTOTAL = "nomination_subtotal", "指名伝票の小計"
-    DOUHAN_SUBTOTAL = "douhan_subtotal", "同伴伝票の小計"
+    # 会計に対するバック（会計の何%）。会計の確定時に、その種類の明細の対象の人に付く。
+    # 本指名・場内指名・呼びは「呼び売上バック」（BackEntry.kind = yobi_subtotal）、同伴は「同伴売上バック」（douhan_subtotal）として集計する
+    NOMINATION_SUBTOTAL = "nomination_subtotal", "本指名のある会計"
+    JOUNAI_SUBTOTAL = "jounai_subtotal", "場内指名のある会計"
+    YOBI_SUBTOTAL = "yobi_subtotal", "呼びのある会計"
+    DOUHAN_SUBTOTAL = "douhan_subtotal", "同伴のある会計"
 
 
 class BackCalcType(models.TextChoices):
@@ -87,7 +91,7 @@ class BackBasis(models.TextChoices):
 
 
 class SubtotalBackBasis(models.TextChoices):
-    """伝票の小計に対するバック（呼び売上バック・同伴売上バック）の基準額。"""
+    """会計に対するバック（呼び売上バック・同伴売上バック）の基準額。"""
     SUBTOTAL = "subtotal", "会計全体（TAX・サービス料の前）"
     SET_EXTENSION = "set_extension", "セット料金＋延長だけ"
     TOTAL = "total", "会計全体（TAX・サービス料込みの請求額）"
@@ -118,7 +122,7 @@ class BackRule(TimestampedModel):
     include_discount = models.BooleanField("値引きを反映する（伝票の値引き割合を按分）", default=True)
     include_service_charge = models.BooleanField("サービス料を含める", default=False)
     rounding = models.CharField(max_length=10, choices=RoundingMode.choices, default=RoundingMode.FLOOR)
-    # 対象が「指名伝票の小計」「同伴伝票の小計」のときだけ使う（ほかの対象では無視）
+    # 対象が「〜のある会計」（*_subtotal）のときだけ使う（ほかの対象では無視）
     subtotal_basis = models.CharField("基準額", max_length=20, choices=SubtotalBackBasis.choices, default=SubtotalBackBasis.SUBTOTAL)
     split_mode = models.CharField("複数人のときの分け方", max_length=20, choices=SubtotalBackSplit.choices, default=SubtotalBackSplit.EQUAL)
     confirm_timing = models.CharField(max_length=20, choices=BackConfirmTiming.choices, default=BackConfirmTiming.CHECKOUT)
@@ -140,7 +144,10 @@ class BackRule(TimestampedModel):
             BackTargetType.ALL_PRODUCTS: 1,
             BackTargetType.NOMINATION: 4,
             BackTargetType.JOUNAI: 4,
+            BackTargetType.YOBI: 4,
             BackTargetType.NOMINATION_SUBTOTAL: 4,
+            BackTargetType.JOUNAI_SUBTOTAL: 4,
+            BackTargetType.YOBI_SUBTOTAL: 4,
             BackTargetType.DOUHAN_SUBTOTAL: 4,
             BackTargetType.DOUHAN: 4,
         }.get(self.target_type, 0)

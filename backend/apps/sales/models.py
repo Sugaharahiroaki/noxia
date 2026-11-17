@@ -103,7 +103,7 @@ class VisitGuest(TimestampedModel):
     label = models.CharField(max_length=60, blank=True)
     course_entry = models.ForeignKey(CourseEntry, null=True, blank=True, on_delete=models.SET_NULL, related_name="guests")
     employee = models.ForeignKey("staff.Employee", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
-    # 入店時の指定: "" / nomination（本指名）/ jounai（場内指名）/ douhan（同伴）。料金は fee_line の明細が正
+    # 入店時の指定: "" / nomination（本指名）/ jounai（場内指名）/ yobi（呼び）/ douhan（同伴）。料金は fee_line の明細が正
     designation = models.CharField(max_length=20, blank=True, default="")
     fee_line = models.ForeignKey("OrderLine", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     status = models.CharField(max_length=10, choices=GuestStatus.choices, default=GuestStatus.PRESENT)
@@ -167,13 +167,14 @@ class LineType(models.TextChoices):
     COURSE_CHANGE = "course_change", "コース変更（無制限へ）"
     NOMINATION = "nomination", "本指名"
     JOUNAI = "jounai", "場内指名"
+    YOBI = "yobi", "呼び"
     DOUHAN = "douhan", "同伴"
     PRODUCT = "product", "商品"
     DISCOUNT = "discount", "値引き"
 
 
 # 指名・同伴の明細（料金は店舗設定。対象の従業員 1 人をバック対象にする）
-FEE_LINE_TYPES = ("nomination", "jounai", "douhan")
+FEE_LINE_TYPES = ("nomination", "jounai", "yobi", "douhan")
 
 
 class LineStatus(models.TextChoices):

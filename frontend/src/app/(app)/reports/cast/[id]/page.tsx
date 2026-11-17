@@ -72,6 +72,7 @@ function Inner() {
                         line("同伴小計バック", "back_douhan_subtotal"),
                         line("本指名バック", "back_nomination"),
                         line("場内バック", "back_jounai"),
+                        line("呼びバック", "back_yobi"),
                         line("同伴バック", "back_douhan"),
                         line("ドリンクバック", "back_drink"),
                         line("ボトルバック", "back_bottle"),

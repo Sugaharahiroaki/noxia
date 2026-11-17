@@ -118,7 +118,7 @@ def open_visit(store: Store, user, data: dict) -> Visit:
     return visit
 
 
-GUEST_DESIGNATIONS = ("", "nomination", "jounai", "douhan")
+GUEST_DESIGNATIONS = ("", "nomination", "jounai", "yobi", "douhan")
 
 
 def _parse_guests(store: Store, st, raw, entries_in: list) -> list[dict]:
@@ -145,11 +145,11 @@ def _parse_guests(store: Store, st, raw, entries_in: list) -> list[dict]:
         used[idx] += 1
         designation = g.get("designation") or ""
         if designation not in GUEST_DESIGNATIONS:
-            raise ApiError("validation_error", "本指名・場内・同伴の指定が正しくありません。")
+            raise ApiError("validation_error", "本指名・場内・呼び・同伴の指定が正しくありません。")
         emp = _employee_in_store(store, g.get("employee_id"))
         if designation:
             if emp is None:
-                raise ApiError("validation_error", "本指名・場内・同伴は、キャストを選んでから指定してください。")
+                raise ApiError("validation_error", "本指名・場内・呼び・同伴は、キャストを選んでから指定してください。")
             fee_setting(st, designation)  # 未設定なら fee_unset
         out.append({"entry_index": idx, "label": (g.get("label") or "")[:60], "employee": emp, "designation": designation})
     if used != counts:
@@ -512,6 +512,7 @@ def fee_setting(st, kind: str):
     table = {
         "nomination": (st.nomination_fee, "指名料", LineType.NOMINATION, st.nomination_enabled),
         "jounai": (st.jounai_fee, "場内指名料", LineType.JOUNAI, st.jounai_enabled),
+        "yobi": (st.yobi_fee, "呼び", LineType.YOBI, st.yobi_enabled),
         "douhan": (st.douhan_fee, "同伴料", LineType.DOUHAN, st.douhan_enabled),
     }
     if kind not in table:

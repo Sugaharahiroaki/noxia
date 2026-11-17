@@ -203,7 +203,7 @@ class Command(BaseCommand):
             unlimited_change_mode="fixed", unlimited_change_price=Decimal(1000),  # 【仮設定】例として差額1,000円
             unlimited_change_after_ext_mode="same_as_change",
             default_unlimited_course=unlimited,
-            nomination_fee=Decimal(1000), douhan_fee=Decimal(2000), jounai_fee=Decimal(1000),  # 【仮設定】
+            nomination_fee=Decimal(1000), douhan_fee=Decimal(2000), jounai_fee=Decimal(1000), yobi_fee=Decimal(0),  # 【仮設定】
             customer_rank_thresholds=[{"label": "S", "min_visits": 20}, {"label": "A", "min_visits": 10}, {"label": "B", "min_visits": 5},
                                       {"label": "C", "min_visits": 1}, {"label": "D", "min_visits": 0}],  # 【仮設定】お客様分析のランク
             alarm_mode="both", default_opening_float=Decimal(50000), receivable_allowed=receivable,

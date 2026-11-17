@@ -160,9 +160,12 @@ class StoreSettings(TimestampedModel):
     nomination_fee = models.DecimalField("指名料", max_digits=12, decimal_places=2, null=True, blank=True)
     douhan_fee = models.DecimalField("同伴料", max_digits=12, decimal_places=2, null=True, blank=True)
     jounai_fee = models.DecimalField("場内指名料", max_digits=12, decimal_places=2, null=True, blank=True)
+    # 呼び: キャストが呼んで来たお客様（本指名・場内指名とは別の種類）。お客様への料金（空欄 = 未設定、0 = 料金なし）
+    yobi_fee = models.DecimalField("呼び料金", max_digits=12, decimal_places=2, null=True, blank=True)
     # 使う指名の種類（使わないものは入店・卓の画面に出さず、登録も拒否する）。名前は「名称変更」（TermOverride）で変える
     nomination_enabled = models.BooleanField("本指名を使う", default=True)
     jounai_enabled = models.BooleanField("場内指名を使う", default=True)
+    yobi_enabled = models.BooleanField("呼びを使う", default=True)
     douhan_enabled = models.BooleanField("同伴を使う", default=True)
 
     # 集計（管理用の集計画面だけに効く。会計・バック・報酬の計算には使わない）

@@ -16,11 +16,11 @@ type Rank = { label: string; min_visits: number };
 type Row = {
   id: number; name: string; store_name: string; own_store: boolean; assigned_employee_name: string; keep_count: number; rank: string;
   visits: number; visits_recent: number; guests: number; first_visit: string | null; last_visit: string | null; avg_minutes: number | null;
-  total: Money; unit_price: Money | null; cash: Money; card: Money; receivable: Money; nomination: number; jounai: number; douhan: number;
+  total: Money; unit_price: Money | null; cash: Money; card: Money; receivable: Money; nomination: number; jounai: number; yobi: number; douhan: number;
 };
 type Report = {
   as_of: string; rank_since: string; rank_months: number; rank_thresholds: Rank[]; sharing_enabled: boolean; rows: Row[];
-  totals: { customers: number; keep_count: number; visits: number; visits_recent: number; guests: number; nomination: number; jounai: number; douhan: number;
+  totals: { customers: number; keep_count: number; visits: number; visits_recent: number; guests: number; nomination: number; jounai: number; yobi: number; douhan: number;
     total: Money; cash: Money; card: Money; receivable: Money; unit_price: Money | null };
   note: string;
 };
@@ -136,6 +136,9 @@ function Inner() {
                     <Tx>場内指名</Tx>
                   </th>
                   <th className="r">
+                    <Tx>呼び</Tx>
+                  </th>
+                  <th className="r">
                     <Tx>同伴</Tx>
                   </th>
                   <th>担当</th>
@@ -158,6 +161,7 @@ function Inner() {
                   <td className="r">{amt(d.totals.receivable)}</td>
                   <td className="r">{cnt(d.totals.nomination)}</td>
                   <td className="r">{cnt(d.totals.jounai)}</td>
+                  <td className="r">{cnt(d.totals.yobi)}</td>
                   <td className="r">{cnt(d.totals.douhan)}</td>
                   <td />
                 </tr>
@@ -185,6 +189,7 @@ function Inner() {
                     <td className="r">{amt(r.receivable)}</td>
                     <td className="r">{cnt(r.nomination)}</td>
                     <td className="r">{cnt(r.jounai)}</td>
+                    <td className="r">{cnt(r.yobi)}</td>
                     <td className="r">{cnt(r.douhan)}</td>
                     <td>{r.assigned_employee_name || "--"}</td>
                   </tr>

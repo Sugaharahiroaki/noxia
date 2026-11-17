@@ -317,7 +317,7 @@ class ExportTests(Base):
     def test_headers_follow_term_overrides(self):
         self.owner.put("/api/store/terms", {"labels": {"nomination": "指名", "jounai": "場内", "tag": "ラベル"}}, format="json")
         head = self.sheets(self.owner.get("/api/reports/export/slips.xlsx"))["伝票一覧"][0]
-        self.assertEqual((head[10], head[11], head[12], head[13]), ("ラベル", "指名", "場内", "同伴"))
+        self.assertEqual((head[10], head[11], head[12], head[13], head[14]), ("ラベル", "指名", "場内", "呼び", "同伴"))
         cast = self.sheets(self.owner.get("/api/reports/export/cast.xlsx"))["キャスト集計"][0]
         self.assertIn("指名 回数", cast)
         self.assertIn("場内バック", cast)

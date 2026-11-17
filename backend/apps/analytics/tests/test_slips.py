@@ -32,7 +32,7 @@ class PureFunctionTests(SimpleTestCase):
         # 参考設計 6.3 の例: 小計 26,000 の伝票 → 指名キャストに 26,000
         r = reports.cast_sales_for_slip(Decimal(26000), Decimal(29900), [(1, "nomination")], set_count=1)
         self.assertEqual(r, {1: {"yobi_subtotal": Decimal(26000), "yobi_total": Decimal(29900), "douhan_subtotal": Decimal(0), "douhan_total": Decimal(0),
-                                 "nomination_count": Decimal(1), "jounai_count": Decimal(0), "douhan_count": Decimal(0)}})
+                                 "nomination_count": Decimal(1), "jounai_count": Decimal(0), "yobi_count": Decimal(0), "douhan_count": Decimal(0)}})
 
     def test_multiple_casts_equal_split_and_full_each(self):
         d = [(1, "nomination"), (2, "jounai")]

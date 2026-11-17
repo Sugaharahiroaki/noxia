@@ -19,12 +19,14 @@ type GuestDraft = { employee: number | null; designation: Designation; courseId:
 const DESIGNATIONS: {
   key: Exclude<Designation, "">;
   label: string;
-  fee: "nomination_fee" | "jounai_fee" | "douhan_fee";
-  enabled: "nomination_enabled" | "jounai_enabled" | "douhan_enabled";
+  fee: "nomination_fee" | "jounai_fee" | "yobi_fee" | "douhan_fee";
+  enabled: "nomination_enabled" | "jounai_enabled" | "yobi_enabled" | "douhan_enabled";
 }[] = [
+  // 並びは設定画面「指名・同伴」と同じ（呼び・同伴・本指名・場内）
+  { key: "yobi", label: "呼び", fee: "yobi_fee", enabled: "yobi_enabled" },
+  { key: "douhan", label: "同伴", fee: "douhan_fee", enabled: "douhan_enabled" },
   { key: "nomination", label: "本指名", fee: "nomination_fee", enabled: "nomination_enabled" },
   { key: "jounai", label: "場内", fee: "jounai_fee", enabled: "jounai_enabled" },
-  { key: "douhan", label: "同伴", fee: "douhan_fee", enabled: "douhan_enabled" },
 ];
 const MAX_GUESTS = 30;
 

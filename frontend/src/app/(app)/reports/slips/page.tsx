@@ -82,6 +82,9 @@ function Inner() {
                     <Tx>場内</Tx>
                   </th>
                   <th>
+                    <Tx>呼び</Tx>
+                  </th>
+                  <th>
                     <Tx>同伴</Tx>
                   </th>
                   <th className="r">小計</th>
@@ -99,7 +102,7 @@ function Inner() {
                   <td>合計 {t.count}件</td>
                   <td colSpan={5} />
                   <td className="r">{cnt(t.guest_count)}</td>
-                  <td colSpan={4} />
+                  <td colSpan={5} />
                   <td className="r">{amt(t.subtotal)}</td>
                   <td className="r">{amt(t.service_charge)}</td>
                   <td className="r">{amt(t.discount)}</td>
@@ -125,6 +128,7 @@ function Inner() {
                     <td>{r.tags.map((x) => x.name).join("・") || "--"}</td>
                     <td>{r.nomination.join("・") || "--"}</td>
                     <td>{r.jounai.join("・") || "--"}</td>
+                    <td>{r.yobi.join("・") || "--"}</td>
                     <td>{r.douhan.join("・") || "--"}</td>
                     <td className="r">{amt(r.subtotal)}</td>
                     <td className="r">{amt(r.service_charge)}</td>

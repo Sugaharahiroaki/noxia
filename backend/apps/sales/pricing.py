@@ -26,7 +26,7 @@ from apps.core.money import D, ZERO, percent_of, round_yen, tax_from_included, t
 
 COURSE_TYPES = {"course_set", "extension", "course_change"}
 PRODUCT_TYPES = {"product"}
-FEE_TYPES = {"nomination", "jounai", "douhan"}
+FEE_TYPES = {"nomination", "jounai", "yobi", "douhan"}
 
 # 支払方法 → 店舗設定の料率の項目
 RATE_FIELDS = {"cash": "service_charge_rate_cash", "card": "service_charge_rate_card", "receivable": "service_charge_rate_receivable"}

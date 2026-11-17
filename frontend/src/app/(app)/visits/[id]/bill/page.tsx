@@ -7,7 +7,7 @@ import { yen } from "@/lib/format";
 import type { OrderLine, Visit } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
-const FEE = new Set(["nomination", "jounai", "douhan"]);
+const FEE = new Set(["nomination", "jounai", "yobi", "douhan"]);
 const SET = new Set(["course_set", "extension", "course_change"]);
 
 /**

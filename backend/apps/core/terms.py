@@ -14,14 +14,12 @@ TERMS: dict[str, tuple[str, str]] = {
     "nomination": ("本指名", "来店前から決まっている指名"),
     "jounai": ("場内指名", "来店後に席で受けた指名"),
     "douhan": ("同伴", "キャストと一緒に来店"),
-    "yobi": ("呼び", "指名（本指名・場内指名）のある伝票の売上の呼び方"),
+    "yobi": ("呼び", "キャストが呼んだお客様（指名の種類）と、本指名・場内指名・呼びのある伝票の売上の呼び方"),
     "set": ("セット", "時間制の料金（コース）"),
     "extension": ("延長", "セットの時間の延長"),
     "tag": ("タグ", "伝票に付ける目印"),
 }
 MAX_LABEL = 12
-# 同じ表示名を付けてよい組（本指名を「呼び」と呼ぶ店: 指名と、指名のある伝票の売上の呼び方が同じ言葉になる）
-SAME_NAME_ALLOWED = {"nomination", "yobi"}
 
 
 def term_labels(store) -> dict[str, str]:
@@ -64,12 +62,12 @@ def save_labels(store, labels: dict[str, str]) -> dict:
     after = dict(before)
     for key, label in labels.items():
         after[key] = label or TERMS[key][0]
-    # 例外: 本指名を「呼び」と呼ぶ店では、指名の売上の呼び方（初期値「呼び」）と同じ名前になってよい（同じものを指すため）
+    # 同じ表示名が 2 つのキーに付くと画面で見分けがつかなくなる（呼びは本指名とは別の種類なので、本指名を「呼び」にもできない）
     seen: dict[str, str] = {}
     for key, label in after.items():
         other = seen.get(label)
-        if other is not None and {other, key} != SAME_NAME_ALLOWED:
-            raise ApiError("validation_error", "同じ名称を 2 つの用語に付けることはできません。")
+        if other is not None:
+            raise ApiError("validation_error", f"「{label}」が {TERMS[other][0]} と {TERMS[key][0]} の両方に付いています。同じ名称を 2 つの用語に付けることはできません。")
         seen[label] = key
     for key, label in labels.items():
         if label:

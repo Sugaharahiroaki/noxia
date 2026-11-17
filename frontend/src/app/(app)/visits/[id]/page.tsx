@@ -20,10 +20,12 @@ import { useLoad } from "@/lib/useLoad";
 import { computeAlarm, syncServerClock, useNow } from "@/lib/useServerClock";
 
 type BatchResult = Visit & { created_line_ids: number[] };
-type FeeKind = "nomination" | "jounai" | "douhan";
-const FEE_LABELS: Record<FeeKind, string> = { nomination: "本指名", jounai: "場内指名", douhan: "同伴" };
+type FeeKind = "yobi" | "douhan" | "nomination" | "jounai";
+// 並びは設定画面「指名・同伴」と同じ（呼び・同伴・本指名・場内指名）
+const FEE_LABELS: Record<FeeKind, string> = { yobi: "呼び", douhan: "同伴", nomination: "本指名", jounai: "場内指名" };
+const FEE_FIELD = { yobi: "yobi_fee", douhan: "douhan_fee", nomination: "nomination_fee", jounai: "jounai_fee" } as const;
 /** 店舗設定で使わないことにした種類は出さない（POS 設定「指名・同伴」） */
-const FEE_ENABLED = { nomination: "nomination_enabled", jounai: "jounai_enabled", douhan: "douhan_enabled" } as const;
+const FEE_ENABLED = { yobi: "yobi_enabled", douhan: "douhan_enabled", nomination: "nomination_enabled", jounai: "jounai_enabled" } as const;
 const SET_TYPES = new Set(["course_set", "extension", "course_change"]);
 
 /**
@@ -410,7 +412,7 @@ export default function VisitDetailPage() {
           kind={fee}
           casts={casts}
           guard={guard}
-          fee={(fee === "nomination" ? settings.data?.nomination_fee : fee === "jounai" ? settings.data?.jounai_fee : settings.data?.douhan_fee) ?? null}
+          fee={settings.data?.[FEE_FIELD[fee]] ?? null}
           onClose={() => setFee(null)}
           onSubmit={async (employeeId, name) => {
             await quickBatch([{ kind: fee, employee_id: employeeId, quantity: 1 }], `${visit.table_name} ${tx(FEE_LABELS[fee])}（${name}）を追加しました`);

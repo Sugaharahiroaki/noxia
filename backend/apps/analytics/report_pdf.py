@@ -41,7 +41,7 @@ def pay_statement_pdf(report: dict, labels: dict[str, str]) -> bytes:
     if cast:
         pay += [[tx(label), yen(t[key])] for label, key in (
             ("呼び小計バック", "back_yobi_subtotal"), ("同伴小計バック", "back_douhan_subtotal"), ("本指名バック", "back_nomination"),
-            ("場内指名バック", "back_jounai"), ("同伴バック", "back_douhan"), ("ドリンクバック", "back_drink"), ("ボトルバック", "back_bottle"),
+            ("場内指名バック", "back_jounai"), ("呼びバック", "back_yobi"), ("同伴バック", "back_douhan"), ("ドリンクバック", "back_drink"), ("ボトルバック", "back_bottle"),
             ("フードバック", "back_food"))]
     pay += [["その他バック", yen(t["back_other"])], ["ボーナス（調整・正）", yen(t["bonus"])], ["マイナス（調整・負）", "−" + yen(t["minus"]) if D(t["minus"]) else yen(0)],
             ["総支給額", yen(t["gross"])]]

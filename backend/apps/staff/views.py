@@ -233,6 +233,30 @@ class BackRuleViewSet(StoreScopedViewSet):
         return Response(status=204)
 
 
+class DesignationBacksView(APIView):
+    """
+    指名・同伴のバック（店舗共通）を種類ごとの簡単な形で読み書きする。中身は BackRule（designation_backs）。
+    読む: backs.rules.view。変える: backs.rules.edit（再認証）。キャスト個人別のルールには触らない。
+    """
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_BACK_RULES_VIEW, write_caps=(CAP_BACK_RULES_EDIT,))]
+
+    def get(self, request):
+        from . import designation_backs
+
+        return Response(designation_backs.payload(request.store))
+
+    @transaction.atomic
+    def put(self, request):
+        from . import designation_backs
+
+        changes = designation_backs.save(request.store, request.user, request.data.get("backs"))
+        if changes:
+            audit(request, "back_rule.designation_update", changes=changes)
+        return Response(designation_backs.payload(request.store))
+
+
 class BackEntriesView(APIView):
     def get_permissions(self):
         return [StoreCaps(CAP_BACKS_VIEW_ALL)]

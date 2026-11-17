@@ -20,6 +20,9 @@ from apps.core.money import D, ZERO, HUNDRED, percent_of, round_yen, tax_from_in
 from .models import BackCalcType, BackEntry, BackEntryStatus, BackRule, BackTargetType, SubtotalBackBasis, SubtotalBackSplit
 
 
+FEE_KINDS = ("nomination", "jounai", "yobi", "douhan")
+
+
 def validate_targets(targets: list[dict], line_amount: Decimal) -> list[dict]:
     """[{employee, share_type, share_value}] を検証して正規化する。"""
     if not targets:
@@ -74,6 +77,8 @@ def _matches(rule: BackRule, line) -> bool:
         return rule.target_type == BackTargetType.NOMINATION
     if lt == "jounai":
         return rule.target_type == BackTargetType.JOUNAI
+    if lt == "yobi":
+        return rule.target_type == BackTargetType.YOBI
     if lt == "douhan":
         return rule.target_type == BackTargetType.DOUHAN
     if lt != "product":
@@ -124,7 +129,7 @@ def create_entries_for_line(line, *, user, business_date, default_timing: str, n
     now = now or timezone.now()
     entries = []
     store = line.store
-    kind = line.line_type if line.line_type in ("nomination", "jounai", "douhan") else "product"
+    kind = line.line_type if line.line_type in FEE_KINDS else "product"
     for target in line.back_targets.select_related("employee"):
         rule = find_rule(store, target.employee, line, business_date)
         if rule is None:
@@ -151,7 +156,7 @@ def settle_entries_for_checkout(checkout, lines, *, user, discount_ratio: Decima
     """
     now = now or timezone.now()
     for line in lines:
-        if line.line_type not in ("product", "nomination", "jounai", "douhan"):
+        if line.line_type != "product" and line.line_type not in FEE_KINDS:
             continue
         live = list(_live_entries(line).select_related("rule", "employee"))
         if not live and line.back_targets.exists():
@@ -176,11 +181,13 @@ def settle_entries_for_checkout(checkout, lines, *, user, discount_ratio: Decima
     create_subtotal_entries(checkout, lines, user=user, has_receivable=has_receivable, now=now)
 
 
-# 伝票の小計に対するバック（呼び売上バック率・同伴売上バック率）
+# 会計に対するバック（会計の何%）。種類ごとにルールの対象がある。
+# 1 人に 1 会計 1 件（同じ人が 1 つの会計で本指名と場内など複数の種類を持つときは、並びの先の種類のルール）。BackEntry.kind は集計の区分
 SUBTOTAL_BACKS = (
-    # (対象の明細種別, ルールの対象, BackEntry.kind)
-    (("nomination", "jounai"), BackTargetType.NOMINATION_SUBTOTAL, "yobi_subtotal"),
-    (("douhan",), BackTargetType.DOUHAN_SUBTOTAL, "douhan_subtotal"),
+    # (BackEntry.kind, ((明細種別, ルールの対象), ...))
+    ("yobi_subtotal", (("nomination", BackTargetType.NOMINATION_SUBTOTAL), ("yobi", BackTargetType.YOBI_SUBTOTAL),
+                       ("jounai", BackTargetType.JOUNAI_SUBTOTAL))),
+    ("douhan_subtotal", (("douhan", BackTargetType.DOUHAN_SUBTOTAL),)),
 )
 
 
@@ -218,8 +225,8 @@ def subtotal_back_base(checkout, rule: BackRule) -> Decimal:
 
 def create_subtotal_entries(checkout, lines, *, user, has_receivable: bool = False, now=None) -> list[BackEntry]:
     """
-    会計の確定時: この会計に入った 指名（本指名・場内）／同伴 の明細の対象の人に、会計の小計に対するバックを付ける。
-    ルール（対象「指名伝票の小計」「同伴伝票の小計」）が無ければ何も作らない（既存の店舗の結果は変わらない）。
+    会計の確定時: この会計に入った 本指名・場内指名・呼び／同伴 の明細の対象の人に、会計に対するバックを付ける。
+    ルール（対象「本指名／場内指名／呼び／同伴のある会計」）が無ければ何も作らない（既存の店舗の結果は変わらない）。
       基準額 = ルールの基準（会計全体の小計／セット＋延長／請求額。subtotal_back_base）。
       対象が複数人なら、ルールの分け方で 均等割り（円未満切り捨て・余りは先頭の人）か、それぞれに全額。
       金額   = 基準額 × 率（%）。固定額のルールは 1 会計あたりの額。丸めはルールの設定。
@@ -228,18 +235,26 @@ def create_subtotal_entries(checkout, lines, *, user, has_receivable: bool = Fal
     now = now or timezone.now()
     created = []
     store = checkout.store
-    for line_types, target_type, kind in SUBTOTAL_BACKS:
+    for kind, by_type in SUBTOTAL_BACKS:
         employees = {}
+        types_of: dict[int, set] = {}
+        line_types = {lt for lt, _ in by_type}
         for line in lines:
             if line.line_type in line_types:
                 for t in line.back_targets.select_related("employee"):
                     employees[t.employee_id] = t.employee
+                    types_of.setdefault(t.employee_id, set()).add(line.line_type)
         if not employees:
             continue
         ids = sorted(employees)
         for i, eid in enumerate(ids):
             emp = employees[eid]
-            rule = find_subtotal_rule(store, emp, target_type, checkout.business_date)
+            rule = None
+            for line_type, target_type in by_type:
+                if line_type in types_of[eid]:
+                    rule = find_subtotal_rule(store, emp, target_type, checkout.business_date)
+                    if rule is not None:
+                        break
             if rule is None:
                 continue
             base = subtotal_back_base(checkout, rule)

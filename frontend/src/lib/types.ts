@@ -100,9 +100,12 @@ export type StoreSettings = {
   nomination_fee: Money | null;
   douhan_fee: Money | null;
   jounai_fee: Money | null;
+  /** 呼び（本指名・場内指名とは別の種類）のお客様への料金。null = 未設定 */
+  yobi_fee: Money | null;
   /** 使う指名の種類（使わないものは入店・卓の画面に出さない） */
   nomination_enabled: boolean;
   jounai_enabled: boolean;
+  yobi_enabled: boolean;
   douhan_enabled: boolean;
   alarm_mode: "10" | "5" | "both";
   business_day_switch_time: string;
@@ -191,7 +194,7 @@ export type BackTarget = { employee: number; employee_name: string; share_type: 
 export type OrderLine = {
   id: number;
   visit: number;
-  line_type: "course_set" | "extension" | "course_change" | "nomination" | "jounai" | "douhan" | "product" | "discount";
+  line_type: "course_set" | "extension" | "course_change" | "nomination" | "jounai" | "yobi" | "douhan" | "product" | "discount";
   line_type_label: string;
   course_entry: number | null;
   product: number | null;
@@ -339,7 +342,7 @@ export type Visit = {
   server_now?: string;
 };
 
-export type Designation = "" | "nomination" | "jounai" | "douhan";
+export type Designation = "" | "nomination" | "jounai" | "yobi" | "douhan";
 
 export type VisitGuest = {
   id: number;

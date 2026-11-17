@@ -12,7 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from apps.core.money import D, ZERO, round_yen
 
-YOBI_TYPES = ("nomination", "jounai")   # 「呼び」= 指名（本指名・場内）
+YOBI_TYPES = ("nomination", "jounai", "yobi")   # 「呼び売上」= 本指名・場内指名・呼びのある伝票
 DOUHAN_TYPES = ("douhan",)
 SET_TYPES = ("course_set", "extension")
 SPLIT_MODES = ("equal", "full_each")
@@ -42,17 +42,17 @@ def split_amount(amount: Decimal, n: int, mode: str = "equal") -> list[Decimal]:
 def cast_sales_for_slip(subtotal: Decimal, total: Decimal, designations: list[tuple[int, str]], set_count: int,
                         split_mode: str = "equal", count_mode: str = "per_slip") -> dict[int, dict]:
     """
-    1 つの伝票のキャスト売上。designations は [(employee_id, "nomination" | "jounai" | "douhan"), ...]（確定済みの会計に入った明細ぶん）。
-    指名（本指名・場内）がある伝票の小計・本計を「呼び小計・呼び本計」として、同伴がある伝票の小計・本計を「同伴小計・同伴本計」として、
+    1 つの伝票のキャスト売上。designations は [(employee_id, "nomination" | "jounai" | "yobi" | "douhan"), ...]（確定済みの会計に入った明細ぶん）。
+    本指名・場内指名・呼びがある伝票の小計・本計を「呼び小計・呼び本計」として、同伴がある伝票の小計・本計を「同伴小計・同伴本計」として、
     その従業員に計上する。対象が複数人なら split_mode で分ける。回数は count_mode（1 伝票 1 回／セット数ぶん）。
-    戻り値: {employee_id: {yobi_subtotal, yobi_total, douhan_subtotal, douhan_total, nomination_count, jounai_count, douhan_count}}
+    戻り値: {employee_id: {yobi_subtotal, yobi_total, douhan_subtotal, douhan_total, nomination_count, jounai_count, yobi_count, douhan_count}}
     """
     out: dict[int, dict] = {}
 
     def row(eid: int) -> dict:
         return out.setdefault(eid, {
             "yobi_subtotal": ZERO, "yobi_total": ZERO, "douhan_subtotal": ZERO, "douhan_total": ZERO,
-            "nomination_count": Decimal("0"), "jounai_count": Decimal("0"), "douhan_count": Decimal("0"),
+            "nomination_count": Decimal("0"), "jounai_count": Decimal("0"), "yobi_count": Decimal("0"), "douhan_count": Decimal("0"),
         })
 
     times = Decimal(max(set_count, 1) if count_mode == "per_set" else 1)
@@ -64,7 +64,7 @@ def cast_sales_for_slip(subtotal: Decimal, total: Decimal, designations: list[tu
             r = row(eid)
             r[sub_key] += s
             r[tot_key] += t
-    for kind, key in (("nomination", "nomination_count"), ("jounai", "jounai_count"), ("douhan", "douhan_count")):
+    for kind, key in (("nomination", "nomination_count"), ("jounai", "jounai_count"), ("yobi", "yobi_count"), ("douhan", "douhan_count")):
         for eid in sorted({e for e, k in designations if k == kind}):
             row(eid)[key] += times
     return out
@@ -159,7 +159,7 @@ def slip_summary(visit, settings: dict) -> dict:
         "set_count": set_count,
         "cast": cast,
         "cast_names": names,
-        "names_by_kind": {k: sorted({names[e] for e, kind in designations if kind == k}) for k in ("nomination", "jounai", "douhan")},
+        "names_by_kind": {k: sorted({names[e] for e, kind in designations if kind == k}) for k in ("nomination", "jounai", "yobi", "douhan")},
         "paid_lines": paid_lines,
     }
 
@@ -174,7 +174,8 @@ def slip_row(s: dict) -> dict:
         "guest_count": v.guest_count,
         "customer": (v.customer.display_name if v.customer_id and v.customer else v.customer_name) or "",
         "tags": [{"name": vt.tag.name, "color": vt.tag.color} for vt in v.visit_tags.all()],
-        "nomination": s["names_by_kind"]["nomination"], "jounai": s["names_by_kind"]["jounai"], "douhan": s["names_by_kind"]["douhan"],
+        "nomination": s["names_by_kind"]["nomination"], "jounai": s["names_by_kind"]["jounai"], "yobi": s["names_by_kind"]["yobi"],
+        "douhan": s["names_by_kind"]["douhan"],
         "subtotal": str(s["subtotal"]), "service_charge": str(s["service_charge"]), "discount": str(s["discount"]),
         "cash": str(s["cash"]), "card": str(s["card"]), "receivable": str(s["receivable"]), "total": str(s["total"]),
         "refunds": str(s["refunds"]), "checkout_count": len(s["confirmed"]), "voided_checkouts": s["voided_checkouts"],
@@ -370,7 +371,7 @@ def daily_metrics(store, f: date, t: date) -> list[dict]:
         if kinds & set(DOUHAN_TYPES):
             row["douhan_subtotal"] += s["subtotal"]
         for vals in s["cast"].values():
-            row["nomination_count"] += vals["nomination_count"] + vals["jounai_count"]
+            row["nomination_count"] += vals["nomination_count"] + vals["jounai_count"] + vals["yobi_count"]
 
     # 人件費（役割ごと）
     roles = store_roles(store)
@@ -547,14 +548,14 @@ def daily_report(store, d: date) -> dict:
 #   残り支給額 = 総支給額 − 日払いなどの支払い − 源泉所得税 − その他控除   … 同 balance_amount と同じ
 PRODUCT_BACK_GROUPS = {"drink": "drink", "cast_drink": "drink", "bottle": "bottle", "shot": "bottle", "food": "food"}
 PAY_MONEY_KEYS = (
-    "wage", "back_nomination", "back_jounai", "back_douhan", "back_yobi_subtotal", "back_douhan_subtotal",
+    "wage", "back_nomination", "back_jounai", "back_yobi", "back_douhan", "back_yobi_subtotal", "back_douhan_subtotal",
     "back_drink", "back_bottle", "back_food", "back_other", "back_total", "bonus", "minus", "gross",
     "paid", "withheld", "deducted", "balance",
     "sales_drink", "sales_bottle", "sales_food", "order_subtotal",
     "yobi_subtotal", "yobi_total", "douhan_subtotal", "douhan_total",
 )
-PAY_NUMBER_KEYS = ("minutes", "days", "qty_drink", "qty_bottle", "qty_food", "nomination_count", "jounai_count", "douhan_count",
-                   "nomination_groups", "jounai_groups", "douhan_groups")
+PAY_NUMBER_KEYS = ("minutes", "days", "qty_drink", "qty_bottle", "qty_food", "nomination_count", "jounai_count", "yobi_count", "douhan_count",
+                   "nomination_groups", "jounai_groups", "yobi_groups", "douhan_groups")
 
 
 def _empty_pay() -> dict:
@@ -603,7 +604,7 @@ def pay_rows(store, f: date, t: date, employee_ids=None) -> dict[tuple[int, date
             else:
                 r["minus"] += -e.amount
             continue
-        if e.kind in ("nomination", "jounai", "douhan"):
+        if e.kind in ("nomination", "jounai", "yobi", "douhan"):
             r[f"back_{e.kind}"] += e.amount
         elif e.kind in ("yobi_subtotal", "douhan_subtotal"):
             r[f"back_{e.kind}"] += e.amount
@@ -635,9 +636,9 @@ def pay_rows(store, f: date, t: date, employee_ids=None) -> dict[tuple[int, date
             if not want(eid):
                 continue
             r = row(eid, v.business_date)
-            for k in ("yobi_subtotal", "yobi_total", "douhan_subtotal", "douhan_total", "nomination_count", "jounai_count", "douhan_count"):
+            for k in ("yobi_subtotal", "yobi_total", "douhan_subtotal", "douhan_total", "nomination_count", "jounai_count", "yobi_count", "douhan_count"):
                 r[k] += vals[k]
-            for kind in ("nomination", "jounai", "douhan"):
+            for kind in ("nomination", "jounai", "yobi", "douhan"):
                 if vals[f"{kind}_count"] > 0:
                     r[f"{kind}_groups"] += 1
 
@@ -885,7 +886,7 @@ def customer_report(store, today: date) -> dict:
     for cid in BottleKeep.objects.filter(store=store, customer_id__in=ids, status="active").values_list("customer_id", flat=True):
         keeps[cid] = keeps.get(cid, 0) + 1
     money_keys = ("total", "cash", "card", "receivable")
-    count_keys = ("visits", "visits_recent", "guests", "nomination", "jounai", "douhan")
+    count_keys = ("visits", "visits_recent", "guests", "nomination", "jounai", "yobi", "douhan")
     acc = {cid: {**{k: ZERO for k in money_keys}, **{k: 0 for k in count_keys}, "first": None, "last": None, "minutes": 0, "closed": 0} for cid in ids}
     visits = Visit.objects.filter(store=store, customer_id__in=ids).exclude(status="cancelled").select_related("table", "customer").prefetch_related(
         Prefetch("lines", queryset=OrderLine.objects.select_related("checkout").prefetch_related("back_targets__employee")),
@@ -905,7 +906,7 @@ def customer_report(store, today: date) -> dict:
             a["closed"] += 1
         for k in money_keys:
             a[k] += s[k]
-        for k in ("nomination", "jounai", "douhan"):
+        for k in ("nomination", "jounai", "yobi", "douhan"):
             if s["names_by_kind"][k]:
                 a[k] += 1
     rows = []
@@ -921,7 +922,7 @@ def customer_report(store, today: date) -> dict:
             "avg_minutes": round(a["minutes"] / a["closed"]) if a["closed"] else None,
             "total": str(a["total"]), "unit_price": str(unit) if unit is not None else None,
             "cash": str(a["cash"]), "card": str(a["card"]), "receivable": str(a["receivable"]),
-            "nomination": a["nomination"], "jounai": a["jounai"], "douhan": a["douhan"],
+            "nomination": a["nomination"], "jounai": a["jounai"], "yobi": a["yobi"], "douhan": a["douhan"],
         })
     # 最終来店日の新しい順。来店の無いお客様は最後
     rows.sort(key=lambda r: (r["last_visit"] is None, -date.fromisoformat(r["last_visit"]).toordinal() if r["last_visit"] else 0, r["name"]))
@@ -930,7 +931,7 @@ def customer_report(store, today: date) -> dict:
     t_unit = per_unit(t_total, t_visits)
     totals = {
         "customers": len(rows), "keep_count": sum(r["keep_count"] for r in rows),
-        **{k: sum(r[k] for r in rows) for k in ("visits", "visits_recent", "guests", "nomination", "jounai", "douhan")},
+        **{k: sum(r[k] for r in rows) for k in ("visits", "visits_recent", "guests", "nomination", "jounai", "yobi", "douhan")},
         **{k: str(sum((a[k] for a in acc.values()), ZERO)) for k in money_keys},
         "unit_price": str(t_unit) if t_unit is not None else None,
     }

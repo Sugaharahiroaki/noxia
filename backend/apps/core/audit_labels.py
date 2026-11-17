@@ -16,7 +16,7 @@ ACTION_LABELS: dict[str, str] = {
     "visit.open": "入店", "visit.add_course": "コースの追加", "visit.extend": "延長", "visit.change_unlimited": "無制限へ変更",
     "visit.guest_leave": "お客様の退店", "visit.tags": "タグの変更", "visit.move_table": "席移動", "visit.change_time": "開始時刻の訂正",
     "visit.cancel": "伝票の取消",
-    "line.add.batch": "注文の追加", "line.add.product": "商品の追加", "line.add.nomination": "本指名の追加", "line.add.jounai": "場内指名の追加",
+    "line.add.batch": "注文の追加", "line.add.product": "商品の追加", "line.add.nomination": "本指名の追加", "line.add.jounai": "場内指名の追加", "line.add.yobi": "呼びの追加",
     "line.add.douhan": "同伴の追加", "line.add.discount": "値引きの追加", "line.cancel": "明細の取消", "line.cancel.batch": "明細の取消（まとめて）",
     "line.back_targets": "バック対象の変更",
     "checkout.confirm": "会計の確定", "checkout.void": "会計の取消", "checkout.refund": "返金",
@@ -30,7 +30,7 @@ ACTION_LABELS: dict[str, str] = {
     # 勤怠・報酬
     "shift.clock_in": "出勤", "shift.clock_out": "退勤", "shift.break_start": "休憩の開始", "shift.break_end": "休憩の終了", "shift.correct": "勤怠の修正", "shift.create": "勤怠の追加",
     "payout.daily": "日払いのお渡し", "employee_payment.create": "支払いの記録", "pay_period.create": "支払期間の作成", "pay_period.close": "支払期間の締め",
-    "back.adjust": "バックの調整", "back_rule.create": "バックルールの追加", "back_rule.update": "バックルールの変更", "back_rule.deactivate": "バックルールの停止",
+    "back.adjust": "バックの調整", "back_rule.create": "バックルールの追加", "back_rule.update": "バックルールの変更", "back_rule.deactivate": "バックルールの停止", "back_rule.designation_update": "指名・同伴のバックの変更",
     "wage.set": "時給の設定",
     "employee.create": "従業員の追加", "employee.update": "従業員の変更", "employee.assignment": "配属の変更", "employee.login_account": "ログインアカウントの設定",
     # マスタ・設定
@@ -94,6 +94,8 @@ KEY_LABELS: dict[str, str] = {
     "affects_profit": "粗利に含める", "quantity": "数量", "short_name": "略称", "refunds": "返金", "store": "店舗", "role": "役割", "user": "ユーザー",
     "username": "ユーザー名", "email": "メール", "discount": "値引き", "service_charge": "サービス料", "tax_total": "消費税", "items": "項目", "count": "件数",
     "created": "追加", "updated": "変更",
+    "nomination": "本指名", "jounai": "場内指名", "yobi": "呼び", "douhan": "同伴",
+    "nomination_subtotal": "本指名のある会計", "jounai_subtotal": "場内指名のある会計", "yobi_subtotal": "呼びのある会計", "douhan_subtotal": "同伴のある会計",
 }
 
 VALUE_LABELS: dict[str, dict[str, str]] = {
@@ -101,7 +103,7 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
     "mode": {"refund": "お客様に全額返す", "redo": "打ち間違い", "net": "手取り"},
     "kind": {
         "expense": "現金経費", "daily_pay": "日払い", "other_in": "その他入金", "other_out": "その他出金", "mid_collection": "途中回収", "float_adjust_in": "釣銭補充",
-        "product": "商品", "nomination": "本指名", "jounai": "場内指名", "douhan": "同伴", "discount": "値引き", "full": "全額", "partial": "一部", "daily": "日払い",
+        "product": "商品", "nomination": "本指名", "jounai": "場内指名", "yobi": "呼び", "douhan": "同伴", "discount": "値引き", "full": "全額", "partial": "一部", "daily": "日払い",
     },
     "status": {"open": "営業中", "closed": "退店", "cancelled": "取消", "confirmed": "確定", "voided": "取消", "pending": "未確定", "active": "使用中"},
     "direction": {"in": "入金", "out": "出金"},

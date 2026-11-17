@@ -68,6 +68,7 @@ class SubtotalBackTests(Base):
 
     def test_yobi_subtotal_back_and_split_between_casts(self):
         self.rule(target_type="nomination_subtotal", value=D(5))
+        self.rule(target_type="jounai_subtotal", value=D(5))                     # 場内指名は場内指名のルール（以前の 1 つのルールは移行で 2 つに分かれる）
         self.fx.settings.jounai_fee = D(800)
         self.fx.settings.save()
         v = self.visit(guests=2)                                                  # 5,000
@@ -361,14 +362,72 @@ class DesignationSwitchTests(Base):
         self.assertTrue(other.settings.jounai_enabled)
 
 
-class NominationNamedYobiTests(Base):
-    """本指名を「呼び」と呼ぶ店: 指名の売上の呼び方（初期値「呼び」）と同じ名前を付けられる。ほかの重複は従来どおり拒否。"""
+class YobiDesignationTests(Base):
+    """呼び: 本指名・場内指名とは別の種類。料金・使う／使わない・1 回ごとのバック・会計の % バック・集計。"""
 
-    def test_nomination_can_be_named_yobi_but_other_duplicates_are_refused(self):
+    def test_yobi_line_back_and_bill_percent_back(self):
+        self.fx.settings.yobi_fee = D(0)
+        self.fx.settings.save()
+        self.rule(target_type="yobi", calc_type="fixed", value=D(1500))
+        self.rule(target_type="yobi_subtotal", value=D(10), subtotal_basis="set_extension")
+        v = self.visit(guests=2)                                                  # セット 5,000
+        line = services.add_fee_line(self.store, self.user, v.id, "yobi", {"employee_id": self.cast1.id})
+        self.assertEqual((line.line_type, line.unit_price, line.name.startswith("呼び")), ("yobi", D(0), True))
+        self.assertEqual(BackEntry.objects.get(order_line=line).amount, D(1500))  # 1 回ごとの固定額
+        co = self.pay(v)
+        b = BackEntry.objects.get(checkout=co, kind="yobi_subtotal")
+        self.assertEqual((b.employee_id, b.basis_amount, b.amount), (self.cast1.id, D(5000), D(500)))   # セットの 10%
+        self.assertEqual(b.rule.target_type, "yobi_subtotal")
+        row = next(r for r in self.cast_report()["rows"] if r["employee_id"] == self.cast1.id)
+        self.assertEqual((D(row["yobi_count"]), D(row["yobi_groups"]), D(row["back_yobi"]), D(row["yobi_subtotal"])), (D(1), D(1), D(1500), D(5000)))
+
+    def test_each_type_uses_its_own_bill_percent_rule(self):
+        self.fx.settings.yobi_fee = D(0)
+        self.fx.settings.jounai_fee = D(0)
+        self.fx.settings.save()
+        self.rule(target_type="nomination_subtotal", value=D(5))
+        self.rule(target_type="yobi_subtotal", value=D(20))
+        v = self.visit(guests=2)                                                  # 5,000
+        services.add_fee_line(self.store, self.user, v.id, "yobi", {"employee_id": self.cast1.id})
+        services.add_fee_line(self.store, self.user, v.id, "jounai", {"employee_id": self.cast2.id})
+        co = self.pay(v)
+        got = {b.employee_id: b.amount for b in BackEntry.objects.filter(checkout=co, kind="yobi_subtotal")}
+        self.assertEqual(got, {self.cast1.id: D(500)})                             # 呼びは 20%（2 人で均等 2,500 × 20%）、場内はルールが無いので付かない
+
+    def test_guest_entry_with_yobi_and_switch_off(self):
+        self.fx.settings.yobi_fee = D(500)
+        self.fx.settings.save()
+        v = services.open_visit(self.store, self.user, {"table_id": self.fx.tables[1].id, "entries": [{"guest_count": 1, "course_id": self.fx.hourly.id}],
+                                                        "guests": [{"employee_id": self.cast1.id, "designation": "yobi"}]})
+        self.assertEqual(v.guests.get().designation, "yobi")
+        self.assertEqual(v.lines.get(line_type="yobi").amount, D(500))
+        self.fx.settings.yobi_enabled = False
+        self.fx.settings.save()
+        with self.assertRaises(Exception) as cm:
+            services.add_fee_line(self.store, self.user, v.id, "yobi", {"employee_id": self.cast1.id})
+        self.assertEqual(getattr(cm.exception, "code", None), "designation_disabled")
+
+    def test_unset_yobi_fee_is_refused(self):
+        v = self.visit()
+        with self.assertRaises(Exception) as cm:
+            services.add_fee_line(self.store, self.user, v.id, "yobi", {"employee_id": self.cast1.id})
+        self.assertEqual(getattr(cm.exception, "code", None), "fee_unset")
+
+    def test_nomination_cannot_be_named_yobi_now_that_yobi_is_its_own_type(self):
         c = client_for(self.fx.users["owner"], self.store, reauth=True)
         r = c.put("/api/store/terms", {"labels": {"nomination": "呼び"}}, format="json")
-        self.assertEqual(r.status_code, 200, r.content)
-        labels = {t["key"]: t["label"] for t in r.json()["terms"]}
-        self.assertEqual((labels["nomination"], labels["yobi"]), ("呼び", "呼び"))
-        self.assertEqual(c.put("/api/store/terms", {"labels": {"douhan": "呼び"}}, format="json").status_code, 400)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("呼び", r.json()["error"]["message"])
         self.assertEqual(c.put("/api/store/terms", {"labels": {"jounai": "同伴"}}, format="json").status_code, 400)
+        self.assertEqual(c.put("/api/store/terms", {"labels": {"nomination": "指名"}}, format="json").status_code, 200)
+
+    def test_migration_keeps_old_nomination_subtotal_rule_working_for_jounai(self):
+        import importlib
+
+        from django.apps import apps as global_apps
+        old = self.rule(target_type="nomination_subtotal", value=D(5), employee=self.cast2, split_mode="full_each")
+        mig = importlib.import_module("apps.staff.migrations.0008_yobi_designation")
+        mig.split_jounai_subtotal(global_apps, None)
+        copy = BackRule.objects.get(target_type="jounai_subtotal")
+        self.assertEqual((copy.employee_id, copy.value, copy.split_mode, copy.effective_from, copy.store_id),
+                         (old.employee_id, old.value, old.split_mode, old.effective_from, old.store_id))

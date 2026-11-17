@@ -6,6 +6,7 @@ export type PayRow = {
   wage: Money;
   back_nomination: Money;
   back_jounai: Money;
+  back_yobi: Money;
   back_douhan: Money;
   back_yobi_subtotal: Money;
   back_douhan_subtotal: Money;
@@ -36,9 +37,11 @@ export type PayRow = {
   qty_food: string;
   nomination_count: string;
   jounai_count: string;
+  yobi_count: string;
   douhan_count: string;
   nomination_groups: string;
   jounai_groups: string;
+  yobi_groups: string;
   douhan_groups: string;
   avg_hourly: Money | null;
   pay_ratio: string | null;
@@ -105,6 +108,9 @@ export const PAY_GROUPS: PayGroup[] = [
       { key: "jounai_groups", label: "場内 組数", kind: "count" },
       { key: "jounai_count", label: "回数", kind: "count" },
       { key: "back_jounai", label: "金額", kind: "money" },
+      { key: "yobi_groups", label: "呼び 組数", kind: "count" },
+      { key: "yobi_count", label: "回数", kind: "count" },
+      { key: "back_yobi", label: "金額", kind: "money" },
       { key: "douhan_groups", label: "同伴 組数", kind: "count" },
       { key: "douhan_count", label: "回数", kind: "count" },
       { key: "back_douhan", label: "金額", kind: "money" },

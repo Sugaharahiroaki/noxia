@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DesignationSettings } from "@/components/DesignationSettings";
 import { Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Toggle, type SaveState } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmtDate, fmtMinutes, yen } from "@/lib/format";
@@ -37,8 +38,13 @@ type BackRule = {
   note: string;
 };
 
-const TARGET_LABELS: Record<string, string> = { all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品", nomination: "本指名", jounai: "場内指名", douhan: "同伴", nomination_subtotal: "指名伝票の小計（呼び売上バック）", douhan_subtotal: "同伴伝票の小計（同伴売上バック）" };
-const SUBTOTAL_TARGETS = ["nomination_subtotal", "douhan_subtotal"];
+const TARGET_LABELS: Record<string, string> = {
+  all_products: "全商品", category_kind: "カテゴリ種別", category: "カテゴリ", product: "商品",
+  yobi: "呼び（1 回ごと）", douhan: "同伴（1 回ごと）", nomination: "本指名（1 回ごと）", jounai: "場内指名（1 回ごと）",
+  yobi_subtotal: "呼びのある会計（会計の%）", douhan_subtotal: "同伴のある会計（会計の%）",
+  nomination_subtotal: "本指名のある会計（会計の%）", jounai_subtotal: "場内指名のある会計（会計の%）",
+};
+const SUBTOTAL_TARGETS = ["yobi_subtotal", "douhan_subtotal", "nomination_subtotal", "jounai_subtotal"];
 const SUBTOTAL_BASIS_LABELS: Record<string, string> = {
   set_extension: "セット料金＋延長だけ",
   subtotal: "会計全体（TAX・サービス料の前）",
@@ -49,7 +55,7 @@ const KIND_LABELS: Record<string, string> = { drink: "ドリンク", cast_drink:
 
 export default function PricingPage() {
   const { can, withReauth } = useSession();
-  const [tab, setTab] = useState<"courses" | "fees" | "backs">("courses");
+  const [tab, setTab] = useState<"courses" | "designations" | "fees" | "backs">("courses");
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
   return (
     <div className="space-y-4">
@@ -62,12 +68,15 @@ export default function PricingPage() {
             <button className={`btn btn-sm ${tab === "courses" ? "btn-primary" : ""}`} onClick={() => setTab("courses")}>
               コース
             </button>
+            <button className={`btn btn-sm ${tab === "designations" ? "btn-primary" : ""}`} onClick={() => setTab("designations")}>
+              呼び・同伴・指名（料金・バック）
+            </button>
             <button className={`btn btn-sm ${tab === "fees" ? "btn-primary" : ""}`} onClick={() => setTab("fees")}>
-              無制限変更・指名・同伴
+              無制限への変更
             </button>
             {can("backs.rules.view") && (
               <button className={`btn btn-sm ${tab === "backs" ? "btn-primary" : ""}`} onClick={() => setTab("backs")}>
-                バック設定
+                バック設定（詳しく）
               </button>
             )}
             <Link href="/employees" className="btn btn-sm">
@@ -77,6 +86,7 @@ export default function PricingPage() {
         }
       />
       {tab === "courses" && <CoursesTab canEdit={can("catalog.edit")} setSave={setSave} />}
+      {tab === "designations" && <DesignationSettings variant="page" title="呼び・同伴・本指名・場内指名（お客様の料金・キャストのバック）" />}
       {tab === "fees" && <FeesTab canEdit={can("settings.edit")} setSave={setSave} withReauth={withReauth} />}
       {tab === "backs" && <BacksTab canEdit={can("backs.rules.edit")} setSave={setSave} withReauth={withReauth} />}
     </div>
@@ -275,20 +285,6 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
           )}
         </div>
       </section>
-      <section className="card space-y-3">
-        <h2 className="font-bold">本指名料・場内指名料・同伴料（お客様への請求額。バックは別に設定）</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field label="本指名料（円・空欄なら未設定＝登録不可）">
-            <input className="input" inputMode="numeric" value={f.nomination_fee ?? ""} onChange={(e) => set({ nomination_fee: e.target.value ? e.target.value.replace(/[^\d]/g, "") : null })} disabled={!canEdit} />
-          </Field>
-          <Field label="場内指名料（円・空欄なら未設定＝登録不可）">
-            <input className="input" inputMode="numeric" value={f.jounai_fee ?? ""} onChange={(e) => set({ jounai_fee: e.target.value ? e.target.value.replace(/[^\d]/g, "") : null })} disabled={!canEdit} />
-          </Field>
-          <Field label="同伴料（円・空欄なら未設定＝登録不可）">
-            <input className="input" inputMode="numeric" value={f.douhan_fee ?? ""} onChange={(e) => set({ douhan_fee: e.target.value ? e.target.value.replace(/[^\d]/g, "") : null })} disabled={!canEdit} />
-          </Field>
-        </div>
-      </section>
       {canEdit && (
         <button
           className="btn btn-primary btn-lg"
@@ -298,7 +294,6 @@ function FeesTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave: 
               const body = {
                 default_unlimited_course: f.default_unlimited_course, unlimited_change_mode: f.unlimited_change_mode, unlimited_change_price: f.unlimited_change_price || null,
                 unlimited_change_after_ext_mode: f.unlimited_change_after_ext_mode, unlimited_change_after_ext_price: f.unlimited_change_after_ext_price || null,
-                nomination_fee: f.nomination_fee || null, douhan_fee: f.douhan_fee || null, jounai_fee: f.jounai_fee || null,
               };
               const d = await withReauth(() => api<StoreSettings>("/api/store/settings", { method: "PUT", body }));
               setF(d);
@@ -529,7 +524,7 @@ function BacksTab({ canEdit, setSave, withReauth }: { canEdit: boolean; setSave:
                     ))}
                   </select>
                 </Field>
-                <Field label={tx("1 つの伝票で本指名のキャストが複数のとき")}>
+                <Field label="1 つの会計で対象のキャストが複数のとき">
                   <select className="input" value={form.split_mode} onChange={(e) => setForm({ ...form, split_mode: e.target.value as BackRule["split_mode"] })} aria-label="複数人のときの分け方">
                     {Object.entries(SPLIT_LABELS).map(([k, v]) => (
                       <option key={k} value={k}>
