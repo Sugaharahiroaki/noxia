@@ -104,3 +104,44 @@ class RivonMenuTests(TestCase):
         cash = compute_totals(lines, st, "cash")
         self.assertEqual(cash.total, Decimal("6840"))  # 7,200 × 0.95
         self.assertEqual(cash.tax_total, Decimal("621"))  # 6,840 × 10/110 の切り捨て
+
+
+class LoadIntoExistingStoreTests(TestCase):
+    """--store: 画面で作った既存の店舗（会社・店舗のコードが JSON と違う）に入れる。会社・店舗は増やさない。"""
+
+    def setUp(self):
+        from apps.core.testing import make_store
+
+        self.fx = make_store("bar-rivon-1", company_code="kyan")
+        self.store = self.fx.store
+        self.store.name = "Bar Rivon"
+        self.store.save()
+
+    def test_load_by_store_name_and_id(self):
+        companies, stores = Company.objects.count(), Store.objects.count()
+        base = Product.objects.filter(store=self.store).count()   # テスト用の店舗にもともとある商品
+        dry = load(RIVON, "--store", "bar rivon", "--dry-run")
+        self.assertIn("確認のみ", dry)
+        self.assertEqual(Product.objects.filter(store=self.store).count(), base)
+        load(RIVON, "--store", "Bar Rivon")
+        self.assertEqual((Company.objects.count(), Store.objects.count()), (companies, stores))   # 会社 rivon・店舗 rivon は作らない
+        self.assertFalse(Company.objects.filter(code="rivon").exists())
+        self.assertEqual(Course.objects.get(store=self.store, name="MEN 1時間").price, Decimal("3500"))
+        names = [p["name"] for c in json.loads(RIVON.read_text(encoding="utf-8"))["categories"] for p in c.get("products", [])]
+        self.assertEqual(Product.objects.filter(store=self.store, name__in=names).count(), 24)    # 同じ名前の商品は増やさず更新する
+        self.assertEqual(StoreSettings.objects.get(store=self.store).service_charge_rate, Decimal("20"))
+        self.assertIn("追加 0 件、変更 0 件", load(RIVON, "--store", str(self.store.id)))     # ID でも同じ店舗。やり直しで増えない
+
+    def test_unknown_or_ambiguous_store_lists_candidates(self):
+        base = Product.objects.count()
+        with self.assertRaisesMessage(CommandError, f"ID {self.store.id}:"):
+            load(RIVON, "--store", "存在しない店")
+        from apps.core.testing import make_store
+
+        other = make_store("bar-rivon-2", company_code="other").store
+        other.name = "Bar Rivon"
+        other.save()
+        with self.assertRaisesMessage(CommandError, "店舗 ID で指定してください"):
+            load(RIVON, "--store", "Bar Rivon")
+        self.assertEqual(Product.objects.count(), base + Product.objects.filter(store=other).count())  # どちらにも入っていない
+        self.assertFalse(Product.objects.filter(name="アルマンドゴールド").exists())

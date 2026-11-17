@@ -3,6 +3,7 @@
 
   python manage.py load_store_menu apps/catalog/store_menus/rivon.json
   python manage.py load_store_menu apps/catalog/store_menus/rivon.json --dry-run   # 保存せずに内容だけ表示
+  python manage.py load_store_menu apps/catalog/store_menus/rivon.json --store "Bar Rivon"   # 画面で作った店舗に入れる
 
 - 会社（code）と店舗（会社内の code）が無ければ作る。既にあれば名前などは変えない。
 - 店舗設定は JSON に書いた項目だけを上書きする（書いていない項目はそのまま）。
@@ -43,6 +44,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("path", help="メニューの JSON ファイル（例: apps/catalog/store_menus/rivon.json）")
         parser.add_argument("--dry-run", action="store_true", help="登録内容を表示するだけで保存しない")
+        parser.add_argument(
+            "--store",
+            help="画面で作った既存の店舗に入れる（店舗名か店舗 ID）。指定すると JSON の会社・店舗コードは使わず、会社・店舗は作らない",
+        )
 
     def handle(self, *args, **options):
         path = Path(options["path"])
@@ -58,8 +63,9 @@ class Command(BaseCommand):
         self.lines: list[str] = []
         self.created = 0
         self.updated = 0
+        target = self._find_store(options["store"]) if options.get("store") else None
         with transaction.atomic():
-            store = self._load(data, source=path.name)
+            store = self._load(data, source=path.name, target=target)
             if options["dry_run"]:
                 transaction.set_rollback(True)
         for line in self.lines:
@@ -111,25 +117,39 @@ class Command(BaseCommand):
             raise CommandError(f"{label}: 「{key}」を書いてください。")
         return v.strip() if isinstance(v, str) else v
 
-    # ------------------------------------------------------------------
-    def _load(self, data: dict, *, source: str) -> Store:
-        company_in = data.get("company") or {}
-        store_in = data.get("store") or {}
-        company_code = self._require(company_in, "code", "会社")
-        store_code = self._require(store_in, "code", "店舗")
+    def _find_store(self, key: str) -> Store:
+        """--store の値（店舗 ID か店舗名。名前は大文字・小文字を区別しない）から店舗を 1 つに決める。"""
+        key = key.strip()
+        qs = Store.objects.select_related("company")
+        found = list(qs.filter(id=int(key))) if key.isdigit() else list(qs.filter(name__iexact=key))
+        if len(found) == 1:
+            return found[0]
+        stores = "\n".join(f"  ID {s.id}: {s.company.name} / {s.name}（店舗コード {s.code}）" for s in qs.order_by("id"))
+        why = "見つかりません" if not found else "同じ名前の店舗が複数あります。店舗 ID で指定してください"
+        raise CommandError(f"店舗「{key}」が{why}。登録されている店舗:\n{stores or '  （なし）'}")
 
-        company = Company.objects.filter(code=company_code).first()
-        if company is None:
-            company = Company(code=company_code, name=self._require(company_in, "name", "会社"), note=company_in.get("note") or "")
-            self._full_clean(company, "会社")
-            company.save()
-            self._note("追加", f"会社 {company.name}（{company.code}）")
-        store = Store.objects.filter(company=company, code=store_code).first()
-        if store is None:
-            store = Store(company=company, code=store_code, name=self._require(store_in, "name", "店舗"), webhook_token=secrets.token_urlsafe(24))
-            self._full_clean(store, "店舗")
-            store.save()
-            self._note("追加", f"店舗 {store.name}（{store.code}）")
+    # ------------------------------------------------------------------
+    def _load(self, data: dict, *, source: str, target: Store | None = None) -> Store:
+        if target is not None:
+            store, company = target, target.company
+        else:
+            company_in = data.get("company") or {}
+            store_in = data.get("store") or {}
+            company_code = self._require(company_in, "code", "会社")
+            store_code = self._require(store_in, "code", "店舗")
+
+            company = Company.objects.filter(code=company_code).first()
+            if company is None:
+                company = Company(code=company_code, name=self._require(company_in, "name", "会社"), note=company_in.get("note") or "")
+                self._full_clean(company, "会社")
+                company.save()
+                self._note("追加", f"会社 {company.name}（{company.code}）")
+            store = Store.objects.filter(company=company, code=store_code).first()
+            if store is None:
+                store = Store(company=company, code=store_code, name=self._require(store_in, "name", "店舗"), webhook_token=secrets.token_urlsafe(24))
+                self._full_clean(store, "店舗")
+                store.save()
+                self._note("追加", f"店舗 {store.name}（{store.code}）")
 
         st, st_created = StoreSettings.objects.get_or_create(store=store)
         changed = self._apply(StoreSettings, st, data.get("settings") or {}, allowed=_settings_fields(), label="店舗設定")
