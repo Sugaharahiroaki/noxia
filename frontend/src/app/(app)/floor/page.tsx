@@ -8,6 +8,7 @@ import { useToast } from "@/components/Toast";
 import { TagChip } from "@/components/TagPicker";
 import { Empty, ErrorBox, Spinner } from "@/components/ui";
 import { VisitActionMenu } from "@/components/VisitActionMenu";
+import { fmtId } from "@/components/ReportKit";
 import { fmtDate, fmtTime, yen } from "@/lib/format";
 import { fmtElapsed } from "@/lib/pos";
 import type { CourseEntry, FloorTable, VisitBrief } from "@/lib/types";
@@ -159,7 +160,7 @@ export default function FloorPage() {
                     style={stripe}
                     {...bind({ visitId: v.id, tableId: t.id })}
                     onClick={guardClick(() => router.push(`/visits/${v.id}`))}
-                    aria-label={`${t.name} 伝票${v.slip_number} 使用中 ${v.present_count}名 ${remain.text}`}
+                    aria-label={`${t.name} 伝票 ${fmtId(v.public_id)} 使用中 ${v.present_count}名 ${remain.text}`}
                   >
                     <div className="flex items-start justify-between gap-1 w-full">
                       <span className="text-2xl font-bold leading-tight">{t.name}</span>
@@ -213,7 +214,7 @@ export default function FloorPage() {
                           style={{ background: "rgba(255,250,240,0.85)", border: "1px solid var(--color-border)", minHeight: 44 }}
                           {...bind({ visitId: v.id, tableId: t.id })}
                           onClick={guardClick(() => router.push(`/visits/${v.id}`))}
-                          aria-label={`${t.name} 伝票${v.slip_number} 使用中 ${v.guest_count}名 ${remain.text}`}
+                          aria-label={`${t.name} 伝票 ${fmtId(v.public_id)} 使用中 ${v.guest_count}名 ${remain.text}`}
                         >
                           <span className="font-bold num" style={{ color: remain.over ? "var(--color-danger)" : undefined }}>
                             {v.present_count}名 {showElapsed ? `経過 ${fmtElapsed(v.opened_at, now)}` : remain.text}

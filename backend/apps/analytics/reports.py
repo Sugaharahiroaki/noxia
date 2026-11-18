@@ -228,6 +228,7 @@ def slip_detail(store, visit_id) -> dict | None:
             "unit_price": str(l.unit_price), "tax_rate": str(l.tax_rate), "tax_included": l.tax_included, "quantity": str(l.quantity),
             "amount": str(l.amount), "status": l.status, "cancel_reason": l.cancel_reason,
             "checkout_number": l.checkout.number if l.checkout_id else None,
+            "checkout_public_id": l.checkout.public_id if l.checkout_id else None,
             "paid": l.status == "active" and l.checkout_id is not None and l.checkout.status == "confirmed",
         })
     cast_rows = [

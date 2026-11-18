@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from apps.cash.services import require_open_business_day
 from apps.core.exceptions import ApiError
+from apps.core.ids import format_public_id
 from apps.core.money import D
 from apps.sales import services as sales_services
 from apps.sales.models import LineStatus, Visit, VisitStatus
@@ -86,7 +87,7 @@ def request_payment(store, user, visit_id, data: dict) -> TerminalPayment:
         store=store, visit=visit, terminal=terminal, provider=cfg.provider, amount=card_amount, cash_amount=cash_amount,
         cash_tendered=cash_tendered, line_ids=[l.id for l in lines], requested_by=user,
     )
-    result = provider.create_checkout(terminal, card_amount, reference=f"{store.code}-{visit.slip_number}-{tp.id}", idempotency_key=f"noxia-tp-{tp.id}-{uuid.uuid4().hex[:8]}")
+    result = provider.create_checkout(terminal, card_amount, reference=f"{store.code}-{visit.public_id}-{tp.id}", idempotency_key=f"noxia-tp-{tp.id}-{uuid.uuid4().hex[:8]}")
     tp.provider_checkout_id = result.checkout_id
     if cfg.provider == "square_pos":
         # Square のアプリから戻ってきたときに、この決済を見分ける値（ログインなしの戻り先で使うので推測できない乱数）
@@ -103,7 +104,7 @@ def square_pos_handoff_url(tp: TerminalPayment) -> str | None:
 
     provider = SquarePosProvider(config_for(tp.store))
     table = tp.visit.table.name if tp.visit.table_id else ""
-    return provider.handoff_url(tp.amount, tp.callback_token, f"NOXIA {table} 伝票#{tp.visit.slip_number}")
+    return provider.handoff_url(tp.amount, tp.callback_token, f"NOXIA {table} 伝票 {format_public_id(tp.visit.public_id)}")
 
 
 def apply_square_pos_result(data: dict) -> TerminalPayment | None:

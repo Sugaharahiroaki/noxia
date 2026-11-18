@@ -265,12 +265,13 @@ class ReceivableCollectionSerializer(serializers.ModelSerializer):
 class ReceivableSerializer(serializers.ModelSerializer):
     collections = ReceivableCollectionSerializer(many=True, read_only=True)
     checkout_number = serializers.IntegerField(source="checkout.number", read_only=True)
+    checkout_public_id = serializers.CharField(source="checkout.public_id", read_only=True)
     customer_name = serializers.CharField(source="customer.display_name", read_only=True, default=None)
     remaining = serializers.SerializerMethodField()
 
     class Meta:
         model = Receivable
-        fields = ["id", "checkout", "checkout_number", "customer", "customer_name", "debtor_name", "amount", "collected_amount", "remaining",
+        fields = ["id", "checkout", "checkout_number", "checkout_public_id", "customer", "customer_name", "debtor_name", "amount", "collected_amount", "remaining",
                   "status", "business_date", "note", "collections", "created_at"]
 
     def get_remaining(self, obj):

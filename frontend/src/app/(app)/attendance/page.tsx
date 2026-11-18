@@ -5,6 +5,7 @@ import { DailyPayoutBoard } from "@/components/DailyPayouts";
 import { DateRangeBar, useDateRange } from "@/components/DateRange";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Stat, type SaveState } from "@/components/ui";
 import { api, downloadFile, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { addDays, fmtDate, fmtDateTime, fmtMinutes, fmtTime, monthStart, todayJst, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { DailyPayout, Employee } from "@/lib/types";
@@ -23,7 +24,7 @@ type Shift = {
   worked_minutes: number;
 };
 type ShiftsRes = { from: string; to: string; shifts: Shift[]; open_shifts: Shift[] };
-type BackEntry = { id: number; employee_name: string; visit_slip_number: number | null; line_name: string | null; kind: string; business_date: string; amount: string; status: string; status_label: string; reason: string };
+type BackEntry = { id: number; employee_name: string; visit_slip_number: number | null; visit_public_id: string | null; line_name: string | null; kind: string; business_date: string; amount: string; status: string; status_label: string; reason: string };
 type Statement = {
   employee_id: number;
   employee_name: string;
@@ -281,7 +282,7 @@ function BackTable({ backs }: { backs: BackEntry[] }) {
               <td>{fmtDate(b.business_date)}</td>
               <td>{b.employee_name}</td>
               <td>
-                {b.visit_slip_number ? `伝票#${b.visit_slip_number} ` : ""}
+                {b.visit_public_id ? `伝票 ${fmtId(b.visit_public_id)} ` : ""}
                 {b.line_name ?? (b.kind === "adjustment" ? "調整" : b.kind)}
                 {b.reason && <span className="text-xs ml-1" style={{ color: "var(--color-muted)" }}>({b.reason})</span>}
               </td>

@@ -15,6 +15,7 @@ from apps.core.audit import audit
 from apps.core.business_date import business_date_now, current_business_date
 from apps.core.exceptions import ApiError
 from apps.core.idempotency import idempotent
+from apps.core.ids import format_public_id
 from apps.core.money import D, ZERO
 from apps.core import void_pin
 from apps.core.permissions import CAP_FLOOR, CAP_SALES_VIEW, CAP_SALES_VOID, StoreCaps
@@ -99,7 +100,7 @@ class FloorStateView(APIView):
                 a = alarms.get(e.id)
                 if a:
                     alarm_list.append({
-                        "visit_id": v.id, "slip_number": v.slip_number, "table_name": v.table.name, "entry_id": e.id,
+                        "visit_id": v.id, "slip_number": v.slip_number, "visit_public_id": v.public_id, "table_name": v.table.name, "entry_id": e.id,
                         "course_name": e.course_name, **a,
                         "label": e.label or f"{e.guest_count}名",  # 対象（人・グループ名）。表示文言は message
                     })
@@ -527,14 +528,16 @@ class CheckoutHandwriteView(APIView):
         return Response({
             "checkout_id": checkout.id,
             "checkout_number": checkout.number,
+            "checkout_public_id": checkout.public_id,
             "status": checkout.status,
             "slip_number": checkout.visit.slip_number,
+            "visit_public_id": checkout.visit.public_id,
             "table_name": checkout.visit.table.name,
             "business_date": checkout.business_date,
             "confirmed_at": checkout.confirmed_at,
             "kind": checkout.kind,
             "scope_note": "伝票全体の会計です。" if checkout.kind == "full" and not siblings.exists()
-            else f"分割会計です。この会計は伝票#{checkout.visit.slip_number} の一部（{len(checkout.lines.all())}明細）です。税額はこの会計分だけです。",
+            else f"分割会計です。この会計は伝票 {format_public_id(checkout.visit.public_id)} の一部（{len(checkout.lines.all())}明細）です。税額はこの会計分だけです。",
             "total": str(checkout.total),
             "total_excl_tax": str(checkout.total_excl_tax),
             "tax_total": str(checkout.tax_total),
@@ -548,7 +551,7 @@ class CheckoutHandwriteView(APIView):
             "cash_tendered": str(tendered),
             "cash_change": str(change),
             "visit_total_all_checkouts": str(visit_total),
-            "other_checkouts": [{"id": c.id, "number": c.number, "total": str(c.total)} for c in siblings],
+            "other_checkouts": [{"id": c.id, "number": c.number, "public_id": c.public_id, "total": str(c.total)} for c in siblings],
             "lines": [{"name": l.name, "amount": str(l.amount), "line_type": l.line_type} for l in checkout.lines.all()],
             # 領収書を渡した記録（2 回目からは「再発行」と書く）
             "receipt_amount": str(receipts.receipt_amount(checkout)),

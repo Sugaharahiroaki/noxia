@@ -7,6 +7,7 @@ import { SHIFT_LABEL } from "@/components/ShiftGuard";
 import { useToast } from "@/components/Toast";
 import { ErrorBox, Field, PageHeader, SaveStatus, Spinner, type SaveState } from "@/components/ui";
 import { api, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtMinutes, yen } from "@/lib/format";
 import type { Course, Employee, StoreSettings, Visit } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
@@ -46,7 +47,7 @@ export default function AddCoursePage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <PageHeader title={`伝票#${visit.data?.slip_number} に途中合流・コース追加`} subtitle="合流した人・グループは今の時刻から別のコース・終了予定を持ちます。" />
+      <PageHeader title={`伝票 ${fmtId(visit.data?.public_id)} に途中合流・コース追加`} subtitle="合流した人・グループは今の時刻から別のコース・終了予定を持ちます。" />
       <ErrorBox error={visit.error || courses.error} />
       <div className="card space-y-3">
         <Field label="対象の名前（任意）">

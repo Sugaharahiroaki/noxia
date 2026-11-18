@@ -65,6 +65,7 @@ export type SlipDetail = SlipRow & {
     status: "active" | "cancelled";
     cancel_reason: string;
     checkout_number: number | null;
+    checkout_public_id: string | null;
     paid: boolean;
   }[];
   checkouts: {

@@ -12,7 +12,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
-from apps.core.ids import new_public_id
+from apps.core.ids import ensure_unique_public_id, format_public_id, new_public_id
 from apps.core.models import Store, TimestampedModel
 
 
@@ -27,7 +27,7 @@ class Visit(TimestampedModel):
 
     store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="visits")
     business_date = models.DateField()
-    # 外に見せる伝票 ID（連番にしないランダムな英数字。画面・CSV・集計に出す）。slip_number は店舗内の通し番号（内部用）
+    # 外に見せる伝票 ID（連番にしないランダムな英数字。画面・印刷・CSV・集計に出す）。slip_number は店舗内の通し番号（内部用。画面・印刷には出さない）
     public_id = models.CharField("伝票ID", max_length=16, unique=True, default=new_public_id, editable=False)
     slip_number = models.PositiveIntegerField("伝票番号")
     table = models.ForeignKey("catalog.Table", on_delete=models.PROTECT, related_name="visits")
@@ -54,7 +54,12 @@ class Visit(TimestampedModel):
         ]
 
     def __str__(self) -> str:
-        return f"伝票#{self.slip_number}"
+        return f"伝票 {format_public_id(self.public_id)}"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            ensure_unique_public_id(self)
+        super().save(*args, **kwargs)
 
 
 class CourseEntry(TimestampedModel):
@@ -268,6 +273,14 @@ class Checkout(TimestampedModel):
         ordering = ["-confirmed_at"]
         constraints = [models.UniqueConstraint(fields=["store", "number"], name="uniq_checkout_number_per_store")]
         indexes = [models.Index(fields=["store", "business_date"]), models.Index(fields=["store", "status"])]
+
+    def __str__(self) -> str:
+        return f"会計 {format_public_id(self.public_id)}"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            ensure_unique_public_id(self)
+        super().save(*args, **kwargs)
 
     @property
     def paid_total(self) -> Decimal:

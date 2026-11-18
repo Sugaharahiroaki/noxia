@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from apps.core.business_date import business_date_now
 from apps.core.exceptions import ApiError
+from apps.core.ids import format_public_id
 from apps.core.money import D, ZERO
 
 from .models import BankDeposit, BusinessDay, BusinessDayStatus, CashMovement, CashMovementKind, ClosingRevision
@@ -144,7 +145,7 @@ def open_visits_for(store) -> list[dict]:
     from apps.sales.models import Visit
 
     return [
-        {"visit_id": v.id, "slip_number": v.slip_number, "table_name": v.table.name}
+        {"visit_id": v.id, "slip_number": v.slip_number, "public_id": v.public_id, "table_name": v.table.name}
         for v in Visit.objects.filter(store=store, status="open").select_related("table").order_by("table__sort_order", "slip_number")
     ]
 
@@ -204,7 +205,7 @@ def close_business_day(day: BusinessDay, user, *, counted_cash=None, denominatio
         raise ApiError("day_closed", "この営業日は既に締め済みです。", status=409)
     open_visits = open_visits_for(day.store)
     if open_visits:
-        names = "、".join(f"{v['table_name']}（伝票#{v['slip_number']}）" for v in open_visits[:6])
+        names = "、".join(f"{v['table_name']}（伝票 {format_public_id(v['public_id'])}）" for v in open_visits[:6])
         raise ApiError(
             "open_visits",
             f"未会計の伝票が {len(open_visits)} 件あります: {names}。会計または伝票の取消をしてから締めてください。",

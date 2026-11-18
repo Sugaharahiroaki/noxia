@@ -113,16 +113,18 @@ class TerminalPaymentSerializer(serializers.ModelSerializer):
     change_amount = serializers.SerializerMethodField()
     checkout_number = serializers.SerializerMethodField()
     slip_number = serializers.IntegerField(source="visit.slip_number", read_only=True)
+    visit_public_id = serializers.CharField(source="visit.public_id", read_only=True)
+    checkout_public_id = serializers.SerializerMethodField()
     table_name = serializers.SerializerMethodField()
     requested_by_name = serializers.SerializerMethodField()
     handoff_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TerminalPayment
-        fields = ["id", "visit", "slip_number", "table_name", "terminal", "terminal_name", "provider", "is_mock", "amount", "cash_amount",
+        fields = ["id", "visit", "slip_number", "visit_public_id", "table_name", "terminal", "terminal_name", "provider", "is_mock", "amount", "cash_amount",
                   "cash_tendered", "change_amount", "line_ids", "status", "status_label", "error_message", "provider_payment_id",
                   "provider_verified", "handoff_url",
-                  "checkout", "checkout_number", "requested_by_name", "created_at", "finished_at", "resolved_at", "resolution_note"]
+                  "checkout", "checkout_number", "checkout_public_id", "requested_by_name", "created_at", "finished_at", "resolved_at", "resolution_note"]
         read_only_fields = fields
 
     def get_handoff_url(self, obj):
@@ -143,6 +145,9 @@ class TerminalPaymentSerializer(serializers.ModelSerializer):
         if obj.cash_amount and obj.cash_tendered is not None:
             return str(obj.cash_tendered - obj.cash_amount)
         return "0"
+
+    def get_checkout_public_id(self, obj):
+        return obj.checkout.public_id if obj.checkout_id else None
 
     def get_checkout_number(self, obj):
         return obj.checkout.number if obj.checkout_id else None

@@ -11,6 +11,7 @@ import { TerminalAttentionList, TerminalWaitDialog, rememberTerminal, remembered
 import { useToast } from "@/components/Toast";
 import { ErrorBox, Modal, NumberPad, Spinner } from "@/components/ui";
 import { api, ApiError, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { LINE_TYPE_LABELS, toInt, yen } from "@/lib/format";
 import type { Checkout, Quote, RateMethod, StoreSettings, TerminalPayment, TerminalStatusInfo, Visit } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
@@ -282,7 +283,7 @@ export default function CheckoutPage() {
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="card text-center space-y-2" style={{ borderColor: "var(--color-ok)", borderWidth: 2 }}>
           <div className="text-2xl font-bold">
-            {visit.table_name} お会計完了（会計#{result.number}）
+            {visit.table_name} お会計完了（会計 {fmtId(result.public_id)}）
           </div>
           {cash ? (
             <>
@@ -378,7 +379,7 @@ export default function CheckoutPage() {
         </button>
         <h1 className="text-3xl font-bold">{visit.table_name} のお会計</h1>
         <span className="text-lg" style={{ color: "var(--color-muted)" }}>
-          伝票#{visit.slip_number} ・ {visit.guest_count}名
+          伝票 {fmtId(visit.public_id)} ・ {visit.guest_count}名
         </span>
       </div>
       <ErrorBox error={quoteError} onRetry={loadQuote} />

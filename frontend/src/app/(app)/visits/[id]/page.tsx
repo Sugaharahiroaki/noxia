@@ -14,6 +14,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog, ErrorBox, Modal, Spinner } from "@/components/ui";
 import { CANCEL_REASONS, DiscountModal, ReasonModal } from "@/components/VisitDialogs";
 import { api, ApiError, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtTime, LINE_TYPE_LABELS, yen } from "@/lib/format";
 import { fmtElapsed, fmtRemainShort, undoLines } from "@/lib/pos";
 import type { CourseEntry, Employee, ExtendOption, OrderLine, StoreSettings, Table, Visit } from "@/lib/types";
@@ -161,7 +162,7 @@ export default function VisitDetailPage() {
             ← ホール
           </button>
           <h1 className="text-3xl font-bold">
-            {visit.table_name} ・ 伝票#{visit.slip_number}
+            {visit.table_name} ・ 伝票 {fmtId(visit.public_id)}
           </h1>
         </div>
         <div className="card space-y-3">
@@ -170,7 +171,7 @@ export default function VisitDetailPage() {
           {visit.checkouts.map((c) => (
             <div key={c.id} className="flex justify-between text-xl num">
               <span>
-                会計#{c.number}
+                会計 {fmtId(c.public_id)}
                 {c.status === "voided" && "（取消）"}
               </span>
               <span>{yen(c.total)}</span>
@@ -202,7 +203,7 @@ export default function VisitDetailPage() {
         <div className="mr-1">
           <div className="text-3xl font-bold leading-none">{visit.table_name}</div>
           <div className="text-sm mt-0.5" style={{ color: "var(--color-muted)" }}>
-            伝票#{visit.slip_number} ・ <span className="num">{fmtElapsed(visit.opened_at, now)}</span> 経過
+            伝票 {fmtId(visit.public_id)} ・ <span className="num">{fmtElapsed(visit.opened_at, now)}</span> 経過
             {visit.customer_display && ` ・ ${visit.customer_display}`}
           </div>
         </div>
@@ -450,7 +451,7 @@ export default function VisitDetailPage() {
 
       {cancelVisit && (
         <ReasonModal
-          title={`${visit.table_name} の伝票#${visit.slip_number} を取り消す`}
+          title={`${visit.table_name} の伝票 ${fmtId(visit.public_id)} を取り消す`}
           note="明細はすべて取り消され、在庫・バックも戻ります。履歴は残ります。"
           reasons={["入力ミス（入店していない）", "お客様が入店せず帰った"]}
           confirmLabel="伝票を取り消す"

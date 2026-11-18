@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.cash.services import require_open_business_day
 from apps.core.exceptions import ApiError
+from apps.core.ids import format_public_id
 from apps.core.models import Store
 from apps.core.money import D, ZERO
 from apps.inventory.services import record_sale, reverse_sale
@@ -898,7 +899,7 @@ def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payme
     if entry_ids:
         CourseEntry.objects.filter(id__in=entry_ids, is_active=True).update(is_active=False, ended_at=now)
         for e in CourseEntry.objects.filter(id__in=entry_ids):
-            CourseEvent.objects.create(course_entry=e, kind="end", performed_by=user, note=f"会計#{checkout.number}")
+            CourseEvent.objects.create(course_entry=e, kind="end", performed_by=user, note=f"会計 {format_public_id(checkout.public_id)}")
 
     still_remaining = visit.lines.filter(status=LineStatus.ACTIVE, checkout__isnull=True).exists()
     close_visit = data.get("close_visit", True)

@@ -8,6 +8,7 @@ import { PrintDialog, usePrinter } from "@/components/Printing";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, NumberPad, PageHeader, SaveStatus, Spinner, Stat, type SaveState } from "@/components/ui";
 import { api, ApiError, downloadFile, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtDate, fmtDateTime, fmtTime, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { BusinessDay, CashCurrent, CashItem, DailyPayoutList, Employee } from "@/lib/types";
@@ -310,7 +311,7 @@ function DayPanel({ day, onMovement, onClose, onReload, onDeposit, onRevise, onR
             {day.open_visits!.map((v) => (
               <Link key={v.visit_id} href={`/visits/${v.visit_id}`} className="btn btn-xl">
                 {v.table_name}
-                <span className="text-base font-normal ml-1">伝票#{v.slip_number}</span>
+                <span className="text-base font-normal ml-1">伝票 {fmtId(v.public_id)}</span>
               </Link>
             ))}
           </div>

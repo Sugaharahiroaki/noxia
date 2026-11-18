@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui";
 import { api, ApiError, errorMessage } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtTime, yen } from "@/lib/format";
 import { openExternalApp } from "@/lib/printing";
 import type { TerminalPayment } from "@/lib/types";
@@ -195,7 +196,7 @@ export function TerminalAttentionList({ items, onResolved }: { items: TerminalPa
       {items.map((t) => (
         <div key={t.id} className="card-2 space-y-2">
           <div className="text-lg">
-            {t.table_name} 伝票#{t.slip_number} ・ カード <strong className="num">{yen(t.amount)}</strong>
+            {t.table_name} 伝票 {fmtId(t.visit_public_id)} ・ カード <strong className="num">{yen(t.amount)}</strong>
             {t.provider_payment_id && <span className="text-sm"> （決済ID {t.provider_payment_id}）</span>}
           </div>
           <div className="text-base" style={{ color: "var(--color-muted)" }}>

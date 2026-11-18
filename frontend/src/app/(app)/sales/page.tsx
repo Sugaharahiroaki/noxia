@@ -154,7 +154,7 @@ export default function SalesPage() {
               <thead>
                 <tr>
                   <th>営業日</th>
-                  <th>会計#</th>
+                  <th>会計ID</th>
                   <th>相手</th>
                   <th>未収額</th>
                   <th>回収済</th>
@@ -167,7 +167,7 @@ export default function SalesPage() {
                 {recv.data?.map((r) => (
                   <tr key={r.id}>
                     <td>{fmtDate(r.business_date)}</td>
-                    <td>{r.checkout_number}</td>
+                    <td style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>{fmtId(r.checkout_public_id)}</td>
                     <td>{r.customer_name || r.debtor_name || "—"}</td>
                     <td>{yen(r.amount)}</td>
                     <td>{yen(r.collected_amount)}</td>
@@ -193,7 +193,7 @@ export default function SalesPage() {
 
       {detail && (
         <Modal
-          title={`会計#${detail.number} の詳細`}
+          title={`会計 ${fmtId(detail.public_id)} の詳細`}
           onClose={() => setDetailId(null)}
           wide
           footer={
@@ -217,7 +217,7 @@ export default function SalesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 num">
             <div className="space-y-1">
               <div>
-                伝票#{detail.visit_slip_number} ・ {detail.visit_table_name} ・ 営業日 {fmtDate(detail.business_date)}
+                伝票 {fmtId(detail.visit_public_id)} ・ {detail.visit_table_name} ・ 営業日 {fmtDate(detail.business_date)}
               </div>
               <div>
                 確定 {fmtTime(detail.confirmed_at)} {detail.confirmed_by_name && `(${detail.confirmed_by_name})`}
@@ -315,7 +315,7 @@ export default function SalesPage() {
           checkout={voidTarget}
           onClose={() => setVoidTarget(null)}
           onDeleted={async (mode) => {
-            setSave({ kind: "saved", label: `会計#${voidTarget.number} を取り消しました（${mode === "refund" ? `${yen(voidTarget.total)} をお客様に返してください` : "伝票は会計前に戻りました"}）` });
+            setSave({ kind: "saved", label: `会計 ${fmtId(voidTarget.public_id)} を取り消しました（${mode === "refund" ? `${yen(voidTarget.total)} をお客様に返してください` : "伝票は会計前に戻りました"}）` });
             setVoidTarget(null);
             setDetailId(null);
             await reloadAll();
@@ -389,7 +389,7 @@ function DeleteCheckoutDialog({ checkout, onClose, onDeleted }: { checkout: Row;
 
   return (
     <Modal
-      title={`会計#${checkout.number}（${yen(checkout.total)}）を取り消す`}
+      title={`会計 ${fmtId(checkout.public_id)}（${yen(checkout.total)}）を取り消す`}
       onClose={busy ? undefined : onClose}
       footer={
         <button className="btn" onClick={onClose} disabled={busy}>
@@ -444,7 +444,7 @@ function RefundDialog({ checkout, onClose, onSubmit }: { checkout: Checkout; onC
   const [busy, setBusy] = useState(false);
   return (
     <ConfirmDialog
-      title={`会計#${checkout.number} の一部返金`}
+      title={`会計 ${fmtId(checkout.public_id)} の一部返金`}
       confirmLabel="返金を記録する"
       busy={busy}
       onCancel={onClose}
@@ -492,7 +492,7 @@ function CollectDialog({ receivable, onClose, onSubmit }: { receivable: Receivab
   const [busy, setBusy] = useState(false);
   return (
     <ConfirmDialog
-      title={`未収の回収（会計#${receivable.checkout_number}）`}
+      title={`未収の回収（会計 ${fmtId(receivable.checkout_public_id)}）`}
       confirmLabel="回収を記録する"
       busy={busy}
       onCancel={onClose}

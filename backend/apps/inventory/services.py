@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
+from apps.core.ids import format_public_id
 from apps.core.money import D, ZERO
 
 from .models import StockMovement, StockMovementKind
@@ -28,7 +29,7 @@ def record_sale(product, order_line, quantity: Decimal, when, user):
         return None
     return StockMovement.objects.create(
         store=product.store, product=product, kind=StockMovementKind.SALE, quantity=-bottles, is_theoretical=theoretical,
-        order_line=order_line, reference=f"伝票#{order_line.visit.slip_number}", occurred_at=when, performed_by=user,
+        order_line=order_line, reference=f"伝票 {format_public_id(order_line.visit.public_id)}", occurred_at=when, performed_by=user,
     )
 
 

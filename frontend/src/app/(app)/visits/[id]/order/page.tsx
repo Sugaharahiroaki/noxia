@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast";
 import { ErrorBox, Spinner } from "@/components/ui";
 import { DiscountModal } from "@/components/VisitDialogs";
 import { api, ApiError, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { yen } from "@/lib/format";
 import { undoLines } from "@/lib/pos";
 import { useSession } from "@/lib/session";
@@ -178,7 +179,7 @@ export default function OrderPage() {
         <div>
           <div className="text-3xl font-bold leading-none">{visit.table_name} の注文</div>
           <div className="text-sm mt-0.5" style={{ color: "var(--color-muted)" }}>
-            伝票#{visit.slip_number} ・ 在席 {visit.present_count}名
+            伝票 {fmtId(visit.public_id)} ・ 在席 {visit.present_count}名
           </div>
         </div>
         <div className="ml-auto text-right">

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { ErrorBox, Field, PageHeader, Spinner } from "@/components/ui";
 import { api, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtDate, fmtDateTime, fmtTime, toInt, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { Handwrite } from "@/lib/types";
@@ -29,7 +30,7 @@ export default function HandwritePage() {
         title="手書き領収書への転記用"
         subtitle={
           <>
-            会計#{d.checkout_number} ・ 伝票#{d.slip_number} ・ {d.table_name} ・ 営業日 {fmtDate(d.business_date)} ・ 確定 {fmtDateTime(d.confirmed_at)}
+            会計 {fmtId(d.checkout_public_id)} ・ 伝票 {fmtId(d.visit_public_id)} ・ {d.table_name} ・ 営業日 {fmtDate(d.business_date)} ・ 確定 {fmtDateTime(d.confirmed_at)}
             {d.status === "voided" && <span className="ml-2 badge badge-danger">この会計は取消済みです</span>}
             {issued.length > 0 && <span className="ml-2 badge badge-ok">領収書 発行済（{issued.length}枚）</span>}
           </>
@@ -60,7 +61,7 @@ export default function HandwritePage() {
         {d.kind === "partial" && (
           <p className="text-sm mt-1" style={{ color: "var(--color-muted)" }}>
             伝票全体の会計合計（確定済み分）: {yen(d.visit_total_all_checkouts)}
-            {d.other_checkouts.length > 0 && <> ・ 他の会計: {d.other_checkouts.map((c) => `#${c.number} ${yen(c.total)}`).join("、")}</>}
+            {d.other_checkouts.length > 0 && <> ・ 他の会計: {d.other_checkouts.map((c) => `${fmtId(c.public_id)} ${yen(c.total)}`).join("、")}</>}
           </p>
         )}
       </div>

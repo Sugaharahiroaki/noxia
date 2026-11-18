@@ -89,7 +89,7 @@ function Inner() {
                   </td>
                   <td className="r">{cnt(l.quantity)}</td>
                   <td className="r font-semibold">{amt(l.amount)}</td>
-                  <td>{l.checkout_number ? `#${l.checkout_number}${l.paid ? "" : "（取消）"}` : l.status === "active" ? "未会計" : "--"}</td>
+                  <td>{l.checkout_public_id ? `${fmtId(l.checkout_public_id)}${l.paid ? "" : "（取消）"}` : l.status === "active" ? "未会計" : "--"}</td>
                 </tr>
               ))}
             </tbody>

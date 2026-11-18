@@ -112,12 +112,13 @@ class BackRuleSerializer(serializers.ModelSerializer):
 class BackEntrySerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.display_name", read_only=True)
     visit_slip_number = serializers.IntegerField(source="visit.slip_number", read_only=True, default=None)
+    visit_public_id = serializers.CharField(source="visit.public_id", read_only=True, default=None)
     line_name = serializers.CharField(source="order_line.name", read_only=True, default=None)
     status_label = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
         model = BackEntry
-        fields = ["id", "employee", "employee_name", "visit", "visit_slip_number", "order_line", "line_name", "checkout", "kind", "business_date",
+        fields = ["id", "employee", "employee_name", "visit", "visit_slip_number", "visit_public_id", "order_line", "line_name", "checkout", "kind", "business_date",
                   "basis_amount", "share_percent", "amount", "rule", "rule_snapshot", "status", "status_label", "confirm_timing", "confirmed_at",
                   "reversal_of", "reason", "created_at"]
 

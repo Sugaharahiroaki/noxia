@@ -9,6 +9,7 @@ import { sortByShift, StaffButton, useShiftGuard } from "@/components/ShiftGuard
 import { useToast } from "@/components/Toast";
 import { ErrorBox, Spinner } from "@/components/ui";
 import { api, ApiError, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtMinutes, LINE_TYPE_LABELS, yen } from "@/lib/format";
 import type { Course, Customer, Designation, Employee, StoreSettings, Table, Visit, VisitPreview } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
@@ -152,7 +153,7 @@ function NewVisitInner() {
     try {
       const v = await api<Visit>("/api/visits", { method: "POST", idempotencyKey: idem.current, body });
       await reloadFloor();
-      toast.show({ message: `${v.table_name} 入店しました（${v.guest_count}名・伝票#${v.slip_number}）` });
+      toast.show({ message: `${v.table_name} 入店しました（${v.guest_count}名・伝票 ${fmtId(v.public_id)}）` });
       router.replace(`/visits/${v.id}`);
     } catch (e) {
       if (e instanceof ApiError && (e.code === "network" || e.code === "in_progress")) {

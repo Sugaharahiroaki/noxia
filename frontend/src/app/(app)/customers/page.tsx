@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ConfirmDialog, Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Toggle, type SaveState } from "@/components/ui";
 import { api, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtDate, fmtTime, todayJst, yen } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { CheckoutBrief, Customer, Employee, Product, VisitBrief } from "@/lib/types";
@@ -299,7 +300,7 @@ function CustomerDetail({ id, canEdit, onClose, setSave, onChanged }: { id: numb
               <div key={v.id} className="card-2 text-sm">
                 <div className="flex justify-between">
                   <span>
-                    {fmtDate(v.business_date)} {fmtTime(v.opened_at)} ・ {v.table_name} ・ 伝票#{v.slip_number}
+                    {fmtDate(v.business_date)} {fmtTime(v.opened_at)} ・ {v.table_name} ・ 伝票 {fmtId(v.public_id)}
                   </span>
                   <span className="badge">{v.status === "open" ? "営業中" : v.status === "closed" ? "会計済" : "取消"}</span>
                 </div>
@@ -313,7 +314,7 @@ function CustomerDetail({ id, canEdit, onClose, setSave, onChanged }: { id: numb
             {d.checkouts.map((c) => (
               <div key={c.id} className="card-2 text-sm flex justify-between num">
                 <span>
-                  {fmtDate(c.business_date)} 会計#{c.number}
+                  {fmtDate(c.business_date)} 会計 {fmtId(c.public_id)}
                   {c.status === "voided" && <span className="badge badge-danger ml-2">取消</span>}
                 </span>
                 <span className="font-bold">{yen(c.total)}</span>

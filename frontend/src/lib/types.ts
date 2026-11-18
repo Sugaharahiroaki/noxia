@@ -130,6 +130,7 @@ export type Alarm = {
 export type FloorAlarm = Alarm & {
   visit_id: number;
   slip_number: number;
+  visit_public_id: string;
   table_name: string;
   entry_id: number;
   label: string;
@@ -366,7 +367,10 @@ export type VisitPreview = {
 
 export type VisitBrief = {
   id: number;
+  /** 伝票 ID（連番にしないランダムな英数字。画面・印刷にはこれを出す） */
+  public_id: string;
   business_date: string;
+  /** 店舗内の通し番号（内部用。画面には出さない） */
   slip_number: number;
   table: number;
   table_name: string;
@@ -405,8 +409,10 @@ export type FloorTable = { id: number; name: string; capacity: number; color: st
 export type Handwrite = {
   checkout_id: number;
   checkout_number: number;
+  checkout_public_id: string;
   status: string;
   slip_number: number;
+  visit_public_id: string;
   table_name: string;
   business_date: string;
   confirmed_at: string;
@@ -425,7 +431,7 @@ export type Handwrite = {
   cash_tendered: Money;
   cash_change: Money;
   visit_total_all_checkouts: Money;
-  other_checkouts: { id: number; number: number; total: Money }[];
+  other_checkouts: { id: number; number: number; public_id: string; total: Money }[];
   lines: { name: string; amount: Money; line_type: string }[];
 };
 
@@ -608,7 +614,7 @@ export type BusinessDay = {
   revisions: { id: number; changed_by_name: string; changed_at: string; reason: string; before: Record<string, unknown>; after: Record<string, unknown> }[];
   summary: DaySummary;
   precheck: { code: string; message: string; blocking?: boolean }[];
-  open_visits?: { visit_id: number; slip_number: number; table_name: string }[];
+  open_visits?: { visit_id: number; slip_number: number; public_id: string; table_name: string }[];
   movements: CashMovement[];
   bank_deposits: { id: number; amount: Money; deposited_at: string; note: string }[];
 };
@@ -627,6 +633,7 @@ export type Receivable = {
   id: number;
   checkout: number;
   checkout_number: number;
+  checkout_public_id: string;
   customer: number | null;
   customer_name: string | null;
   debtor_name: string;
@@ -674,6 +681,7 @@ export type TerminalPayment = {
   id: number;
   visit: number;
   slip_number: number;
+  visit_public_id: string;
   table_name: string;
   terminal: number;
   terminal_name: string;
@@ -693,6 +701,7 @@ export type TerminalPayment = {
   handoff_url: string | null;
   checkout: number | null;
   checkout_number: number | null;
+  checkout_public_id: string | null;
   requested_by_name: string;
   created_at: string;
   finished_at: string | null;

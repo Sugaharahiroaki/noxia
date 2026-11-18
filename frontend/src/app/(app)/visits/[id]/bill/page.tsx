@@ -3,6 +3,7 @@
 import { Tx } from "@/lib/terms";
 import { useParams, useRouter } from "next/navigation";
 import { ErrorBox, Spinner } from "@/components/ui";
+import { fmtId } from "@/components/ReportKit";
 import { yen } from "@/lib/format";
 import type { OrderLine, Visit } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
@@ -41,7 +42,7 @@ export default function BillPage() {
         <div>
           <div className="text-3xl font-bold leading-none">{visit.table_name} の明細</div>
           <div className="text-sm mt-0.5" style={{ color: "var(--color-muted)" }}>
-            伝票#{visit.slip_number} ・ 在席 {visit.present_count}名（来店 {visit.guest_count}名）
+            伝票 {fmtId(visit.public_id)} ・ 在席 {visit.present_count}名（来店 {visit.guest_count}名）
             {paid > 0 && ` ・ 会計済みの明細 ${paid}件は含みません`}
           </div>
         </div>

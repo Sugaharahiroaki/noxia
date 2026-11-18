@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api, errorMessage, newIdempotencyKey } from "@/lib/api";
+import { fmtId } from "@/components/ReportKit";
 import { fmtTime, yen } from "@/lib/format";
 import type { FloorTable, Visit, VisitBrief } from "@/lib/types";
 import { useToast } from "./Toast";
@@ -71,7 +72,7 @@ export function VisitActionMenu({
 
   if (step === "menu") {
     return (
-      <Modal title={`${tableName} の伝票操作（伝票#${visit.slip_number}）`} onClose={onClose}>
+      <Modal title={`${tableName} の伝票操作（伝票 ${fmtId(visit.public_id)}）`} onClose={onClose}>
         <div className="grid grid-cols-2 gap-3">
           <button className="btn btn-xl btn-danger" onClick={() => setStep("delete")}>
             伝票削除
@@ -130,7 +131,7 @@ export function VisitActionMenu({
         <div className="card-2 mb-3">
           <div className="text-3xl font-bold">{tableName}</div>
           <div className="text-lg num">
-            伝票#{visit.slip_number} ・ {visit.guest_count}名 ・ {yen(visit.running_total)}
+            伝票 {fmtId(visit.public_id)} ・ {visit.guest_count}名 ・ {yen(visit.running_total)}
           </div>
         </div>
         <p className="text-lg font-bold">履歴は残ります。</p>

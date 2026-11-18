@@ -10,6 +10,7 @@ from datetime import date, datetime
 
 from django.utils import timezone
 
+from apps.core.ids import format_public_id
 from apps.core.money import D, round_yen
 
 from .models import PrinterConfig
@@ -72,7 +73,8 @@ def estimate_slip(cfg: PrinterConfig, visit, tiers: list[dict], present_count: i
     _shop_header(s, cfg)
     s.text("ご利用料金のご案内（概算）", align="center", bold=True)
     s.rule()
-    s.text(f"{visit.table.name}  伝票#{visit.slip_number}  {present_count}名様")
+    s.text(f"{visit.table.name}  {present_count}名様")
+    s.text(f"伝票 {format_public_id(visit.public_id)}")
     entries = [e for e in visit.course_entries.all() if e.is_active]
     if entries:
         start = min(e.started_at for e in entries)
@@ -110,7 +112,8 @@ def receipt_slip(cfg: PrinterConfig, checkout) -> Slip:
     if checkout.status == "voided":
         s.text("＊＊ 取消済みの会計 ＊＊", align="center", bold=True)
     s.text(_dt(checkout.confirmed_at))
-    s.text(f"会計#{checkout.number}  伝票#{checkout.visit.slip_number}  {checkout.visit.table.name}")
+    s.text(f"{checkout.visit.table.name}  伝票 {format_public_id(checkout.visit.public_id)}")
+    s.text(f"会計 {format_public_id(checkout.public_id)}")
     s.rule()
     for ln in checkout.lines.all():
         if ln.status != "active":
@@ -163,7 +166,7 @@ def ryoshusho_slip(cfg: PrinterConfig, checkout, *, addressee: str, proviso: str
     a = ryoshusho_amounts(checkout)
     s = Slip(kind="ryoshusho", title="領収書", columns=cfg.columns())
     s.text("領 収 書", align="center", size=2, bold=True)
-    s.text(f"No.{checkout.number}" + ("（再発行）" if reissue else ""), align="right")
+    s.text(f"No.{format_public_id(checkout.public_id)}" + ("（再発行）" if reissue else ""), align="right")
     s.feed()
     s.text(f"{addressee.strip() or '　' * 8} 様", size=1, bold=True)
     s.rule()
