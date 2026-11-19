@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from rest_framework.test import APIClient, APITestCase
 
-from apps.core import tablet
-from apps.core.models import AuditLog, CompanyMembership, StoreMembership, User
+from apps.core import permissions, tablet
+from apps.core.models import AuditLog, CompanyMembership, StoreMembership, StoreSettings, User
 from apps.core.testing import client_for, standard_fixture
 
 
@@ -18,6 +18,26 @@ class TabletMenuUnitTests(APITestCase):
         fx.store.settings.tablet_menu = ["/sales", "/x", 3]
         fx.store.settings.save()
         self.assertEqual(tablet.resolve_menu(fx.store), ["/sales"])                    # 形の合わないものは捨てる
+        # 経理の画面はパソコンだけ（保存できない・前に保存したものは捨てる）
+        with self.assertRaises(Exception):
+            tablet.clean_menu(["/accounting/dashboard"])
+        fx.store.settings.tablet_menu = ["/sales", "/accounting/contracts"]
+        fx.store.settings.save()
+        self.assertEqual(tablet.resolve_menu(fx.store), ["/sales"])
+
+    def test_default_ops_are_the_former_manager_caps(self):
+        # 既定のままなら、これまでのタブレット用アカウント（店舗管理者）と同じ操作
+        default = tablet.TABLET_BASE_CAPS.union(*(c for k, _l, c, _d in tablet.TABLET_OPS if k in tablet.DEFAULT_TABLET_OPS))
+        self.assertEqual(default, permissions.MANAGER_CAPS)
+        # いつも持つ操作に営業の画面に要るものがあり、付け外しの一覧と重ならない
+        self.assertTrue({permissions.CAP_FLOOR, permissions.CAP_CLOSING, permissions.CAP_SALES_VIEW, permissions.CAP_SETTINGS_VIEW} <= tablet.TABLET_BASE_CAPS)
+        self.assertFalse(tablet.TABLET_BASE_CAPS & tablet.TABLET_TOGGLE_CAPS)
+        # オーナーだけの操作（会社の管理・操作履歴・経営者本人の税務判断）は付けられない
+        never = {permissions.CAP_COMPANY_MANAGE, permissions.CAP_AUDIT_VIEW, permissions.CAP_ACCOUNTING_VIEW} | permissions.OWNER_ONLY_CAPS
+        self.assertFalse(never & (tablet.TABLET_BASE_CAPS | tablet.TABLET_TOGGLE_CAPS))
+        with self.assertRaises(Exception):
+            tablet.clean_ops(["company"])
+        self.assertEqual(tablet.clean_ops(["wages", "sales_void", "wages"]), ["sales_void", "wages"])
 
 
 class TabletSettingsTests(APITestCase):
@@ -44,8 +64,15 @@ class TabletSettingsTests(APITestCase):
         self.assertEqual((d["menu"], d["is_default"], d["default_menu"]), (tablet.DEFAULT_TABLET_MENU, True, tablet.DEFAULT_TABLET_MENU))
         self.assertTrue(any(i["key"] == "/settings/pos" and i["group"] == "設定" for i in d["items"]))
         self.assertEqual(client_for(self.fx.users["cast"], self.store).get("/api/store/tablet").status_code, 403)
-        # 変更は settings.edit が必要（スタッフは不可）。パスワードの聞き直しはない
+        # 変更は会社オーナーだけ（スタッフ・店舗管理者は不可）。パスワードの聞き直しはない
+        self.assertTrue(d["can_edit"])
         self.assertEqual(client_for(self.fx.users["staff"], self.store).put("/api/store/tablet", {"menu": ["/floor"]}, format="json").status_code, 403)
+        mgr = client_for(self.fx.users["manager"], self.store)
+        self.assertFalse(mgr.get("/api/store/tablet").json()["can_edit"])
+        for body in ({"menu": ["/floor"]}, {"ops": []}, {"tablet_membership_ids": [self.manager_sm.id]}):
+            self.assertEqual(mgr.put("/api/store/tablet", body, format="json").status_code, 403, body)
+        self.assertFalse(StoreMembership.objects.get(id=self.manager_sm.id).is_tablet)
+        self.assertIsNone(StoreSettings.objects.get(store=self.store).tablet_ops)
 
     def test_put_members_and_menu(self):
         r = self.owner.put("/api/store/tablet", {"tablet_membership_ids": [self.manager_sm.id], "menu": ["/sales", "/floor"]}, format="json")
@@ -74,6 +101,94 @@ class TabletSettingsTests(APITestCase):
         # 別店舗のオーナーからは、この店舗の配属は見えない
         oc = client_for(other.users["owner"], other.store)
         self.assertNotIn("manager", [m["username"] for m in oc.get("/api/store/tablet").json()["members"] if m["user_id"] == self.fx.users["manager"].id])
+
+
+class TabletOpsTests(APITestCase):
+    """店舗設定「権限」のタブレットの列: チェックした操作だけがタブレットの API の権限になる。"""
+
+    def setUp(self):
+        self.fx = standard_fixture()
+        self.store = self.fx.store
+        self.owner = client_for(self.fx.users["owner"], self.store)
+        self.tablet_user = self.fx.users["manager"]
+        self.sm = StoreMembership.objects.get(user=self.tablet_user, store=self.store)
+        StoreMembership.objects.filter(id=self.sm.id).update(is_tablet=True)
+
+    def caps(self, user=None):
+        return set(client_for(user or self.tablet_user, self.store).get("/api/auth/me").json()["stores"][0]["caps"])
+
+    def put_ops(self, ops):
+        return self.owner.put("/api/store/tablet", {"ops": ops}, format="json")
+
+    def test_default_is_unchanged(self):
+        self.assertEqual(self.caps(), set(permissions.MANAGER_CAPS))
+        d = self.owner.get("/api/store/tablet").json()
+        self.assertEqual((d["ops"], d["ops_is_default"]), (tablet.DEFAULT_TABLET_OPS, True))
+        self.assertEqual([i["key"] for i in d["ops_items"]], tablet.TABLET_OP_KEYS)
+        self.assertTrue(d["owner_only"])
+        self.assertFalse(any(i["tablet"] for i in d["items"] if i["group"] == "経理"))
+
+    def test_unchecked_ops_are_refused_by_api(self):
+        r = self.put_ops([o for o in tablet.DEFAULT_TABLET_OPS if o != "settings_edit"])
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual((r.json()["ops_is_default"], "settings_edit" in r.json()["ops"]), (False, False))
+        caps = self.caps()
+        self.assertNotIn(permissions.CAP_SETTINGS_EDIT, caps)
+        self.assertIn(permissions.CAP_SETTINGS_VIEW, caps)
+        tc = client_for(self.tablet_user, self.store)
+        self.assertEqual(tc.get("/api/store/settings").status_code, 200)            # 見るだけはできる
+        self.assertEqual(tc.put("/api/store/settings", {"settings_note": "x"}, format="json").status_code, 403)
+        self.assertEqual(tc.put("/api/printing/config", {"enabled": True}, format="json").status_code, 403)
+        log = AuditLog.objects.filter(store=self.store, action="settings.tablet").latest("id")
+        self.assertIsNone(log.changes["tablet_ops"]["before"])
+        # 戻すと変えられる
+        self.assertEqual(self.put_ops(None).json()["ops_is_default"], True)
+        self.assertEqual(tc.put("/api/store/settings", {"settings_note": "x"}, format="json").status_code, 200)
+
+    def test_all_off_keeps_floor_and_owner_only_can_be_granted(self):
+        self.put_ops([])
+        caps = self.caps()
+        self.assertTrue({permissions.CAP_FLOOR, permissions.CAP_CLOSING, permissions.CAP_SALES_VIEW} <= caps)   # 営業はいつもできる
+        self.assertFalse(caps & tablet.TABLET_TOGGLE_CAPS)
+        # これまでオーナーだけだった操作も、チェックすればタブレットに付く
+        self.put_ops(["wages", "back_rules_edit"])
+        caps = self.caps()
+        self.assertTrue({permissions.CAP_WAGES_EDIT, permissions.CAP_WAGES_VIEW, permissions.CAP_BACK_RULES_EDIT} <= caps)
+        self.assertNotIn(permissions.CAP_SALES_VOID, caps)
+
+    def test_only_tablet_accounts_are_affected(self):
+        self.put_ops([])
+        # タブレット用でない店舗管理者・会社オーナーは変わらない
+        self.assertEqual(self.caps(self.fx.users["owner"]), set(permissions.OWNER_CAPS))
+        StoreMembership.objects.filter(id=self.sm.id).update(is_tablet=False)
+        self.assertEqual(self.caps(), set(permissions.MANAGER_CAPS))
+
+    def test_tablet_sees_but_cannot_change_its_own_permissions(self):
+        tc = client_for(self.tablet_user, self.store)
+        d = tc.get("/api/store/tablet").json()
+        self.assertEqual((d["can_edit"], d["ops"]), (False, tablet.DEFAULT_TABLET_OPS))
+        self.assertEqual(tc.put("/api/store/tablet", {"ops": tablet.TABLET_OP_KEYS}, format="json").status_code, 403)
+        self.assertEqual(tc.put("/api/store/tablet", {"menu": tablet.TABLET_MENU_KEYS}, format="json").status_code, 403)
+        # 店舗設定の保存では、タブレットの画面・操作は変わらない（受け取らない）
+        self.put_ops(["sales_void", "settings_edit"])
+        r = tc.put("/api/store/settings", {"tablet_ops": tablet.TABLET_OP_KEYS, "tablet_menu": tablet.TABLET_MENU_KEYS}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        st = StoreSettings.objects.get(store=self.store)
+        self.assertEqual((st.tablet_ops, st.tablet_menu), (["sales_void", "settings_edit"], []))
+        self.assertNotIn("tablet_ops", r.json())
+
+    def test_validation_and_other_store(self):
+        self.assertEqual(self.put_ops(["nope"]).status_code, 400)
+        self.assertEqual(self.put_ops("sales_void").status_code, 400)
+        self.assertEqual(self.owner.put("/api/store/tablet", {"menu": ["/accounting/dashboard"]}, format="json").status_code, 400)
+        # 別会社のオーナーが X-Store-Id をこの店舗にしても変えられない
+        other = standard_fixture("s2", "c2")
+        oc = client_for(other.users["owner"], self.store)
+        self.assertEqual(oc.put("/api/store/tablet", {"ops": []}, format="json").status_code, 403)
+        self.assertIsNone(StoreSettings.objects.get(store=self.store).tablet_ops)
+        # 自分の店舗の設定は、この店舗のタブレットに効かない
+        self.assertEqual(client_for(other.users["owner"], other.store).put("/api/store/tablet", {"ops": []}, format="json").status_code, 200)
+        self.assertEqual(self.caps(), set(permissions.MANAGER_CAPS))
 
 
 class TabletAccountCreateTests(APITestCase):

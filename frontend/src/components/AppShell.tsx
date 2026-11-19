@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { fmtTime, ROLE_LABELS, yen } from "@/lib/format";
+import { fmtTime, storeRoleLabel, yen } from "@/lib/format";
 import { fmtRemainShort, undoLines } from "@/lib/pos";
 import { useSession } from "@/lib/session";
 import { useTabletMenu } from "@/lib/tablet";
@@ -76,7 +76,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function ShellInner({ children }: { children: React.ReactNode }) {
-  const { me, store, can, logout, setStore } = useSession();
+  const { me, store, can, logout, setStore, refresh } = useSession();
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -95,6 +95,20 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     toast.show({ message: "この画面はパソコンから操作してください", tone: "info" });
     router.replace(tabletMenu.allows("/floor") ? "/floor" : "/select-store");
   }, [pathname, tabletMenu, router, toast]);
+
+  // タブレット用アカウント: PC で権限（画面・操作）を変えたら、ログインし直さなくても反映する（画面に戻ったとき・1 分ごと）
+  useEffect(() => {
+    if (!tabletMenu.tablet) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") refresh().catch(() => {});
+    };
+    const t = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [tabletMenu.tablet, refresh]);
 
   const reloadFloor = useCallback(async () => {
     if (!canFloor) return;
@@ -222,7 +236,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             {floorError && online ? <span className="badge badge-danger">サーバーに接続できません</span> : null}
             <span className="whitespace-nowrap" style={{ color: "var(--color-muted)" }}>
               {me?.user.display_name || me?.user.username}
-              {store && <span className="ml-1 hidden lg:inline">({ROLE_LABELS[store.role] ?? store.role})</span>}
+              {store && <span className="ml-1 hidden lg:inline">({storeRoleLabel(store)})</span>}
             </span>
             <button className="btn btn-sm btn-ghost whitespace-nowrap shrink-0" onClick={doLogout}>
               ログアウト
@@ -245,7 +259,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
                   <div className="font-bold">{store?.name}</div>
                   <div className="text-sm" style={{ color: "var(--color-muted)" }}>
                     {userName}
-                    {store && `（${ROLE_LABELS[store.role] ?? store.role}）`}
+                    {store && `（${storeRoleLabel(store)}）`}
                   </div>
                   <button className="btn btn-sm w-full" onClick={doLogout}>
                     ログアウト

@@ -100,3 +100,8 @@ export const ROLE_LABELS: Record<string, string> = {
   bookkeeper: "記帳代行担当者",
   tax_advisor: "税理士等",
 };
+
+/** 店舗での権限の表示。タブレット用アカウントは役割ではなく「タブレット」（できることは店舗設定「権限」のタブレットの列のとおり） */
+export function storeRoleLabel(s: { role: string; is_tablet?: boolean }): string {
+  return s.is_tablet ? "タブレット" : (ROLE_LABELS[s.role] ?? s.role);
+}

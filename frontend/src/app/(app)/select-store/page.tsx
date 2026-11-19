@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ErrorBox } from "@/components/ui";
-import { ROLE_LABELS } from "@/lib/format";
+import { storeRoleLabel } from "@/lib/format";
 import { useSession } from "@/lib/session";
 
 export default function SelectStorePage() {
@@ -59,7 +59,7 @@ export default function SelectStorePage() {
                 <span className="text-left">
                   <span className="block">{s.name}</span>
                   <span className="block text-xs font-normal" style={{ color: "var(--color-muted)" }}>
-                    {ROLE_LABELS[s.role] ?? s.role}
+                    {storeRoleLabel(s)}
                     {!s.is_active && " ・停止中"}
                     {s.is_demo && " ・開発用データ"}
                   </span>

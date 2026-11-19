@@ -177,6 +177,8 @@ class StoreSettings(TimestampedModel):
     nomination_count_mode = models.CharField("指名回数の数え方", max_length=20, default="per_slip")
     # 店舗タブレット用アカウントに出す画面（apps/core/tablet.py のキー）。空 = 既定（営業の画面だけ）
     tablet_menu = models.JSONField("タブレットに出す画面", default=list, blank=True)
+    # 店舗タブレット用アカウントに許可する操作（apps/core/tablet.py の TABLET_OPS のキー）。None = 既定（これまでの店舗管理者と同じ）
+    tablet_ops = models.JSONField("タブレットに許可する操作", null=True, blank=True, default=None)
     # お客様分析のランク。[{"label": "S", "min_visits": 20}, ...]（直近 3 か月の来店回数がこの回数以上）。空 = ランクを出さない
     customer_rank_thresholds = models.JSONField("お客様のランクのしきい値", default=list, blank=True)
 

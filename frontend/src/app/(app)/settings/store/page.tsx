@@ -1,37 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TabletSettingsTab } from "@/components/TabletSettings";
+import { TabletPermissionsTab, TabletSettingsTab } from "@/components/TabletSettings";
 import { PrinterSettingsTab } from "@/components/PrinterSettings";
 import { TerminalSettingsTab } from "@/components/TerminalSettings";
 import { Empty, ErrorBox, Field, Modal, PageHeader, SaveStatus, Spinner, Toggle, type SaveState } from "@/components/ui";
 import { api } from "@/lib/api";
-import { fmtDateTime, ROLE_LABELS } from "@/lib/format";
+import { fmtDateTime } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { PayoutDeductionItem, StoreSettings, Table } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
-
-const ROLE_MATRIX: { cap: string; label: string; owner: boolean; manager: boolean; staff: boolean; cast: boolean }[] = [
-  { cap: "floor.operate", label: "入店・注文・延長・会計", owner: true, manager: true, staff: true, cast: false },
-  { cap: "sales.void", label: "会計取消・返金", owner: true, manager: true, staff: false, cast: false },
-  { cap: "closing.operate", label: "開店・日締め・現金出納", owner: true, manager: true, staff: true, cast: false },
-  { cap: "closing.edit_closed", label: "締め後の修正", owner: true, manager: true, staff: false, cast: false },
-  { cap: "payroll.pay", label: "日払い登録", owner: true, manager: true, staff: false, cast: false },
-  { cap: "settings.edit", label: "料金・店舗設定の変更", owner: true, manager: true, staff: false, cast: false },
-  { cap: "employees.edit", label: "従業員の登録・配属・ログイン", owner: true, manager: true, staff: false, cast: false },
-  { cap: "wages.edit", label: "時給の設定・閲覧", owner: true, manager: false, staff: false, cast: false },
-  { cap: "backs.rules.edit", label: "バック設定の変更", owner: true, manager: false, staff: false, cast: false },
-  { cap: "payroll.view_all", label: "全員の支払集計・締め", owner: true, manager: false, staff: false, cast: false },
-  { cap: "attendance.manage", label: "他人の勤怠の操作・修正", owner: true, manager: true, staff: false, cast: false },
-  { cap: "attendance.self", label: "自分の出退勤", owner: true, manager: true, staff: true, cast: true },
-  { cap: "payroll.view_self", label: "自分の成績・バック・支払集計", owner: true, manager: false, staff: true, cast: true },
-  { cap: "customers.export", label: "顧客情報の出力", owner: true, manager: false, staff: false, cast: false },
-  { cap: "purchasing.confirm", label: "発注の確認（確定）", owner: true, manager: false, staff: false, cast: false },
-  { cap: "line.send", label: "LINE送信", owner: true, manager: true, staff: false, cast: false },
-  { cap: "dashboard.view", label: "経営ダッシュボード", owner: true, manager: true, staff: false, cast: false },
-  { cap: "export.payroll", label: "支払集計のCSV出力", owner: true, manager: false, staff: false, cast: false },
-  { cap: "company.manage", label: "店舗追加・ユーザー招待", owner: true, manager: false, staff: false, cast: false },
-];
 
 export default function StoreSettingsPage() {
   const { can, store } = useSession();
@@ -70,11 +48,14 @@ export default function StoreSettingsPage() {
         actions={
           <>
             <SaveStatus state={save} />
-            {(["settings", "tables", "terminal", "printer", "tablet", "roles", "audit"] as const).filter((t) => t !== "audit" || can("audit.view")).map((t) => (
-              <button key={t} className={`btn btn-sm ${tab === t ? "btn-primary" : ""}`} onClick={() => setTab(t)}>
-                {{ settings: "営業ルール", tables: "卓", terminal: "カード端末", printer: "プリンター", tablet: "タブレット", roles: "権限", audit: "操作履歴" }[t]}
-              </button>
-            ))}
+            {(["settings", "tables", "terminal", "printer", "roles", "tablet", "audit"] as const)
+              // タブレット用アカウントの作成・印はパソコンの会社オーナーが行うので、タブレットには出さない（権限の表は見られる）
+              .filter((t) => (t !== "audit" || can("audit.view")) && (t !== "tablet" || !store?.is_tablet))
+              .map((t) => (
+                <button key={t} className={`btn btn-sm ${tab === t ? "btn-primary" : ""}`} onClick={() => setTab(t)}>
+                  {{ settings: "営業ルール", tables: "卓", terminal: "カード端末", printer: "プリンター", roles: "権限", tablet: "タブレット", audit: "操作履歴" }[t]}
+                </button>
+              ))}
           </>
         }
       />
@@ -222,36 +203,9 @@ export default function StoreSettingsPage() {
 
       {tab === "terminal" && <TerminalSettingsTab />}
       {tab === "printer" && <PrinterSettingsTab />}
-      {tab === "tablet" && <TabletSettingsTab />}
 
-      {tab === "roles" && (
-        <div className="card scroll-x">
-          <p className="text-sm mb-2" style={{ color: "var(--color-muted)" }}>
-            権限は API 側で検証されます（画面で隠すだけではありません）。会社オーナー・会社管理者は自社の全店舗でオーナー権限、運営者は全社にアクセスでき、そのアクセスは記録されます。
-          </p>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>操作</th>
-                <th>{ROLE_LABELS.owner}</th>
-                <th>{ROLE_LABELS.manager}</th>
-                <th>{ROLE_LABELS.staff}</th>
-                <th>{ROLE_LABELS.cast}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ROLE_MATRIX.map((r) => (
-                <tr key={r.cap}>
-                  <td>{r.label}</td>
-                  {[r.owner, r.manager, r.staff, r.cast].map((v, i) => (
-                    <td key={i}>{v ? "○" : "—"}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab === "tablet" && !store?.is_tablet && <TabletSettingsTab />}
+      {tab === "roles" && <TabletPermissionsTab />}
 
       {tab === "audit" && can("audit.view") && <AuditTab />}
     </div>

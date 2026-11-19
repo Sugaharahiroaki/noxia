@@ -223,6 +223,11 @@ def resolve_store_access(user, store_id, *, request=None) -> StoreAccess:
     if not active:
         raise ApiError("store_inactive", "この店舗は停止中です。", status=403)
     caps = (ROLE_CAPS[sm.role] if sm else frozenset()) | (GRANT_ROLE_CAPS.get(grole, frozenset()) if grole else frozenset())
+    if sm is not None and sm.is_tablet:
+        # 店舗タブレット用アカウント: 役割ではなく、店舗設定「権限」のタブレットの列（いつも持つ操作 ＋ 許可した操作）で決める
+        from .tablet import tablet_caps
+
+        caps = tablet_caps(store) | (GRANT_ROLE_CAPS.get(grole, frozenset()) if grole else frozenset())
     if sm is not None and sm.role == StoreRole.MANAGER:
         # 店長の領収書承認は店舗設定で許可した場合だけ（既定は不可）
         st = getattr(store, "settings", None)

@@ -589,33 +589,48 @@ class StoreTermsView(APIView):
 
 class StoreTabletView(APIView):
     """
-    店舗タブレットの設定（PC から）: どのアカウントがタブレット用か、タブレットに出す画面。
-    読む: settings.view。変える: settings.edit（再認証）。表示の出し分けだけで、API の権限は役割のまま。
+    店舗タブレットの設定と権限（店舗設定「権限」「タブレット」）: どのアカウントがタブレット用か、タブレットに出す画面、タブレットに許可する操作。
+    読む: settings.view（タブレットも同じ表を見られる）。
+    変える: 会社オーナー・会社管理者・運営者だけ（タブレットや店舗管理者は、自分の権限を変えられない）。
     """
 
     def get_permissions(self):
         return [StoreCaps(CAP_SETTINGS_VIEW, write_caps=(CAP_SETTINGS_EDIT,))]
 
-    def _payload(self, store) -> dict:
+    @staticmethod
+    def payload(request) -> dict:
         from . import tablet
 
+        store = request.store
         st = getattr(store, "settings", None)
-        saved = st.tablet_menu if st is not None and isinstance(st.tablet_menu, list) else []
+        saved_menu = st.tablet_menu if st is not None and isinstance(st.tablet_menu, list) else []
+        saved_ops = st.tablet_ops if st is not None else None
         members = [{
             "id": sm.id, "user_id": sm.user_id, "username": sm.user.username, "display_name": sm.user.display_name,
             "role": sm.role, "is_active": sm.is_active, "is_tablet": sm.is_tablet,
         } for sm in StoreMembership.objects.filter(store=store).select_related("user").order_by("-is_tablet", "role", "id")]
-        return {"members": members, "items": tablet.items_json(), "menu": tablet.resolve_menu(store),
-                "default_menu": list(tablet.DEFAULT_TABLET_MENU), "is_default": not saved}
+        return {
+            "members": members,
+            "items": tablet.items_json(), "menu": tablet.resolve_menu(store),
+            "default_menu": list(tablet.DEFAULT_TABLET_MENU), "is_default": not saved_menu,
+            "ops_items": tablet.ops_json(), "ops": tablet.resolve_ops(store),
+            "default_ops": list(tablet.DEFAULT_TABLET_OPS), "ops_is_default": not isinstance(saved_ops, list),
+            "owner_only": list(tablet.OWNER_ONLY_LABELS),
+            "can_edit": _is_tablet_settings_editor(request),
+        }
 
     def get(self, request):
-        return Response(self._payload(request.store))
+        return Response(self.payload(request))
 
     @transaction.atomic
     def put(self, request):
-        """{tablet_membership_ids: [...]} でタブレット用の印を付け替える。{menu: [...]} で出す画面を変える（null か空 = 既定に戻す）。"""
+        """
+        {tablet_membership_ids: [...]} でタブレット用の印を付け替える。{menu: [...]} で出す画面を変える（null か空 = 既定に戻す）。
+        {ops: [...]} でタブレットに許可する操作を変える（null = 既定に戻す、[] = 全部外す）。
+        """
         from . import tablet
 
+        _require_tablet_settings_editor(request)
         store = request.store
         changes = {}
         if "tablet_membership_ids" in request.data:
@@ -640,9 +655,30 @@ class StoreTabletView(APIView):
                 changes["tablet_menu"] = {"before": st.tablet_menu, "after": menu}
                 st.tablet_menu = menu
                 st.save(update_fields=["tablet_menu", "updated_at"])
+        if "ops" in request.data:
+            raw = request.data.get("ops")
+            ops = None if raw is None else tablet.clean_ops(raw)
+            st, _ = StoreSettings.objects.get_or_create(store=store)
+            if st.tablet_ops != ops:
+                changes["tablet_ops"] = {"before": st.tablet_ops, "after": ops}
+                st.tablet_ops = ops
+                st.save(update_fields=["tablet_ops", "updated_at"])
         if changes:
             audit(request, "settings.tablet", target=store, changes=changes)
-        return Response(self._payload(store))
+        store.refresh_from_db()
+        return Response(self.payload(request))
+
+
+def _is_tablet_settings_editor(request) -> bool:
+    """タブレットの印・画面・操作を変えられるのは、会社オーナー・会社管理者・運営者（PC のアカウント）だけ。"""
+    if request.store_access.read_only:
+        return False
+    return company_role_for(request.user, request.store.company) in ("operator", CompanyRole.OWNER, CompanyRole.ADMIN)
+
+
+def _require_tablet_settings_editor(request) -> None:
+    if not _is_tablet_settings_editor(request):
+        raise ApiError("forbidden", "タブレットの権限は、パソコンで会社オーナーが変えます。", status=403)
 
 
 def _tablet_account_manager(request) -> None:
@@ -691,7 +727,7 @@ class StoreTabletAccountsView(APIView):
         CompanyMembership.objects.create(user=user, company=store.company, role=CompanyRole.MEMBER)
         sm = StoreMembership.objects.create(user=user, store=store, role=StoreRole.MANAGER, is_tablet=True)
         audit(request, "settings.tablet.account_create", target=sm, changes={"username": username, "display_name": display_name})
-        return Response(StoreTabletView()._payload(store), status=201)
+        return Response(StoreTabletView.payload(request), status=201)
 
 
 class StoreTabletAccountPasswordView(APIView):
@@ -710,4 +746,4 @@ class StoreTabletAccountPasswordView(APIView):
         sm.user.set_password(_validated_password(request.data.get("password") or "", sm.user))
         sm.user.save(update_fields=["password"])
         audit(request, "settings.tablet.account_password", target=sm, changes={"username": sm.user.username})
-        return Response(StoreTabletView()._payload(request.store))
+        return Response(StoreTabletView.payload(request))

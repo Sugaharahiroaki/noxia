@@ -37,7 +37,9 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StoreSettings
-        exclude = ["store", "created_at", "updated_at", "void_pin_hash", "void_pin_failed_count", "void_pin_locked_until"]
+        # タブレットの画面・操作（tablet_menu・tablet_ops）は「権限」の API（/api/store/tablet）だけで変える。
+        # ここで受け取ると、店舗管理者やタブレット自身が店舗設定の保存で自分の権限を変えられてしまうため
+        exclude = ["store", "created_at", "updated_at", "void_pin_hash", "void_pin_failed_count", "void_pin_locked_until", "tablet_menu", "tablet_ops"]
 
     def get_void_pin_set(self, obj) -> bool:
         return bool(obj.void_pin_hash)
