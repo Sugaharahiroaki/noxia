@@ -255,7 +255,7 @@ function Inner() {
   const pane = { background: "var(--color-panel)", border: "1.5px solid var(--color-border)", borderRadius: 14 } as const;
 
   return (
-    <div className="flex flex-col gap-2" style={{ height: "calc(100dvh - 64px - 34px)", minHeight: 420 }}>
+    <div className="flex flex-col gap-2" style={{ height: "calc(100dvh - var(--pos-bar-h) - 34px)", minHeight: 420 }}>
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-bold">POS 設定</h1>
         <span className="text-sm" style={{ color: "var(--color-muted)" }}>

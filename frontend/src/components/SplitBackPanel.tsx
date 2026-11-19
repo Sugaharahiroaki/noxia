@@ -62,7 +62,7 @@ export function SplitBackPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/60" role="dialog" aria-modal="true" aria-label="キャスト折半">
-      <div className="h-full flex flex-col p-3 gap-2" style={{ width: "min(880px, 96vw)", background: "var(--color-panel)", borderLeft: "2px solid var(--color-edge)" }}>
+      <div className="h-full flex flex-col p-3 gap-2" style={{ width: "min(880px, 96vw)", paddingTop: "calc(0.75rem + var(--safe-top))", background: "var(--color-panel)", borderLeft: "2px solid var(--color-edge)" }}>
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="text-2xl font-bold">キャスト折半</h2>

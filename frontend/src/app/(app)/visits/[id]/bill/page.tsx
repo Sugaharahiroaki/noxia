@@ -34,7 +34,7 @@ export default function BillPage() {
   const open = visit.status === "open";
 
   return (
-    <div className="flex flex-col gap-2" style={{ height: "calc(100dvh - 64px - 34px)", minHeight: 480 }}>
+    <div className="flex flex-col gap-2" style={{ height: "calc(100dvh - var(--pos-bar-h) - 34px)", minHeight: 480 }}>
       <div className="flex items-center gap-3">
         <button className="btn btn-lg" onClick={() => router.replace(`/visits/${visit.id}`)}>
           ← 戻る

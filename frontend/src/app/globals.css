@@ -29,6 +29,18 @@ html {
   color-scheme: light;
 }
 
+/*
+  iPad で「ホーム画面に追加」したアプリ表示では、画面が時刻・電池の帯（ステータスバー）の下まで広がる
+  （layout.tsx の statusBarStyle "black-translucent" ＋ viewportFit "cover"）。
+  上部バーを帯の高さ（--safe-top）だけ下げて、ボタンが帯に隠れて押せなくならないようにする。
+  ブラウザで開いたときは 0 なので見た目は変わらない。上部バーの高さを前提にした計算は --pos-bar-h / --app-bar-h を使う。
+*/
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --pos-bar-h: calc(64px + var(--safe-top));
+  --app-bar-h: calc(68px + var(--safe-top));
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);

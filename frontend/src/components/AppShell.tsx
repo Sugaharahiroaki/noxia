@@ -175,7 +175,16 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             }
           />
         ) : (
-        <header className="sticky top-0 z-40 flex items-center gap-2 px-3 h-[68px]" style={{ background: "var(--color-panel)", borderBottom: "1px solid var(--color-border)" }}>
+        <header
+          className="sticky top-0 z-40 flex items-center gap-2 px-3"
+          style={{
+            height: "var(--app-bar-h)",
+            paddingTop: "var(--safe-top)",
+            // アプリ表示で時刻・電池の帯（白い文字）の後ろに来る部分は、POS の上部バーと同じ金色にして読めるようにする
+            background: "linear-gradient(#b08a2a, #b08a2a) top / 100% var(--safe-top) no-repeat, var(--color-panel)",
+            borderBottom: "1px solid var(--color-border)",
+          }}
+        >
           {canFloor && tabletMenu.allows("/floor") && (
             <Link href="/floor" className={`btn btn-lg whitespace-nowrap shrink-0 ${onFloor ? "btn-primary" : ""}`} style={{ minHeight: 54 }}>
               卓一覧
@@ -222,13 +231,13 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         </header>
         )}
 
-        {canFloor && floor && <AlarmBanner alarms={floor.alarms} mode={floor.alarm_mode} onChanged={reloadFloor} top={pos ? 64 : 68} />}
+        {canFloor && floor && <AlarmBanner alarms={floor.alarms} mode={floor.alarm_mode} onChanged={reloadFloor} top={pos ? "var(--pos-bar-h)" : "var(--app-bar-h)"} />}
 
         <div className="flex flex-1">
           {menuOpen && (
             <nav
               className={`w-72 shrink-0 p-3 space-y-4 overflow-y-auto ${pos ? "fixed left-0 bottom-0 z-40" : ""}`}
-              style={{ background: "var(--color-panel)", borderRight: "1px solid var(--color-border)", ...(pos ? { top: 64, boxShadow: "4px 0 16px rgba(0,0,0,0.25)" } : {}) }}
+              style={{ background: "var(--color-panel)", borderRight: "1px solid var(--color-border)", ...(pos ? { top: "var(--pos-bar-h)", boxShadow: "4px 0 16px rgba(0,0,0,0.25)" } : {}) }}
               aria-label="主メニュー"
             >
               {pos && (
@@ -309,7 +318,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 }
 
 /** 終了時間の通知バナー（どの画面でも上部に表示。閉じても卓一覧の超過表示は残る） */
-function AlarmBanner({ alarms, mode, onChanged, top = 68 }: { alarms: FloorAlarm[]; mode: "10" | "5" | "both"; onChanged: () => Promise<void>; top?: number }) {
+function AlarmBanner({ alarms, mode, onChanged, top = "var(--app-bar-h)" }: { alarms: FloorAlarm[]; mode: "10" | "5" | "both"; onChanged: () => Promise<void>; top?: number | string }) {
   const now = useNow();
   const router = useRouter();
   const toast = useToast();

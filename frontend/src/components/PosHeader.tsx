@@ -50,7 +50,7 @@ export function PosHeader({
 
   return (
     <>
-      <header className="pos-bar sticky top-0 z-40 flex items-center gap-1 px-2 h-[64px]">
+      <header className="pos-bar sticky top-0 z-40 flex items-center gap-1 px-2" style={{ height: "var(--pos-bar-h)", paddingTop: "var(--safe-top)" }}>
         <button type="button" className="pos-bar-btn" onClick={onToggleMenu} aria-label="メニュー" aria-expanded={menuOpen}>
           <span className="pos-bar-icon" aria-hidden>
             ☰

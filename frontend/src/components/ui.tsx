@@ -88,7 +88,7 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3" style={{ paddingTop: "calc(0.75rem + var(--safe-top))" }} onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={`card w-full ${wide ? "max-w-4xl" : "max-w-xl"} max-h-[92vh] flex flex-col`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xl font-bold">{title}</h2>

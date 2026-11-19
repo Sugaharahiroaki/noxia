@@ -291,7 +291,7 @@ function NewVisitInner() {
       {/* 3. 客ごとのキャストと 本指名・場内・同伴 */}
       {step === "guests" && (
         <div className="grid grid-cols-12 gap-3">
-          <section className="col-span-6 card space-y-2 overflow-y-auto" style={{ maxHeight: "calc(100vh - 290px)" }} aria-label="お客様">
+          <section className="col-span-6 card space-y-2 overflow-y-auto" style={{ maxHeight: "calc(100vh - 290px - var(--safe-top))" }} aria-label="お客様">
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
               お客様を選んで、右のキャストを押します。キャストを付けない人はそのままで構いません。
             </p>
@@ -330,7 +330,7 @@ function NewVisitInner() {
               );
             })}
           </section>
-          <section className="col-span-6 card space-y-2 overflow-y-auto" style={{ maxHeight: "calc(100vh - 290px)" }} aria-label="キャスト">
+          <section className="col-span-6 card space-y-2 overflow-y-auto" style={{ maxHeight: "calc(100vh - 290px - var(--safe-top))" }} aria-label="キャスト">
             <h2 className="text-lg font-bold">お客様{active + 1} に付くキャスト</h2>
             <div className="grid grid-cols-3 gap-2">
               <button className={`btn ${guests[active]?.employee === null ? "btn-primary" : ""}`} onClick={() => setGuest(active, { employee: null, designation: "" })}>
@@ -360,7 +360,7 @@ function NewVisitInner() {
       {/* 4. 時間と金額 */}
       {step === "course" && (
         <div className="grid grid-cols-12 gap-3">
-          <section className="col-span-7 card space-y-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 290px)" }}>
+          <section className="col-span-7 card space-y-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 290px - var(--safe-top))" }}>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-2xl font-bold">{count}名様 の時間と金額</h2>
               <button
