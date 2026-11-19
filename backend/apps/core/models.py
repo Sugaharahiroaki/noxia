@@ -175,6 +175,9 @@ class StoreSettings(TimestampedModel):
     cast_sales_split_mode = models.CharField("キャスト売上の分け方", max_length=20, default="equal")
     # 指名回数の数え方。per_slip = 1 伝票 1 回、per_set = 伝票内のセット数ぶん
     nomination_count_mode = models.CharField("指名回数の数え方", max_length=20, default="per_slip")
+    # 入店画面でセットの料金・時間を横にスワイプして選ぶときの刻み
+    entry_price_step = models.PositiveIntegerField("入店時の料金の刻み(円)", default=500)
+    entry_minutes_step = models.PositiveIntegerField("入店時の時間の刻み(分)", default=30)
     # 店舗タブレット用アカウントに出す画面（apps/core/tablet.py のキー）。空 = 既定（営業の画面だけ）
     tablet_menu = models.JSONField("タブレットに出す画面", default=list, blank=True)
     # 店舗タブレット用アカウントに許可する操作（apps/core/tablet.py の TABLET_OPS のキー）。None = 既定（これまでの店舗管理者と同じ）

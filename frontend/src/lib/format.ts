@@ -88,6 +88,7 @@ export const LINE_TYPE_LABELS: Record<string, string> = {
   douhan: "同伴",
   product: "商品",
   discount: "値引き",
+  charge: "チャージ",
 };
 
 export const ROLE_LABELS: Record<string, string> = {

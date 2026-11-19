@@ -176,6 +176,7 @@ class LineType(models.TextChoices):
     DOUHAN = "douhan", "同伴"
     PRODUCT = "product", "商品"
     DISCOUNT = "discount", "値引き"
+    CHARGE = "charge", "チャージ"  # セット構成のチャージ料（1 人 1 行。チャージカットはこの行の取消）
 
 
 # 指名・同伴の明細（料金は店舗設定。対象の従業員 1 人をバック対象にする）

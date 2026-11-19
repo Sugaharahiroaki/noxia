@@ -20,6 +20,8 @@ class Course(TimestampedModel):
     duration_minutes = models.PositiveIntegerField("時間（分）", null=True, blank=True)
     extension_price = models.DecimalField("延長料金（1回あたり）", max_digits=12, decimal_places=2, default=Decimal("0"))
     extension_minutes = models.PositiveIntegerField("延長1回の分数", default=60)
+    # 入店時に「チャージ 0円／この額」を選ぶ（1 人 1 行の「チャージ」明細になり、1 人分ずつ取り消せる）。0 = チャージなし
+    charge_amount = models.DecimalField("チャージ料（1人あたり）", max_digits=12, decimal_places=2, default=Decimal("0"))
     tax_rate = models.DecimalField("税率(%)", max_digits=5, decimal_places=2, default=Decimal("10.00"))
     is_active = models.BooleanField("販売中", default=True)
     sort_order = models.PositiveIntegerField(default=0)

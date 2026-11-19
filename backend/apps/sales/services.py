@@ -196,11 +196,17 @@ def preview_visit(store: Store, data: dict) -> dict:
         n = int(e.get("guest_count") or 1)
         if n < 1:
             raise ApiError("validation_error", "人数は1以上で入力してください。")
-        amount = course_amount(st, course.price, n)
+        price, minutes, charge = entry_terms(course, e)
+        amount = course_amount(st, price, n)
         qty = n if st.price_basis == "per_person" else 1
-        lines.append({"line_type": "course_set", "name": course.name, "unit_price": str(course.price), "quantity": qty, "amount": str(amount),
-                      "duration_minutes": course.duration_minutes})
+        lines.append({"line_type": "course_set", "name": course.name, "unit_price": str(price), "quantity": qty, "amount": str(amount),
+                      "duration_minutes": minutes})
         inputs.append(LineInput(id=None, line_type="course_set", amount=amount, tax_rate=D(course.tax_rate), tax_included=st.prices_include_tax))
+        if charge:
+            fee = D(course.charge_amount)
+            lines.append({"line_type": "charge", "name": "チャージ", "unit_price": str(fee), "quantity": n, "amount": str(fee * n)})
+            inputs.extend(LineInput(id=None, line_type="charge", amount=fee, tax_rate=D(course.tax_rate), tax_included=st.prices_include_tax)
+                          for _ in range(n))
     for g in _parse_guests(store, st, data.get("guests"), entries_in):
         if not g["designation"]:
             continue
@@ -210,27 +216,81 @@ def preview_visit(store: Store, data: dict) -> dict:
     return {"lines": lines, "quote": compute_totals(inputs, st).as_dict(), "guest_count": sum(int(e.get("guest_count") or 1) for e in entries_in)}
 
 
+MAX_ENTRY_PRICE = Decimal("10000000")
+MAX_ENTRY_MINUTES = 24 * 60
+
+
+def entry_terms(course, e: dict) -> tuple[Decimal, int | None, bool]:
+    """
+    入店時に選んだセットの料金・時間・チャージ（入店画面で横にスワイプして選ぶ）。渡されなければセット構成のとおり。
+    duration_minutes = 0 は時間無制限（卓一覧は経過時間を数え上げる）。charge が true ならチャージ料を 1 人 1 行で入れる。
+    """
+    price = D(course.price)
+    if e.get("price") not in (None, ""):
+        try:
+            price = Decimal(str(e["price"]))
+        except (ArithmeticError, ValueError, TypeError):
+            raise ApiError("validation_error", "セットの料金を数字で入力してください。")
+        if not price.is_finite() or price < 0 or price > MAX_ENTRY_PRICE or price != price.to_integral_value():
+            raise ApiError("validation_error", "セットの料金は 0 円以上の円単位で入力してください。")
+        price = price.quantize(Decimal("0.01"))  # DB の金額と同じ桁（2,500.00）にそろえる
+    minutes = course.duration_minutes
+    if e.get("duration_minutes") not in (None, ""):
+        try:
+            m = int(e["duration_minutes"])
+        except (TypeError, ValueError):
+            raise ApiError("validation_error", "セットの時間を分で入力してください。")
+        if m < 0 or m > MAX_ENTRY_MINUTES:
+            raise ApiError("validation_error", "セットの時間は 0（無制限）〜24 時間で入力してください。")
+        minutes = None if m == 0 else m
+    charge = e.get("charge") in (True, 1, "1", "true")
+    if charge and D(course.charge_amount) <= 0:
+        raise ApiError("validation_error", "このセットにはチャージ料が設定されていません。")
+    return price, minutes, charge
+
+
+def _minutes_text(minutes: int | None) -> str:
+    return "無制限" if minutes is None else f"{minutes}分"
+
+
 def _add_entry(visit: Visit, st, course, e: dict, user, default_started_at) -> CourseEntry:
     guest_count = int(e.get("guest_count") or 1)
     if guest_count < 1:
         raise ApiError("validation_error", "人数は1以上で入力してください。")
+    price, minutes, charge = entry_terms(course, e)
     started_at = e.get("started_at") or default_started_at
     employee = _employee_in_store(visit.store, e.get("employee_id"))
-    planned_end = None if course.duration_minutes is None else started_at + timedelta(minutes=course.duration_minutes)
+    planned_end = None if minutes is None else started_at + timedelta(minutes=minutes)
     entry = CourseEntry.objects.create(
         visit=visit, store=visit.store, label=(e.get("label") or "")[:60], guest_count=guest_count, course=course,
-        course_name=course.name, course_price=course.price, extension_price=course.extension_price,
+        course_name=course.name, course_price=price, extension_price=course.extension_price,
         extension_minutes=course.extension_minutes or 60, started_at=started_at, planned_end_at=planned_end,
-        is_unlimited=course.duration_minutes is None, employee=employee, created_by=user,
+        is_unlimited=minutes is None, employee=employee, created_by=user,
     )
-    amount = course_amount(st, course.price, guest_count)
+    amount = course_amount(st, price, guest_count)
+    suffix = f"（{entry.label}）" if entry.label else ""
     OrderLine.objects.create(
         visit=visit, store=visit.store, line_type=LineType.COURSE_SET, course_entry=entry,
-        name=f"{course.name}" + (f"（{entry.label}）" if entry.label else ""), unit_price=course.price,
+        name=f"{course.name}{suffix}", unit_price=price,
         quantity=Decimal(guest_count if st.price_basis == "per_person" else 1), amount=amount,
         tax_rate=course.tax_rate, tax_included=st.prices_include_tax, category_kind="course", created_by=user,
     )
-    CourseEvent.objects.create(course_entry=entry, kind="start", performed_by=user, to_planned_end_at=planned_end, amount=amount)
+    # 入店時にセット構成と違う料金・時間にしたら、記録に残す
+    changed = []
+    if price != D(course.price):
+        changed.append(f"料金 {int(D(course.price)):,}円 → {int(price):,}円")
+    if minutes != course.duration_minutes:
+        changed.append(f"時間 {_minutes_text(course.duration_minutes)} → {_minutes_text(minutes)}")
+    note = ("入店時に変更: " + "・".join(changed)) if changed else ""
+    CourseEvent.objects.create(course_entry=entry, kind="start", performed_by=user, to_planned_end_at=planned_end, amount=amount, note=note[:200])
+    if charge:
+        # 1 人 1 行（チャージカットは 1 人分ずつ明細の取消）。セットの取消とは別に扱うので、セットの明細には紐づけない
+        for _ in range(guest_count):
+            OrderLine.objects.create(
+                visit=visit, store=visit.store, line_type=LineType.CHARGE, name=f"チャージ{suffix}",
+                unit_price=D(course.charge_amount), quantity=Decimal(1), amount=D(course.charge_amount),
+                tax_rate=course.tax_rate, tax_included=st.prices_include_tax, category_kind="charge", created_by=user,
+            )
     return entry
 
 

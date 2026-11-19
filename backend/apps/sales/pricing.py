@@ -24,7 +24,7 @@ from typing import Iterable
 
 from apps.core.money import D, ZERO, percent_of, round_yen, tax_from_included, tax_on_excluded
 
-COURSE_TYPES = {"course_set", "extension", "course_change"}
+COURSE_TYPES = {"course_set", "extension", "course_change", "charge"}  # チャージはサービス料の対象ではセットと同じ扱い
 PRODUCT_TYPES = {"product"}
 FEE_TYPES = {"nomination", "jounai", "yobi", "douhan"}
 

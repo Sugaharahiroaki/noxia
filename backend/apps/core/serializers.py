@@ -146,6 +146,12 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
             unit = attrs.get(key, getattr(self.instance, key, 1))
             if unit not in (1, 10, 100, 1000):
                 raise serializers.ValidationError({key: "1, 10, 100, 1000 のいずれかを指定してください。"})
+        step = attrs.get("entry_price_step", getattr(self.instance, "entry_price_step", 500))
+        if not (10 <= step <= 100000):
+            raise serializers.ValidationError({"entry_price_step": "料金の刻みは 10〜100,000 円で入力してください。"})
+        minutes = attrs.get("entry_minutes_step", getattr(self.instance, "entry_minutes_step", 30))
+        if not (5 <= minutes <= 180):
+            raise serializers.ValidationError({"entry_minutes_step": "時間の刻みは 5〜180 分で入力してください。"})
         return attrs
 
 

@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useFloor } from "@/components/AppShell";
 import { OpenRegisterCard } from "@/components/OpenRegister";
 import { sortByShift, StaffButton, useShiftGuard } from "@/components/ShiftGuard";
+import { SwipePicker } from "@/components/SwipePicker";
 import { useToast } from "@/components/Toast";
 import { ErrorBox, Spinner } from "@/components/ui";
 import { api, ApiError, errorMessage, newIdempotencyKey } from "@/lib/api";
@@ -15,7 +16,13 @@ import type { Course, Customer, Designation, Employee, StoreSettings, Table, Vis
 import { useLoad } from "@/lib/useLoad";
 
 type Step = "kind" | "count" | "guests" | "course";
-type GuestDraft = { employee: number | null; designation: Designation; courseId: number | null };
+/** 入店時に選ぶセットの料金・時間・チャージ（minutes = 0 は時間無制限） */
+type Terms = { price: number; minutes: number; charge: boolean };
+type GuestDraft = { employee: number | null; designation: Designation; courseId: number | null; terms: Terms | null };
+
+/** セット構成のとおり（チャージは最初は 0円） */
+const termsOf = (c: Course): Terms => ({ price: Number(c.price), minutes: c.duration_minutes ?? 0, charge: false });
+const MAX_PICK_MINUTES = 360;
 
 const DESIGNATIONS: {
   key: Exclude<Designation, "">;
@@ -57,10 +64,11 @@ function NewVisitInner() {
   const [tableId, setTableId] = useState<number | null>(params.get("table") ? Number(params.get("table")) : null);
   const [step, setStep] = useState<Step>("kind");
   const [kind, setKind] = useState<string | null>(null);
-  const [guests, setGuests] = useState<GuestDraft[]>([{ employee: null, designation: "", courseId: null }]);
+  const [guests, setGuests] = useState<GuestDraft[]>([{ employee: null, designation: "", courseId: null, terms: null }]);
   const [active, setActive] = useState(0);
   const [individual, setIndividual] = useState(false);
   const [courseId, setCourseId] = useState<number | null>(null);
+  const [terms, setTerms] = useState<Terms | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [primary, setPrimary] = useState<number | null>(null);
   const [customerId, setCustomerId] = useState<number | null>(null);
@@ -98,27 +106,38 @@ function NewVisitInner() {
   }
   function setCount(n: number) {
     const next = Math.max(1, Math.min(MAX_GUESTS, n));
-    setGuests((gs) => (next > gs.length ? [...gs, ...Array.from({ length: next - gs.length }, () => ({ employee: null, designation: "" as Designation, courseId: null }))] : gs.slice(0, next)));
+    setGuests((gs) => (next > gs.length ? [...gs, ...Array.from({ length: next - gs.length }, () => ({ employee: null, designation: "" as Designation, courseId: null, terms: null }))] : gs.slice(0, next)));
     setActive((a) => Math.min(a, next - 1));
     touch();
   }
 
-  /** API に送る内容。全員同じなら 1 つのセット、個別ならコースごとにまとめる */
+  /** API に送る内容。全員同じなら 1 つのセット、個別ならコース・料金・時間・チャージが同じ人ごとにまとめる */
   const body = useMemo(() => {
     if (!tableId) return null;
-    const perGuest = guests.map((g) => (individual ? g.courseId : courseId));
-    if (perGuest.some((c) => !c)) return null;
-    const order: number[] = [];
-    for (const c of perGuest) if (!order.includes(c!)) order.push(c!);
+    const perGuest = guests.map((g) => (individual ? { courseId: g.courseId, terms: g.terms } : { courseId, terms }));
+    if (perGuest.some((x) => !x.courseId || !x.terms)) return null;
+    const keyOf = (x: (typeof perGuest)[number]) => `${x.courseId}|${x.terms!.price}|${x.terms!.minutes}|${x.terms!.charge}`;
+    const order: string[] = [];
+    for (const x of perGuest) if (!order.includes(keyOf(x))) order.push(keyOf(x));
     return {
       table_id: tableId,
       primary_employee_id: primary,
       customer_id: customerId,
       customer_name: customerName,
-      entries: order.map((c) => ({ label: "", course_id: c, guest_count: perGuest.filter((x) => x === c).length })),
-      guests: guests.map((g, i) => ({ entry_index: order.indexOf(perGuest[i]!), employee_id: g.employee, designation: g.employee ? g.designation : "" })),
+      entries: order.map((k) => {
+        const x = perGuest.find((y) => keyOf(y) === k)!;
+        return {
+          label: "",
+          course_id: x.courseId,
+          guest_count: perGuest.filter((y) => keyOf(y) === k).length,
+          price: x.terms!.price,
+          duration_minutes: x.terms!.minutes,
+          charge: x.terms!.charge,
+        };
+      }),
+      guests: guests.map((g, i) => ({ entry_index: order.indexOf(keyOf(perGuest[i])), employee_id: g.employee, designation: g.employee ? g.designation : "" })),
     };
-  }, [tableId, guests, individual, courseId, primary, customerId, customerName]);
+  }, [tableId, guests, individual, courseId, terms, primary, customerId, customerName]);
 
   // 見積（保存しない）。時間と金額の手順で、内容が変わるたびにサーバーで計算し直す
   const previewKey = step === "course" && body ? JSON.stringify({ e: body.entries, g: body.guests }) : null;
@@ -220,6 +239,7 @@ function NewVisitInner() {
   const goBack = () => (stepIndex <= 0 ? router.push("/floor") : setStep(steps[stepIndex - 1].key));
   const goNext = () => setStep(steps[stepIndex + 1].key);
   const courseName = (id: number | null) => courses.data?.find((c) => c.id === id)?.name ?? "";
+  const courseOf = (id: number | null) => courses.data?.find((c) => c.id === id) ?? null;
   const summary = [table.name, hasKinds && kind !== null ? kind || "区分なし" : null, `${count}名`, step === "course" && !individual && courseId ? courseName(courseId) : null].filter(Boolean).join(" ・ ");
 
   return (
@@ -367,7 +387,7 @@ function NewVisitInner() {
                 className={`btn btn-sm ${individual ? "btn-primary" : ""}`}
                 onClick={() => {
                   setIndividual((v) => {
-                    if (!v) setGuests((gs) => gs.map((g) => ({ ...g, courseId: g.courseId ?? courseId })));
+                    if (!v) setGuests((gs) => gs.map((g) => (g.courseId ? g : { ...g, courseId, terms })));
                     return !v;
                   });
                   touch();
@@ -380,8 +400,33 @@ function NewVisitInner() {
             {!individual && (
               <div className="grid grid-cols-2 gap-2">
                 {shownCourses.map((c) => (
-                  <CourseButton key={c.id} c={c} perPerson={perPerson} selected={courseId === c.id} onClick={() => { setCourseId(c.id); touch(); }} />
+                  <CourseButton
+                    key={c.id}
+                    c={c}
+                    perPerson={perPerson}
+                    selected={courseId === c.id}
+                    onClick={() => {
+                      if (courseId !== c.id) setTerms(termsOf(c));
+                      setCourseId(c.id);
+                      touch();
+                    }}
+                  />
                 ))}
+              </div>
+            )}
+            {!individual && courseId && terms && courseOf(courseId) && (
+              <div className="card-2">
+                <TermsEditor
+                  title={`${count}名様`}
+                  course={courseOf(courseId)!}
+                  terms={terms}
+                  perPerson={perPerson}
+                  settings={settings.data}
+                  onChange={(t) => {
+                    setTerms(t);
+                    touch();
+                  }}
+                />
               </div>
             )}
             {individual &&
@@ -393,9 +438,12 @@ function NewVisitInner() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {shownCourses.map((c) => (
-                      <CourseButton key={c.id} c={c} perPerson={perPerson} compact selected={g.courseId === c.id} onClick={() => setGuest(i, { courseId: c.id })} />
+                      <CourseButton key={c.id} c={c} perPerson={perPerson} compact selected={g.courseId === c.id} onClick={() => setGuest(i, { courseId: c.id, terms: g.courseId === c.id && g.terms ? g.terms : termsOf(c) })} />
                     ))}
                   </div>
+                  {g.courseId && g.terms && courseOf(g.courseId) && (
+                    <TermsEditor course={courseOf(g.courseId)!} terms={g.terms} perPerson={perPerson} settings={settings.data} onChange={(t) => setGuest(i, { terms: t })} />
+                  )}
                 </div>
               ))}
             {shownCourses.length === 0 && <p style={{ color: "var(--color-muted)" }}>このセット構成のコースが登録されていません。</p>}
@@ -468,6 +516,9 @@ function NewVisitInner() {
                           <Tx>{LINE_TYPE_LABELS[l.line_type] ?? l.line_type}</Tx>
                         </span>
                         {l.name}
+                        {l.line_type === "course_set" && l.duration_minutes !== undefined && (
+                          <span className="text-base">（{l.duration_minutes === null ? "時間無制限" : fmtMinutes(l.duration_minutes)}）</span>
+                        )}
                         <span className="num" style={{ color: "var(--color-muted)" }}>
                           {" "}
                           {yen(l.unit_price)} × {l.quantity}
@@ -527,6 +578,93 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between" style={{ color: "var(--color-muted)" }}>
       <span>{label}</span>
       <span>{value}</span>
+    </div>
+  );
+}
+
+/** 料金の候補: 0 円から（セット料金の 2 倍・刻み 10 個ぶんの大きい方）まで、店舗設定の刻みで。セット料金と今の値は必ず入れる */
+function priceValues(base: number, step: number, current: number): number[] {
+  const s = step > 0 ? step : 500;
+  const max = Math.ceil(Math.max(base * 2, base + s * 10) / s) * s;
+  const set = new Set<number>([base, current]);
+  for (let v = 0; v <= max; v += s) set.add(v);
+  return [...set].sort((a, b) => a - b);
+}
+
+/** 時間の候補: 0（無制限）と、刻みごとに 6 時間まで。セットの時間と今の値は必ず入れる */
+function minuteValues(base: number | null, step: number, current: number): number[] {
+  const s = step > 0 ? step : 30;
+  const set = new Set<number>([0, current]);
+  if (base) set.add(base);
+  for (let m = s; m <= MAX_PICK_MINUTES; m += s) set.add(m);
+  return [...set].sort((a, b) => a - b);
+}
+
+/**
+ * セットの時間・料金を横にスワイプして選ぶ。チャージ料のあるセットは「チャージ 0円／○円」も選ぶ（最初は 0円）。
+ * 時間 0 は時間無制限（卓一覧では経過時間を数え上げる）。30 分以上なら残り時間を数え、設定に応じて残り 10・5 分でアラーム。
+ */
+function TermsEditor({
+  title,
+  course,
+  terms,
+  perPerson,
+  settings,
+  onChange,
+}: {
+  title?: string;
+  course: Course;
+  terms: Terms;
+  perPerson: boolean;
+  settings: StoreSettings | null;
+  onChange: (t: Terms) => void;
+}) {
+  const base = termsOf(course);
+  const priceStep = settings?.entry_price_step ?? 500;
+  const minutesStep = settings?.entry_minutes_step ?? 30;
+  const prices = useMemo(() => priceValues(base.price, priceStep, terms.price), [base.price, priceStep, terms.price]);
+  const minutes = useMemo(() => minuteValues(course.duration_minutes, minutesStep, terms.minutes), [course.duration_minutes, minutesStep, terms.minutes]);
+  const charge = Number(course.charge_amount ?? 0);
+  const changed = terms.price !== base.price || terms.minutes !== base.minutes;
+  return (
+    <div className="space-y-2" aria-label={`${title ?? course.name} の時間と料金`}>
+      {title && <div className="font-bold text-lg">{title}</div>}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="label text-base">時間</div>
+          <SwipePicker
+            label="時間"
+            testId="pick-minutes"
+            values={minutes}
+            value={terms.minutes}
+            onChange={(m) => onChange({ ...terms, minutes: m })}
+            format={(m) => `${m}分`}
+            caption={(m) => (m === 0 ? "無制限" : null)}
+          />
+        </div>
+        <div>
+          <div className="label text-base">料金{perPerson ? "（1人）" : "（1組）"}</div>
+          <SwipePicker label="料金" testId="pick-price" values={prices} value={terms.price} onChange={(p) => onChange({ ...terms, price: p })} format={(p) => yen(p)} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {charge > 0 && (
+          <>
+            <span className="font-bold">チャージ（1人）</span>
+            <button type="button" className={`btn ${!terms.charge ? "btn-primary" : ""}`} aria-pressed={!terms.charge} onClick={() => onChange({ ...terms, charge: false })}>
+              0円
+            </button>
+            <button type="button" className={`btn ${terms.charge ? "btn-primary" : ""}`} aria-pressed={terms.charge} onClick={() => onChange({ ...terms, charge: true })}>
+              {yen(charge)}
+            </button>
+          </>
+        )}
+        {changed && (
+          <button type="button" className="btn btn-sm ml-auto" onClick={() => onChange({ ...terms, price: base.price, minutes: base.minutes })}>
+            セットの時間・料金に戻す
+          </button>
+        )}
+      </div>
     </div>
   );
 }

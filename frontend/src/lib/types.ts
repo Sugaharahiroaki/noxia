@@ -35,6 +35,8 @@ export type Course = {
   duration_minutes: number | null;
   extension_price: Money;
   extension_minutes: number;
+  /** チャージ料（1人あたり）。0 = チャージなし。入店時に 0円／この額 を選ぶ */
+  charge_amount: Money;
   tax_rate: Money;
   is_active: boolean;
   sort_order: number;
@@ -91,6 +93,9 @@ export type StoreSettings = {
   service_charge_rounding_unit: number;
   total_rounding_unit: number;
   total_rounding_mode: string;
+  /** 入店画面でセットの料金・時間を横にスワイプして選ぶ刻み（円・分） */
+  entry_price_step: number;
+  entry_minutes_step: number;
   unlimited_change_mode: string;
   unlimited_change_price: Money | null;
   unlimited_change_after_ext_mode: string;

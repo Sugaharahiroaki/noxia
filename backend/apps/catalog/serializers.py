@@ -47,13 +47,15 @@ class CourseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ["id", "name", "price", "duration_minutes", "extension_price", "extension_minutes", "tax_rate",
+        fields = ["id", "name", "price", "duration_minutes", "extension_price", "extension_minutes", "charge_amount", "tax_rate",
                   "is_active", "sort_order", "note", "is_unlimited", "kind", "extension_options"]
         read_only_fields = ["id"]
 
     def validate(self, attrs):
         if attrs.get("price") is not None and attrs["price"] < 0:
             raise serializers.ValidationError({"price": "料金は0以上で入力してください。"})
+        if attrs.get("charge_amount") is not None and attrs["charge_amount"] < 0:
+            raise serializers.ValidationError({"charge_amount": "チャージ料は0以上で入力してください。"})
         return attrs
 
 

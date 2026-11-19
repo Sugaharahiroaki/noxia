@@ -29,6 +29,11 @@ function leadEntry(v: VisitBrief): CourseEntry | null {
   return timed[0] ?? active[0] ?? null;
 }
 
+/** 時間無制限のセットだけの伝票（入店時に時間 0 を選んだ・無制限のセット）。残り時間がないので経過時間を数え上げて出す */
+function isUnlimited(e: CourseEntry | null): boolean {
+  return !!e && (e.is_unlimited || !e.planned_end_at);
+}
+
 function visitLevel(v: VisitBrief, now: number, mode: Mode): AlarmLevel {
   let worst: AlarmLevel = null;
   for (const e of v.course_entries) {
@@ -153,6 +158,7 @@ export default function FloorPage() {
                 const lead = leadEntry(v);
                 const remain = remainText(lead, now);
                 const elapsed = fmtElapsed(v.opened_at, now);
+                const countUp = showElapsed || isUnlimited(lead);
                 return (
                   <button
                     key={t.id}
@@ -168,13 +174,13 @@ export default function FloorPage() {
                     </div>
                     <div className="flex items-baseline justify-between gap-1 w-full">
                       <span className="text-3xl font-bold num leading-tight" style={{ color: remain.over ? "var(--color-danger)" : undefined }}>
-                        {showElapsed ? `経過 ${elapsed}` : remain.text}
+                        {countUp ? `経過 ${elapsed}` : remain.text}
                         {remain.over && <span aria-label="時間超過"> ⚠</span>}
                       </span>
                     </div>
                     <div className="text-sm num w-full" style={{ color: "var(--color-muted)" }}>
                       {lead ? `${fmtTime(lead.started_at)}〜${lead.planned_end_at ? fmtTime(lead.planned_end_at) : "無制限"}` : ""}
-                      <span className="ml-2">{showElapsed ? remain.text : `経過 ${elapsed}`}</span>
+                      <span className="ml-2">{countUp ? (isUnlimited(lead) ? "" : remain.text) : `経過 ${elapsed}`}</span>
                     </div>
                     <div className="mt-auto flex items-end justify-between gap-1 w-full">
                       <span className="text-sm truncate min-w-0">
@@ -206,7 +212,9 @@ export default function FloorPage() {
                   </div>
                   <div className="mt-1 space-y-1 w-full">
                     {t.visits.map((v) => {
-                      const remain = remainText(leadEntry(v), now);
+                      const lead = leadEntry(v);
+                      const remain = remainText(lead, now);
+                      const countUp = showElapsed || isUnlimited(lead);
                       return (
                         <button
                           key={v.id}
@@ -217,7 +225,7 @@ export default function FloorPage() {
                           aria-label={`${t.name} 伝票 ${fmtId(v.public_id)} 使用中 ${v.guest_count}名 ${remain.text}`}
                         >
                           <span className="font-bold num" style={{ color: remain.over ? "var(--color-danger)" : undefined }}>
-                            {v.present_count}名 {showElapsed ? `経過 ${fmtElapsed(v.opened_at, now)}` : remain.text}
+                            {v.present_count}名 {countUp ? `経過 ${fmtElapsed(v.opened_at, now)}` : remain.text}
                             {remain.over && " ⚠"}
                           </span>
                           <span className="font-bold num">{yen(v.running_total)}</span>
