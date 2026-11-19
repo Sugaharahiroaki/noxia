@@ -47,22 +47,22 @@ def round_yen(value: Decimal, mode: str = "floor", unit: int = 1) -> Decimal:
     return (result * sign).quantize(ONE)
 
 
-def tax_from_included(amount_incl: Decimal, rate_percent: Decimal, mode: str = "floor") -> Decimal:
-    """税込金額に含まれる税額。 amount × rate / (100 + rate)"""
+def tax_from_included(amount_incl: Decimal, rate_percent: Decimal, mode: str = "floor", unit: int = 1) -> Decimal:
+    """税込金額に含まれる税額。 amount × rate / (100 + rate) を unit 円単位に丸める"""
     amount_incl = D(amount_incl)
     rate = D(rate_percent)
     if rate == 0:
         return ZERO
-    return round_yen(amount_incl * rate / (HUNDRED + rate), mode)
+    return round_yen(amount_incl * rate / (HUNDRED + rate), mode, unit)
 
 
-def tax_on_excluded(amount_excl: Decimal, rate_percent: Decimal, mode: str = "floor") -> Decimal:
-    """税抜金額にかかる税額。 amount × rate / 100"""
+def tax_on_excluded(amount_excl: Decimal, rate_percent: Decimal, mode: str = "floor", unit: int = 1) -> Decimal:
+    """税抜金額にかかる税額。 amount × rate / 100 を unit 円単位に丸める"""
     amount_excl = D(amount_excl)
     rate = D(rate_percent)
     if rate == 0:
         return ZERO
-    return round_yen(amount_excl * rate / HUNDRED, mode)
+    return round_yen(amount_excl * rate / HUNDRED, mode, unit)
 
 
 def excl_from_included(amount_incl: Decimal, rate_percent: Decimal, mode: str = "floor") -> Decimal:
@@ -70,8 +70,8 @@ def excl_from_included(amount_incl: Decimal, rate_percent: Decimal, mode: str = 
     return D(amount_incl) - tax_from_included(amount_incl, rate_percent, mode)
 
 
-def percent_of(amount: Decimal, rate_percent: Decimal, mode: str = "floor") -> Decimal:
-    return round_yen(D(amount) * D(rate_percent) / HUNDRED, mode)
+def percent_of(amount: Decimal, rate_percent: Decimal, mode: str = "floor", unit: int = 1) -> Decimal:
+    return round_yen(D(amount) * D(rate_percent) / HUNDRED, mode, unit)
 
 
 def fmt_yen(value) -> str:

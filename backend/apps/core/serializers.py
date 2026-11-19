@@ -140,9 +140,10 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
         price2 = attrs.get("unlimited_change_after_ext_price", getattr(self.instance, "unlimited_change_after_ext_price", None))
         if mode2 == "fixed" and price2 is None:
             raise serializers.ValidationError({"unlimited_change_after_ext_price": "固定額を指定してください。"})
-        unit = attrs.get("total_rounding_unit", getattr(self.instance, "total_rounding_unit", 1))
-        if unit not in (1, 10, 100, 1000):
-            raise serializers.ValidationError({"total_rounding_unit": "1, 10, 100, 1000 のいずれかを指定してください。"})
+        for key in ("tax_rounding_unit", "service_charge_rounding_unit", "total_rounding_unit"):
+            unit = attrs.get(key, getattr(self.instance, key, 1))
+            if unit not in (1, 10, 100, 1000):
+                raise serializers.ValidationError({key: "1, 10, 100, 1000 のいずれかを指定してください。"})
         return attrs
 
 

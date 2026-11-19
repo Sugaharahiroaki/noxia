@@ -166,24 +166,27 @@ export default function StoreSettingsPage() {
           </section>
           <section className="card space-y-3">
             <h2 className="font-bold">端数処理</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              それぞれ「何円単位で」「切り捨て・切り上げ・四捨五入」するかを決めます。1円単位は 1円未満の端数の処理です（合計の 1円単位は丸めない）。
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="消費税の端数">
-                <RoundingSelect value={f.tax_rounding} onChange={(v) => set({ tax_rounding: v })} disabled={!canEdit} />
+                <div className="flex gap-2">
+                  <RoundingUnitSelect value={f.tax_rounding_unit} onChange={(v) => set({ tax_rounding_unit: v })} disabled={!canEdit} />
+                  <RoundingSelect value={f.tax_rounding} onChange={(v) => set({ tax_rounding: v })} disabled={!canEdit} />
+                </div>
               </Field>
               <Field label="サービス料の端数">
-                <RoundingSelect value={f.service_charge_rounding} onChange={(v) => set({ service_charge_rounding: v })} disabled={!canEdit} />
+                <div className="flex gap-2">
+                  <RoundingUnitSelect value={f.service_charge_rounding_unit} onChange={(v) => set({ service_charge_rounding_unit: v })} disabled={!canEdit} />
+                  <RoundingSelect value={f.service_charge_rounding} onChange={(v) => set({ service_charge_rounding: v })} disabled={!canEdit} />
+                </div>
               </Field>
-              <Field label="合計の丸め単位（円）">
-                <select className="input" value={f.total_rounding_unit} onChange={(e) => set({ total_rounding_unit: Number(e.target.value) })} disabled={!canEdit}>
-                  {[1, 10, 100, 1000].map((u) => (
-                    <option key={u} value={u}>
-                      {u}円
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="合計の丸め方">
-                <RoundingSelect value={f.total_rounding_mode} onChange={(v) => set({ total_rounding_mode: v })} disabled={!canEdit} />
+              <Field label="合計の丸め（単位・丸め方）">
+                <div className="flex gap-2">
+                  <RoundingUnitSelect value={f.total_rounding_unit} onChange={(v) => set({ total_rounding_unit: v })} disabled={!canEdit} />
+                  <RoundingSelect value={f.total_rounding_mode} onChange={(v) => set({ total_rounding_mode: v })} disabled={!canEdit} />
+                </div>
               </Field>
             </div>
           </section>
@@ -367,6 +370,19 @@ function PayoutSection({ f, set, canEdit, canDecideTax }: { f: StoreSettings; se
         </div>
       ))}
     </section>
+  );
+}
+
+/** 端数を何円単位で処理するか（サーバーが受け付けるのは 1 / 10 / 100 / 1000） */
+function RoundingUnitSelect({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
+  return (
+    <select className="input" value={value} onChange={(e) => onChange(Number(e.target.value))} disabled={disabled} aria-label="何円単位で">
+      {[1, 10, 100, 1000].map((u) => (
+        <option key={u} value={u}>
+          {u}円単位
+        </option>
+      ))}
+    </select>
   );
 }
 

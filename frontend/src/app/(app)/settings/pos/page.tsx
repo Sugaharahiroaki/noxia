@@ -60,6 +60,13 @@ const ROUND: Option[] = [
   { value: "ceil", label: "切り上げ" },
   { value: "half_up", label: "四捨五入" },
 ];
+// 端数を何円単位で処理するか（サーバーが受け付けるのは 1 / 10 / 100 / 1000）
+const ROUND_UNIT: Option[] = [
+  { value: "1", label: "1円単位（1円未満の端数）" },
+  { value: "10", label: "10円単位" },
+  { value: "100", label: "100円単位" },
+  { value: "1000", label: "1000円単位" },
+];
 const CATEGORY_KINDS: Option[] = [
   { value: "drink", label: "ドリンク" },
   { value: "cast_drink", label: "キャストドリンク" },
@@ -228,11 +235,13 @@ const SECTIONS: Section[] = [
         ],
       },
       { key: "service_charge_after_discount", label: "値引き後の金額にサービス料をかける", type: "toggle" },
-      { key: "service_charge_rounding", label: "サービス料の端数", type: "select", options: ROUND },
+      { key: "service_charge_rounding_unit", label: "サービス料の端数（何円単位で）", type: "select", options: ROUND_UNIT },
+      { key: "service_charge_rounding", label: "サービス料の端数の処理", type: "select", options: ROUND },
       { key: "prices_include_tax", label: "価格は税込（内税）", type: "toggle" },
       { key: "default_tax_rate", label: "標準税率（%）", type: "money" },
-      { key: "tax_rounding", label: "消費税の端数", type: "select", options: ROUND },
-      { key: "total_rounding_unit", label: "合計の丸め単位（円。1 = 丸めない）", type: "int" },
+      { key: "tax_rounding_unit", label: "消費税の端数（何円単位で）", type: "select", options: ROUND_UNIT },
+      { key: "tax_rounding", label: "消費税の端数の処理", type: "select", options: ROUND },
+      { key: "total_rounding_unit", label: "合計の丸め単位（1円単位 = 丸めない）", type: "select", options: ROUND_UNIT },
       { key: "total_rounding_mode", label: "合計の丸め方", type: "select", options: ROUND },
     ],
   },

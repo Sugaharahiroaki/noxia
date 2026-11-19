@@ -140,7 +140,9 @@ class StoreSettings(TimestampedModel):
 
     # 端数処理
     tax_rounding = models.CharField(max_length=10, choices=RoundingMode.choices, default=RoundingMode.FLOOR)
+    tax_rounding_unit = models.PositiveIntegerField("消費税の端数の単位(円)", default=1)
     service_charge_rounding = models.CharField(max_length=10, choices=RoundingMode.choices, default=RoundingMode.FLOOR)
+    service_charge_rounding_unit = models.PositiveIntegerField("サービス料の端数の単位(円)", default=1)
     total_rounding_unit = models.PositiveIntegerField("合計の丸め単位(円)", default=1)
     total_rounding_mode = models.CharField(max_length=10, choices=RoundingMode.choices, default=RoundingMode.FLOOR)
 

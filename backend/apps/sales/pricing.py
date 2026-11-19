@@ -119,7 +119,9 @@ def settings_snapshot(st, method: str | None = None) -> dict:
         "service_charge_order": st.service_charge_order,
         "service_charge_after_discount": st.service_charge_after_discount,
         "tax_rounding": st.tax_rounding,
+        "tax_rounding_unit": st.tax_rounding_unit,
         "service_charge_rounding": st.service_charge_rounding,
+        "service_charge_rounding_unit": st.service_charge_rounding_unit,
         "total_rounding_unit": st.total_rounding_unit,
         "total_rounding_mode": st.total_rounding_mode,
     }
@@ -144,6 +146,7 @@ def compute_totals(lines: Iterable[LineInput], st, method: str | None = None) ->
     sc_rate = service_charge_rate_for(st, method)
     t.service_charge_rate = sc_rate if st.service_charge_enabled else ZERO
     tax_mode = st.tax_rounding
+    tax_unit = int(st.tax_rounding_unit or 1)
     default_rate = D(st.default_tax_rate)
 
     # --- 1. 税率グループ ---
@@ -188,29 +191,30 @@ def compute_totals(lines: Iterable[LineInput], st, method: str | None = None) ->
             else:
                 basis_excl += amt
         sc_mode = st.service_charge_rounding
+        sc_unit = int(st.service_charge_rounding_unit or 1)
         if st.prices_include_tax:
             # 内税: 税込基準額 × 料率。外税明細が混在していれば税込換算して合算する。
             mixed_incl = basis_incl
             if basis_excl:
-                mixed_incl += basis_excl + tax_on_excluded(basis_excl, default_rate, tax_mode)
-            sc = percent_of(mixed_incl, sc_rate, sc_mode)
+                mixed_incl += basis_excl + tax_on_excluded(basis_excl, default_rate, tax_mode, tax_unit)
+            sc = percent_of(mixed_incl, sc_rate, sc_mode, sc_unit)
             if sc:
                 grp(default_rate)["incl"] += sc
         else:
             if st.service_charge_order == "after_tax":
-                base = basis_excl + tax_on_excluded(basis_excl, default_rate, tax_mode) + basis_incl
-                sc = percent_of(base, sc_rate, sc_mode)
+                base = basis_excl + tax_on_excluded(basis_excl, default_rate, tax_mode, tax_unit) + basis_incl
+                sc = percent_of(base, sc_rate, sc_mode, sc_unit)
                 # 税をかけない: 税率0のグループとして加える
                 if sc:
                     grp(ZERO)["excl"] += sc
             else:
                 base = basis_excl
                 if basis_incl:
-                    base += basis_incl - tax_from_included(basis_incl, default_rate, tax_mode)
-                sc = percent_of(base, sc_rate, sc_mode)
+                    base += basis_incl - tax_from_included(basis_incl, default_rate, tax_mode, tax_unit)
+                sc = percent_of(base, sc_rate, sc_mode, sc_unit)
                 if sc:
                     grp(default_rate)["excl"] += sc
-                    sc_tax = tax_on_excluded(sc, default_rate, tax_mode)
+                    sc_tax = tax_on_excluded(sc, default_rate, tax_mode, tax_unit)
     t.service_charge = sc
     t.service_charge_tax = sc_tax
 
@@ -221,8 +225,8 @@ def compute_totals(lines: Iterable[LineInput], st, method: str | None = None) ->
     breakdown_rows = []
     for rate in sorted(groups.keys(), reverse=True):
         g = groups[rate]
-        tax_in = tax_from_included(g["incl"], rate, tax_mode)
-        tax_ex = tax_on_excluded(g["excl"], rate, tax_mode)
+        tax_in = tax_from_included(g["incl"], rate, tax_mode, tax_unit)
+        tax_ex = tax_on_excluded(g["excl"], rate, tax_mode, tax_unit)
         excl = (g["incl"] - tax_in) + g["excl"]
         tax = tax_in + tax_ex
         incl = excl + tax

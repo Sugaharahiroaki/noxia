@@ -86,7 +86,9 @@ export type StoreSettings = {
   service_charge_order: string;
   service_charge_after_discount: boolean;
   tax_rounding: string;
+  tax_rounding_unit: number;
   service_charge_rounding: string;
+  service_charge_rounding_unit: number;
   total_rounding_unit: number;
   total_rounding_mode: string;
   unlimited_change_mode: string;

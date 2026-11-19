@@ -566,6 +566,8 @@ export default function VisitDetailPage() {
 
 const ROUND_LABEL: Record<string, string> = { floor: "切り捨て", ceil: "切り上げ", half_up: "四捨五入" };
 const SC_TARGET_LABEL: Record<string, string> = { all: "全明細", course_only: "セット・延長のみ", products_only: "商品のみ" };
+/** 端数の処理（例: 100円単位で切り上げ。1円単位は「切り捨て」のように丸め方だけ） */
+const roundingLabel = (unit: number | undefined, mode: string) => `${unit && unit > 1 ? `${unit}円単位で` : ""}${ROUND_LABEL[mode] ?? mode}`;
 
 /**
  * いまの店舗の料金計算の設定（読み取り専用）。卓ごとの率の変更は出さない（UNIFIED_PLAN 6 章 Q2）。
@@ -586,15 +588,15 @@ function PricingInfo({ st }: { st: StoreSettings }) {
         <dt style={{ color: "var(--color-muted)" }}>サービス料</dt>
         <dd className="num">
           {st.service_charge_enabled
-            ? `${byMethod.length ? "標準 " : ""}${Number(st.service_charge_rate)}%${byMethod.map(([label, r]) => `・${label} ${Number(r)}%`).join("")}（${SC_TARGET_LABEL[st.service_charge_target] ?? st.service_charge_target}）`
+            ? `${byMethod.length ? "標準 " : ""}${Number(st.service_charge_rate)}%${byMethod.map(([label, r]) => `・${label} ${Number(r)}%`).join("")}（${SC_TARGET_LABEL[st.service_charge_target] ?? st.service_charge_target}・${roundingLabel(st.service_charge_rounding_unit, st.service_charge_rounding)}）`
             : "なし"}
         </dd>
         <dt style={{ color: "var(--color-muted)" }}>消費税</dt>
         <dd className="num">
-          {Number(st.default_tax_rate)}%（{st.prices_include_tax ? "内税" : "外税"}・{ROUND_LABEL[st.tax_rounding] ?? st.tax_rounding}）
+          {Number(st.default_tax_rate)}%（{st.prices_include_tax ? "内税" : "外税"}・{roundingLabel(st.tax_rounding_unit, st.tax_rounding)}）
         </dd>
         <dt style={{ color: "var(--color-muted)" }}>合計の丸め</dt>
-        <dd className="num">{st.total_rounding_unit > 1 ? `${st.total_rounding_unit}円単位で${ROUND_LABEL[st.total_rounding_mode] ?? st.total_rounding_mode}` : "なし（1円単位）"}</dd>
+        <dd className="num">{st.total_rounding_unit > 1 ? roundingLabel(st.total_rounding_unit, st.total_rounding_mode) : "なし（1円単位）"}</dd>
       </dl>
     </section>
   );

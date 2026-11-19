@@ -29,6 +29,7 @@ def fake_st(**kw):
         price_basis="per_person", prices_include_tax=True, default_tax_rate=Decimal("10"), service_charge_enabled=True,
         service_charge_rate=Decimal("20"), service_charge_target="all", service_charge_order="before_tax", service_charge_after_discount=True,
         tax_rounding="floor", service_charge_rounding="floor", total_rounding_unit=1, total_rounding_mode="floor",
+        tax_rounding_unit=1, service_charge_rounding_unit=1,
         service_charge_rate_cash=None, service_charge_rate_card=None, service_charge_rate_receivable=None,
     )
     base.update(kw)
