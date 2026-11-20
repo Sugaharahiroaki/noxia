@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { ErrorBox, Spinner } from "@/components/ui";
@@ -11,19 +12,22 @@ import { useLoad } from "@/lib/useLoad";
 
 /**
  * 指名・同伴の一覧（呼び・同伴・本指名・場内指名）。1 行ずつ「使う・名前・お客様の料金・キャストのバック（なし／円／会計の%）」を決める。
+ * 呼びはバックを「なし」（店舗共通のバックをオフ）にすると、従業員管理で % を入れた人だけその % で付く。その % の基準額・分け方は店舗で 1 つ、ここで決める
+ * （サーバーには per_cast として送る）。「使わない」は入店・卓の画面に出さない設定なので、呼びそのものが付けられず、個人の % も付かない。
  * - 使う・料金は店舗設定（settings.edit）、名前は名称変更（同じく settings.edit）、バックは店舗共通のバックルール（backs.rules.edit。見るのは backs.rules.view）。
- * - バックの中身は /api/staff/designation-backs（サーバーが BackRule の店舗共通ルールに保存する。キャスト個人別のルールはそのまま）。
+ * - バックの中身は /api/staff/designation-backs（サーバーが BackRule の店舗共通ルールに保存する。キャスト個人別のルールの % はそのまま）。
  * - 金額の計算はしない（入力をそのまま送り、計算はサーバー）。
  * PC の「時給・バック・料金」とタブレットの「POS 設定」の両方で使う。
  */
 
 type Kind = "yobi" | "douhan" | "nomination" | "jounai";
-type Mode = "none" | "fixed" | "percent";
+type Mode = "none" | "fixed" | "percent" | "per_cast";
 type Basis = "set_extension" | "subtotal" | "total";
 type Split = "equal" | "full_each";
-type BackApiRow = {
+export type BackApiRow = {
   target: string;
   kind: "per_unit" | "subtotal";
+  /** per_cast = 店舗共通のバックはなしで、従業員管理で % を入れた人だけ付く（会計の%の対象だけ。画面では「なし」） */
   mode: Mode;
   value: Money | null;
   subtotal_basis: Basis;
@@ -32,12 +36,16 @@ type BackApiRow = {
   rule_id: number | null;
   effective_from: string | null;
   personal_rules: number;
+  /** その種類を「使う」か（使わない = 入店・卓の画面に出さない） */
+  enabled?: boolean;
+  /** 会計の%の対象だけ: キャスト個人別のルールがある在籍中の人 */
+  personal?: { employee_id: number; name: string; calc_type: "fixed" | "percent"; value: Money }[];
 };
-type BackDraft = { mode: Mode | "custom"; value: string; basis: Basis; split: Split };
+type BackDraft = { mode: Exclude<Mode, "per_cast"> | "custom"; value: string; basis: Basis; split: Split };
 type RowDraft = { enabled: boolean; name: string; fee: string; back: BackDraft };
 
-const ROWS: { key: Kind; hint: string }[] = [
-  { key: "yobi", hint: "キャストが呼んだお客様" },
+const ROWS: { key: Kind; hint: string; perCast?: boolean }[] = [
+  { key: "yobi", hint: "キャストが呼んだお客様", perCast: true },
   { key: "douhan", hint: "キャストと一緒に来店" },
   { key: "nomination", hint: "来店前から決まっている指名" },
   { key: "jounai", hint: "来店後に席で受けた指名" },
@@ -59,7 +67,8 @@ function toDraft(unit: BackApiRow | undefined, bill: BackApiRow | undefined): Ba
   const split = bill?.split_mode ?? "equal";
   const u = unit?.mode ?? "none";
   const b = bill?.mode ?? "none";
-  if (u === "none" && b === "none") return { mode: "none", value: "", basis, split };
+  // per_cast（店舗共通なし・個人の%だけ）も画面では「なし」
+  if (u === "none" && (b === "none" || b === "per_cast")) return { mode: "none", value: "", basis, split };
   if (u === "fixed" && b === "none") return { mode: "fixed", value: num(unit?.value), basis, split };
   if (u === "none" && b === "percent") return { mode: "percent", value: num(bill?.value), basis, split };
   return { mode: "custom", value: "", basis, split };
@@ -68,13 +77,21 @@ function toDraft(unit: BackApiRow | undefined, bill: BackApiRow | undefined): Ba
 function customText(unit: BackApiRow | undefined, bill: BackApiRow | undefined): string {
   const parts: string[] = [];
   if (unit && unit.mode !== "none") parts.push(unit.mode === "fixed" ? `1 回 ${num(unit.value)}円` : `料金の ${num(unit.value)}%`);
-  if (bill && bill.mode !== "none") parts.push(bill.mode === "percent" ? `会計の ${num(bill.value)}%` : `1 会計 ${num(bill.value)}円`);
+  if (bill && bill.mode !== "none")
+    parts.push(bill.mode === "percent" ? `会計の ${num(bill.value)}%` : bill.mode === "per_cast" ? "会計の%は個人の%だけ" : `1 会計 ${num(bill.value)}円`);
   return parts.join(" ＋ ");
 }
 
-function sameBack(a: BackDraft, b: BackDraft) {
+/** 従業員管理で入れた個人の % の一覧の文字（例: あやか 20%・みく 15%） */
+function personalText(bill: BackApiRow | undefined): string {
+  return (bill?.personal ?? []).map((p) => `${p.name} ${p.calc_type === "percent" ? `${num(p.value)}%` : `${num(p.value)}円`}`).join("・");
+}
+
+function sameBack(a: BackDraft, b: BackDraft, perCast = false) {
   if (a.mode !== b.mode) return false;
-  if (a.mode === "none" || a.mode === "custom") return true;
+  if (a.mode === "custom") return true;
+  // 呼びの「なし」は、個人の % の基準額・分け方も持つ
+  if (a.mode === "none") return !perCast || (a.basis === b.basis && a.split === b.split);
   if (a.value.trim() !== b.value.trim() && Number(a.value) !== Number(b.value)) return false;
   return a.mode === "fixed" || (a.basis === b.basis && a.split === b.split);
 }
@@ -155,12 +172,14 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
         const items: Record<string, unknown>[] = [];
         for (const r of ROWS) {
           const b = draft[r.key].back;
-          if (b.mode === "custom" || sameBack(b, initialBack[r.key])) continue;
+          if (b.mode === "custom" || sameBack(b, initialBack[r.key], r.perCast)) continue;
           items.push({ target: r.key, mode: b.mode === "fixed" ? "fixed" : "none", value: b.mode === "fixed" ? b.value : null });
           items.push(
             b.mode === "percent"
               ? { target: `${r.key}_subtotal`, mode: "percent", value: b.value, subtotal_basis: b.basis, split_mode: b.split }
-              : { target: `${r.key}_subtotal`, mode: "none" },
+              : b.mode === "none" && r.perCast
+                ? { target: `${r.key}_subtotal`, mode: "per_cast", subtotal_basis: b.basis, split_mode: b.split }
+                : { target: `${r.key}_subtotal`, mode: "none" },
           );
         }
         if (items.length) backs.setData(await api<{ business_date: string; backs: BackApiRow[] }>("/api/staff/designation-backs", { method: "PUT", body: { backs: items } }));
@@ -179,7 +198,8 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
     <div className="space-y-2">
       <p className="text-sm" style={{ color: "var(--color-muted)" }}>
         使わない項目は入店・卓の画面に出しません。料金はお客様に請求する額で、空欄は「未設定」（選べません）、0 は料金なし。
-        バックは「1 回いくら（円）」か「その項目が付いた会計の何%」を選びます。決めた日の営業日から使われ、それより前の分は変わりません。
+        バックは「1 回いくら（円）」か「その項目が付いた会計の何%」を選びます。{termOf("yobi")?.label ?? "呼び"}はバックを「なし」にすると、従業員管理で % を入れた人だけ、その % で付きます。
+        決めた日の営業日から使われ、それより前の分は変わりません。
       </p>
       <ErrorBox
         error={st.error || backs.error}
@@ -238,6 +258,11 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
                   <span className="font-bold">{d.enabled ? "使う" : "使わない"}</span>
                 </button>
               </div>
+              {!d.enabled && r.perCast && canSeeBacks && (
+                <p className="text-sm" style={{ color: "var(--color-muted)" }} data-testid={`off-note-${r.key}`}>
+                  {`「使わない」にすると入店・卓の画面に${shown}が出ないので、${shown}のバックは誰にも付きません（従業員管理で入れた % も）。キャストごとの % で付けるときは「使う」のまま、バックを「なし」にします。`}
+                </p>
+              )}
               {d.enabled && (
                 <div className="grid gap-2 items-end" style={{ gridTemplateColumns: "minmax(0,0.8fr) minmax(0,1.8fr) minmax(0,0.8fr) minmax(0,1fr) minmax(0,0.9fr)" }}>
                   <label className="block">
@@ -303,17 +328,23 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
                             {d.back.mode === "fixed" ? "円" : "%"}
                           </span>
                         </label>
+                      ) : d.back.mode === "none" && r.perCast ? (
+                        <div className="text-sm self-center leading-tight" style={{ color: "var(--color-muted)" }}>
+                          店舗共通は
+                          <br />
+                          なし
+                        </div>
                       ) : (
                         <div className="text-sm self-center" style={{ gridColumn: "span 3", color: "var(--color-muted)" }}>
                           {d.back.mode === "custom" ? `細かい設定があります（${customText(unit, bill)}）。変えるときは左で選び直してください。` : "バックは付きません"}
                           {personal > 0 && `　キャスト個人別の設定 ${personal} 件はそのまま（個人別が優先）`}
                         </div>
                       )}
-                      {d.back.mode === "percent" && (
+                      {(d.back.mode === "percent" || (d.back.mode === "none" && r.perCast)) && (
                         <>
                           <label className="block">
                             <span className="label" style={{ fontSize: "0.85rem" }}>
-                              何の%か
+                              {d.back.mode === "none" ? "個人の%は何の%か" : "何の%か"}
                             </span>
                             <select className="input" value={d.back.basis} disabled={lockBack} onChange={(e) => setBack(r.key, { basis: e.target.value as Basis })} aria-label={`${shown} のバックの基準`}>
                               {(Object.keys(BASIS_LABELS) as Basis[]).map((k) => (
@@ -341,6 +372,19 @@ export function DesignationSettings({ variant, title = "指名・同伴（呼び
                         <div className="text-sm self-center" style={{ gridColumn: "span 2", color: "var(--color-muted)" }}>
                           {`${shown} 1 回ごとに付きます`}
                           {personal > 0 && `（キャスト個人別 ${personal} 件が優先）`}
+                        </div>
+                      )}
+                      {r.perCast && (d.back.mode === "none" || (d.back.mode === "percent" && personalText(bill))) && (
+                        <div className="text-sm" style={{ gridColumn: "1 / -1", color: "var(--color-muted)" }} data-testid={`per-cast-${r.key}`}>
+                          {d.back.mode === "none"
+                            ? `従業員管理（各人の「編集」の「${shown}バック」）で % を入れた人だけ、その % で付きます（入れていない人には付きません）。`
+                            : "従業員管理で % を入れた人は、その人だけそちらが優先されます。"}
+                          {personalText(bill) ? `いま: ${personalText(bill)}。` : "まだ誰も入っていません。"}
+                          {variant === "page" && (
+                            <Link href="/employees" className="underline ml-1" style={{ color: "var(--color-accent)" }}>
+                              従業員管理を開く
+                            </Link>
+                          )}
                         </div>
                       )}
                     </>

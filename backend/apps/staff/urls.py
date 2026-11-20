@@ -12,6 +12,7 @@ urlpatterns = [
     path("staff/employees/<int:employee_id>/assignment", views.EmployeeAssignmentView.as_view()),
     path("staff/employees/<int:employee_id>/login-account", views.EmployeeLoginAccountView.as_view()),
     path("staff/employees/<int:employee_id>/wages", views.EmployeeWagesView.as_view()),
+    path("staff/employees/<int:employee_id>/designation-backs", views.EmployeeDesignationBacksView.as_view()),
     path("staff/designation-backs", views.DesignationBacksView.as_view()),
     path("staff/backs", views.BackEntriesView.as_view()),
     path("staff/backs/adjust", views.BackAdjustmentView.as_view()),

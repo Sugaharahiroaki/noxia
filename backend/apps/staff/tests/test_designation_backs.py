@@ -179,3 +179,208 @@ class DesignationBacksTests(APITestCase):
         self.assertTrue(BackRule.objects.get(store=other.store).is_active)
         other_rows = {row["target"]: row for row in client_for(other.users["owner"], other.store).get(URL).json()["backs"]}
         self.assertEqual(D(other_rows["nomination"]["value"]), D(700))
+
+
+class PerCastBacksTests(APITestCase):
+    """「会計の%」をキャストごとの %（従業員管理で入れる）で付ける: 設定・計算・条件のそろえ方・従業員 1 人の API の権限と別店舗。"""
+
+    def setUp(self):
+        self.fx = standard_fixture()
+        self.store = self.fx.store
+        self.fx.settings.yobi_fee = D(0)
+        self.fx.settings.save()
+        self.manager = self.fx.users["manager"]
+        self.owner = client_for(self.fx.users["owner"], self.store)
+        self.today = current_business_date(self.store)
+        self.cast1 = self.fx.employees["cast1"]
+        self.cast2 = self.fx.employees["cast2"]
+
+    def rows(self, client=None):
+        r = (client or self.owner).get(URL)
+        self.assertEqual(r.status_code, 200, r.content)
+        return {row["target"]: row for row in r.json()["backs"]}
+
+    def put(self, backs, client=None):
+        return (client or self.owner).put(URL, {"backs": backs}, format="json")
+
+    def emp_url(self, emp):
+        return f"/api/staff/employees/{emp.id}/designation-backs"
+
+    def put_emp(self, emp, value, client=None, target="yobi_subtotal"):
+        return (client or self.owner).put(self.emp_url(emp), {"backs": [{"target": target, "value": value}]}, format="json")
+
+    def per_cast(self, **cond):
+        r = self.put([{"target": "yobi", "mode": "none"}, {"target": "yobi_subtotal", "mode": "per_cast", **cond}])
+        self.assertEqual(r.status_code, 200, r.content)
+        return {row["target"]: row for row in r.json()["backs"]}
+
+    def visit(self, table=0):
+        return services.open_visit(self.store, self.manager, {"table_id": self.fx.tables[table].id, "entries": [{"guest_count": 2, "course_id": self.fx.hourly.id}]})
+
+    def pay(self, v):
+        total = services.quote(v)[0].total
+        return services.confirm_checkout(self.store, self.manager, v.id, {"payments": [{"method": "card", "amount": str(total)}]})
+
+    def test_each_cast_gets_own_percent_and_others_get_nothing(self):
+        rows = self.per_cast(subtotal_basis="set_extension", split_mode="full_each")
+        self.assertEqual((rows["yobi_subtotal"]["mode"], rows["yobi_subtotal"]["subtotal_basis"], rows["yobi_subtotal"]["split_mode"]),
+                         ("per_cast", "set_extension", "full_each"))
+        self.assertIsNone(rows["yobi_subtotal"]["rule_id"])
+        self.fx.settings.refresh_from_db()
+        self.assertEqual(self.fx.settings.per_cast_backs, {"yobi": {"subtotal_basis": "set_extension", "split_mode": "full_each", "include_discount": True}})
+        r = self.put_emp(self.cast1, "20")
+        self.assertEqual(r.status_code, 200, r.content)
+        mine = {row["target"]: row for row in r.json()["backs"]}["yobi_subtotal"]
+        self.assertEqual((mine["calc_type"], D(mine["value"]), mine["store"]["mode"]), ("percent", D(20), "per_cast"))
+        rule = BackRule.objects.get(employee=self.cast1, target_type="yobi_subtotal")
+        self.assertEqual((rule.subtotal_basis, rule.split_mode, rule.effective_from), ("set_extension", "full_each", self.today))   # 条件は店舗の個人別の条件
+        self.assertEqual(rule.name, f"呼びのある会計の%バック（{self.cast1.display_name}）")
+        self.assertEqual(self.rows()["yobi_subtotal"]["personal"],
+                         [{"employee_id": self.cast1.id, "name": self.cast1.display_name, "calc_type": "percent", "value": "20.00"}])
+
+        v = self.visit()                                                                # セット 2,500 × 2 = 5,000
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast1.id})
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast2.id})
+        co = self.pay(v)
+        backs = BackEntry.objects.filter(checkout=co, kind="yobi_subtotal")
+        self.assertEqual([(b.employee_id, b.basis_amount, b.amount) for b in backs], [(self.cast1.id, D(5000), D(1000))])   # % の無い cast2 には付かない
+        self.assertFalse(BackEntry.objects.filter(visit=v, kind="yobi").exists())        # 1 回ごとのバックはなし
+
+    def test_store_back_none_and_personal_percent_applies(self):
+        """店舗共通の呼びのバックを「なし」（オフ）にして、従業員管理で % を入れた人だけ、その % で付く（依頼どおりのルール）。"""
+        BackRule.objects.create(store=self.store, name="共通", target_type="yobi_subtotal", calc_type="percent", value=D(10),
+                                effective_from=self.today - timedelta(days=5))
+        self.assertEqual(self.put([{"target": "yobi", "mode": "none"}, {"target": "yobi_subtotal", "mode": "none"}]).status_code, 200)
+        self.assertEqual(self.put_emp(self.cast1, "25").status_code, 200)
+        rows = self.rows()
+        self.assertEqual((rows["yobi_subtotal"]["mode"], rows["yobi_subtotal"]["rule_id"]), ("none", None))
+        self.assertTrue(rows["yobi_subtotal"]["enabled"])
+        v = self.visit()                                                                # セット 2,500 × 2 = 5,000
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast1.id})
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast2.id})
+        co = self.pay(v)
+        half = D(co.subtotal) / 2
+        backs = BackEntry.objects.filter(checkout=co, kind="yobi_subtotal")
+        self.assertEqual([(b.employee_id, b.basis_amount, b.amount) for b in backs], [(self.cast1.id, half, half * D("0.25"))])   # cast2 は % なし → 付かない
+
+    def test_enabled_flag_follows_use_switch(self):
+        """「使う／使わない」は入店・卓の画面に出すかどうか。使わないにすると呼びが付けられないので、画面に知らせる（enabled）。"""
+        self.fx.settings.yobi_enabled = False
+        self.fx.settings.save()
+        rows = self.rows()
+        self.assertFalse(rows["yobi_subtotal"]["enabled"])
+        self.assertFalse(rows["yobi"]["enabled"])
+        self.assertTrue(rows["douhan_subtotal"]["enabled"])
+        mine = {row["target"]: row for row in self.owner.get(self.emp_url(self.cast1)).json()["backs"]}
+        self.assertEqual((mine["yobi_subtotal"]["store"]["enabled"], mine["douhan_subtotal"]["store"]["enabled"]), (False, True))
+
+    def test_split_between_casts_uses_each_percent(self):
+        self.per_cast()                                                                 # 既定: 会計（TAX 前）・人数で割る
+        self.put_emp(self.cast1, "20")
+        self.put_emp(self.cast2, "10")
+        v = self.visit()
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast1.id})
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast2.id})
+        co = self.pay(v)
+        backs = {b.employee_id: b for b in BackEntry.objects.filter(checkout=co, kind="yobi_subtotal")}
+        half = D(co.subtotal) / 2
+        self.assertEqual((backs[self.cast1.id].basis_amount, backs[self.cast1.id].amount), (half, half * D("0.2")))
+        self.assertEqual((backs[self.cast2.id].basis_amount, backs[self.cast2.id].amount), (half, half * D("0.1")))
+
+    def test_changing_per_cast_conditions_follows_on_personal_rules(self):
+        self.per_cast()
+        old = BackRule.objects.create(store=self.store, employee=self.cast2, name="前からの個人別", target_type="yobi_subtotal", calc_type="percent",
+                                      value=D(15), effective_from=self.today - timedelta(days=10), rounding="ceil")
+        self.put_emp(self.cast1, "20")
+        self.per_cast(subtotal_basis="total", split_mode="full_each", include_discount=False)
+        today_rule = BackRule.objects.get(employee=self.cast1, target_type="yobi_subtotal")      # 今日始めたものは書き換え
+        self.assertEqual((today_rule.value, today_rule.subtotal_basis, today_rule.split_mode, today_rule.include_discount), (D(20), "total", "full_each", False))
+        old.refresh_from_db()
+        self.assertEqual(old.effective_to, self.today - timedelta(days=1))              # 前からのものは昨日まで（過去の分はそのまま）
+        self.assertEqual(old.subtotal_basis, "subtotal")
+        new = BackRule.objects.get(employee=self.cast2, target_type="yobi_subtotal", effective_from=self.today)
+        self.assertEqual((new.value, new.subtotal_basis, new.rounding), (D(15), "total", "ceil"))
+        # 同じ条件でもう一度保存しても何も変わらない
+        count = BackRule.objects.count()
+        logs = AuditLog.objects.filter(action="back_rule.designation_update").count()
+        self.per_cast(subtotal_basis="total", split_mode="full_each", include_discount=False)
+        self.assertEqual(BackRule.objects.count(), count)
+        self.assertEqual(AuditLog.objects.filter(action="back_rule.designation_update").count(), logs)
+
+    def test_switch_between_percent_of_bill_and_per_cast(self):
+        common = BackRule.objects.create(store=self.store, name="共通", target_type="yobi_subtotal", calc_type="percent", value=D(10),
+                                         effective_from=self.today - timedelta(days=5), subtotal_basis="set_extension")
+        rows = self.per_cast()
+        self.assertEqual((rows["yobi_subtotal"]["mode"], rows["yobi_subtotal"]["subtotal_basis"]), ("per_cast", "set_extension"))   # 条件は引き継ぐ
+        common.refresh_from_db()
+        self.assertEqual(common.effective_to, self.today - timedelta(days=1))
+        log = AuditLog.objects.filter(action="back_rule.designation_update").latest("id")
+        self.assertIn("個人の%だけ", str(log.changes))
+        r = self.put([{"target": "yobi_subtotal", "mode": "percent", "value": "12"}])
+        rows = {row["target"]: row for row in r.json()["backs"]}
+        self.assertEqual((rows["yobi_subtotal"]["mode"], D(rows["yobi_subtotal"]["value"]), rows["yobi_subtotal"]["subtotal_basis"]), ("percent", D(12), "set_extension"))
+        self.fx.settings.refresh_from_db()
+        self.assertEqual(self.fx.settings.per_cast_backs, {})
+        self.per_cast()
+        self.assertEqual(self.put([{"target": "yobi_subtotal", "mode": "none"}]).status_code, 200)
+        self.assertEqual(self.rows()["yobi_subtotal"]["mode"], "none")
+
+    def test_personal_percent_wins_over_common_percent(self):
+        self.put([{"target": "yobi_subtotal", "mode": "percent", "value": "10"}])
+        r = self.put_emp(self.cast1, "25")
+        mine = {row["target"]: row for row in r.json()["backs"]}["yobi_subtotal"]
+        self.assertEqual((mine["store"]["mode"], D(mine["store"]["value"])), ("percent", D(10)))
+        v = self.visit()
+        services.add_fee_line(self.store, self.manager, v.id, "yobi", {"employee_id": self.cast1.id})
+        co = self.pay(v)
+        self.assertEqual(BackEntry.objects.get(checkout=co, kind="yobi_subtotal").amount, D(co.subtotal) * D("0.25"))
+
+    def test_blank_value_stops_the_personal_rule(self):
+        self.per_cast()
+        self.put_emp(self.cast1, "20")
+        self.put_emp(self.cast1, "22.5")
+        self.assertEqual(BackRule.objects.get(employee=self.cast1, is_active=True).value, D("22.5"))   # 同じ日は書き換え
+        r = self.put_emp(self.cast1, "")
+        self.assertEqual(r.status_code, 200, r.content)
+        mine = {row["target"]: row for row in r.json()["backs"]}["yobi_subtotal"]
+        self.assertIsNone(mine["value"])
+        self.assertFalse(BackRule.objects.filter(employee=self.cast1, is_active=True).exists())
+        self.assertEqual(self.rows()["yobi_subtotal"]["personal"], [])
+        self.assertTrue(AuditLog.objects.filter(action="back_rule.employee_designation_update").exists())
+
+    def test_validation(self):
+        self.assertEqual(self.put([{"target": "yobi", "mode": "per_cast"}]).status_code, 400)          # 1 回ごとは個人別にできない
+        for value in ("101", "abc", "-1", "1.234"):
+            self.assertEqual(self.put_emp(self.cast1, value).status_code, 400, value)
+        self.assertEqual(self.put_emp(self.cast1, "10", target="yobi").status_code, 400)
+        dup = [{"target": "yobi_subtotal", "value": "1"}, {"target": "yobi_subtotal", "value": "2"}]
+        self.assertEqual(self.owner.put(self.emp_url(self.cast1), {"backs": dup}, format="json").status_code, 400)
+        self.assertEqual(self.owner.put(self.emp_url(self.cast1), {"backs": "x"}, format="json").status_code, 400)
+        self.assertFalse(BackRule.objects.exists())
+
+    def test_store_settings_api_cannot_change_per_cast(self):
+        self.owner.put("/api/store/settings", {"per_cast_backs": {"yobi": {"subtotal_basis": "total"}}}, format="json")
+        self.fx.settings.refresh_from_db()
+        self.assertEqual(self.fx.settings.per_cast_backs, {})
+        self.assertNotIn("per_cast_backs", self.owner.get("/api/store/settings").json())
+
+    def test_employee_api_permissions(self):
+        manager = client_for(self.manager, self.store)
+        self.assertEqual(manager.get(self.emp_url(self.cast1)).status_code, 200)       # 店長は見るだけ
+        self.assertEqual(self.put_emp(self.cast1, "10", client=manager).status_code, 403)
+        staff = client_for(self.fx.users["staff"], self.store)
+        self.assertEqual(staff.get(self.emp_url(self.cast1)).status_code, 403)
+        self.assertFalse(BackRule.objects.exists())
+
+    def test_employee_of_other_store_or_company_is_rejected(self):
+        from apps.core.testing import add_employee, make_store
+
+        sister = make_store("s9", company=self.fx.company)                             # 同じ会社の別の店舗だけに配属の人
+        sister_cast = add_employee(sister, "sister_cast")
+        self.assertEqual(self.owner.get(self.emp_url(sister_cast)).status_code, 403)
+        self.assertEqual(self.put_emp(sister_cast, "10").status_code, 403)
+        other = standard_fixture("s2", "c2")                                            # 別の会社の人
+        self.assertEqual(self.put_emp(other.employees["cast1"], "10").status_code, 404)
+        cross = client_for(self.fx.users["owner"], other.store)                          # 別の会社の店舗の ID を送る
+        self.assertEqual(self.put_emp(self.cast1, "10", client=cross).status_code, 403)
+        self.assertFalse(BackRule.objects.exists())

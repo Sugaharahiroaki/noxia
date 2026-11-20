@@ -39,7 +39,9 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
         model = StoreSettings
         # タブレットの画面・操作（tablet_menu・tablet_ops）は「権限」の API（/api/store/tablet）だけで変える。
         # ここで受け取ると、店舗管理者やタブレット自身が店舗設定の保存で自分の権限を変えられてしまうため
-        exclude = ["store", "created_at", "updated_at", "void_pin_hash", "void_pin_failed_count", "void_pin_locked_until", "tablet_menu", "tablet_ops"]
+        # キャストごとのバック（per_cast_backs）はバックの設定の権限（backs.rules.edit）で変えるので、店舗設定の保存では受け取らない
+        exclude = ["store", "created_at", "updated_at", "void_pin_hash", "void_pin_failed_count", "void_pin_locked_until", "tablet_menu", "tablet_ops",
+                   "per_cast_backs"]
 
     def get_void_pin_set(self, obj) -> bool:
         return bool(obj.void_pin_hash)

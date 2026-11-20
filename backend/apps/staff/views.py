@@ -236,7 +236,8 @@ class BackRuleViewSet(StoreScopedViewSet):
 class DesignationBacksView(APIView):
     """
     指名・同伴のバック（店舗共通）を種類ごとの簡単な形で読み書きする。中身は BackRule（designation_backs）。
-    読む: backs.rules.view。変える: backs.rules.edit（再認証）。キャスト個人別のルールには触らない。
+    読む: backs.rules.view。変える: backs.rules.edit。キャスト個人別のルールの % には触らない
+    （店舗共通なし・個人の%だけ（per_cast。呼びの「なし」）にした種類だけ、基準額・分け方・値引きの扱いを個人別のルールにそろえる）。
     """
 
     def get_permissions(self):
@@ -255,6 +256,39 @@ class DesignationBacksView(APIView):
         if changes:
             audit(request, "back_rule.designation_update", changes=changes)
         return Response(designation_backs.payload(request.store))
+
+
+class EmployeeDesignationBacksView(APIView):
+    """
+    従業員 1 人の「会計の%」のバック（呼びのある会計 など。キャスト個人別のルール）を読み書きする（従業員管理の画面）。
+    読む: backs.rules.view。変える: backs.rules.edit。この店舗に配属のある従業員だけ（別の会社・別の店舗だけの人は拒否）。
+    """
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_BACK_RULES_VIEW, write_caps=(CAP_BACK_RULES_EDIT,))]
+
+    def _employee(self, request, employee_id) -> Employee:
+        emp = Employee.objects.filter(id=employee_id, company=request.store.company).first()
+        if emp is None:
+            raise ApiError("not_found", "従業員が見つかりません。", status=404)
+        if not emp.assignments.filter(store=request.store).exists():
+            raise ApiError("forbidden", "この店舗に配属されていない従業員です。", status=403)
+        return emp
+
+    def get(self, request, employee_id):
+        from . import designation_backs
+
+        return Response(designation_backs.employee_payload(request.store, self._employee(request, employee_id)))
+
+    @transaction.atomic
+    def put(self, request, employee_id):
+        from . import designation_backs
+
+        emp = self._employee(request, employee_id)
+        changes = designation_backs.save_employee(request.store, request.user, emp, request.data.get("backs"))
+        if changes:
+            audit(request, "back_rule.employee_designation_update", target=emp, changes=changes)
+        return Response(designation_backs.employee_payload(request.store, emp))
 
 
 class BackEntriesView(APIView):

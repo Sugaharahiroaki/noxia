@@ -32,6 +32,7 @@ ACTION_LABELS: dict[str, str] = {
     "shift.clock_in": "出勤", "shift.clock_out": "退勤", "shift.break_start": "休憩の開始", "shift.break_end": "休憩の終了", "shift.correct": "勤怠の修正", "shift.create": "勤怠の追加",
     "payout.daily": "日払いのお渡し", "employee_payment.create": "支払いの記録", "pay_period.create": "支払期間の作成", "pay_period.close": "支払期間の締め",
     "back.adjust": "バックの調整", "back_rule.create": "バックルールの追加", "back_rule.update": "バックルールの変更", "back_rule.deactivate": "バックルールの停止", "back_rule.designation_update": "指名・同伴のバックの変更",
+    "back_rule.employee_designation_update": "キャストごとの指名・同伴のバックの変更",
     "wage.set": "時給の設定",
     "employee.create": "従業員の追加", "employee.update": "従業員の変更", "employee.assignment": "配属の変更", "employee.login_account": "ログインアカウントの設定",
     # マスタ・設定

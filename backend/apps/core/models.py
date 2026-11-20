@@ -197,6 +197,10 @@ class StoreSettings(TimestampedModel):
 
     # バック
     default_back_confirm_timing = models.CharField(max_length=20, choices=BackConfirmTiming.choices, default=BackConfirmTiming.CHECKOUT)
+    # 指名・同伴の「会計の%」を店舗共通にせず、キャストごとの%（従業員管理で入れる個人別のルール）で付ける種類と、その計算条件。
+    # {"yobi": {"subtotal_basis": "subtotal", "split_mode": "equal", "include_discount": true}}。空 = どの種類も店舗共通の設定のまま。
+    # 変えるのは「指名・同伴」のバックの API（/api/staff/designation-backs、backs.rules.edit）だけ（apps/staff/designation_backs.py）
+    per_cast_backs = models.JSONField("キャストごとに決めるバック", default=dict, blank=True)
 
     # 日払い（お渡し）
     # False の間は源泉所得税を計算・差し引きしない（源泉徴収明細も作らない）。変更は経営者のみ（tax.decide）
