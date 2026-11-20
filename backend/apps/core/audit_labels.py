@@ -15,7 +15,7 @@ ACTION_LABELS: dict[str, str] = {
     # 営業（伝票）
     "visit.open": "入店", "visit.add_course": "コースの追加", "visit.extend": "延長", "visit.change_unlimited": "無制限へ変更",
     "visit.guest_leave": "お客様の退店", "visit.tags": "タグの変更", "visit.move_table": "席移動", "visit.change_time": "開始時刻の訂正",
-    "visit.cancel": "伝票の取消",
+    "visit.remove_entry": "セットを外す", "visit.cancel": "伝票の取消",
     "line.add.batch": "注文の追加", "line.add.product": "商品の追加", "line.add.nomination": "本指名の追加", "line.add.jounai": "場内指名の追加", "line.add.yobi": "呼びの追加",
     "line.add.douhan": "同伴の追加", "line.add.discount": "値引きの追加", "line.cancel": "明細の取消", "line.cancel.batch": "明細の取消（まとめて）",
     "line.back_targets": "バック対象の変更",

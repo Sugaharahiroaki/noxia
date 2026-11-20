@@ -124,8 +124,10 @@ class BreakdownView(APIView):
         store = request.store
         lines = OrderLine.objects.filter(store=store, status="active", checkout__status="confirmed", checkout__business_date__gte=f, checkout__business_date__lte=t)
         by_type = {r["line_type"]: r for r in lines.values("line_type").annotate(s=Sum("amount"), n=Count("id"))}
+        # 件数: セットは枠の数（セット料金は 1 人 1 行なので同じセットの行は 1 件）＋延長・変更の明細の数
+        set_n = Count("course_entry", distinct=True, filter=Q(line_type="course_set")) + Count("id", filter=Q(line_type__in=["extension", "course_change"]))
         by_course = [{"course": r["course_entry__course_name"], "amount": str(r["s"]), "count": r["n"]}
-                     for r in lines.filter(line_type__in=["course_set", "extension", "course_change"]).values("course_entry__course_name").annotate(s=Sum("amount"), n=Count("id")).order_by("-s")]
+                     for r in lines.filter(line_type__in=["course_set", "extension", "course_change"]).values("course_entry__course_name").annotate(s=Sum("amount"), n=set_n).order_by("-s")]
         by_product = [{"product_id": r["product_id"], "name": r["name"], "amount": str(r["s"]), "quantity": str(r["q"])}
                       for r in lines.filter(line_type="product").values("product_id", "name").annotate(s=Sum("amount"), q=Sum("quantity")).order_by("-s")[:50]]
         # キャスト別: 担当伝票の会計額（重複なし）+ 指名・同伴件数 + 確定バック

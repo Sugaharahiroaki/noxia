@@ -18,6 +18,7 @@ urlpatterns = router.urls + [
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/extend-preview", views.ExtendPreviewView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/change-time", views.ChangeEntryTimeView.as_view()),
     path("visits/<int:visit_id>/course-entries/<int:entry_id>/extend-options", views.ExtendOptionsView.as_view()),
+    path("visits/<int:visit_id>/course-entries/<int:entry_id>/remove", views.RemoveCourseEntryView.as_view()),
     path("visits/<int:visit_id>/guests/<int:guest_id>/leave", views.GuestLeaveView.as_view()),
     path("visits/<int:visit_id>/tags", views.VisitTagsView.as_view()),
     path("visits/<int:visit_id>/lines", views.VisitLinesView.as_view()),

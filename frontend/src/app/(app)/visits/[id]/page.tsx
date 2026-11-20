@@ -28,10 +28,11 @@ const FEE_LABELS: Record<FeeKind, string> = { yobi: "呼び", douhan: "同伴", 
 const FEE_FIELD = { yobi: "yobi_fee", douhan: "douhan_fee", nomination: "nomination_fee", jounai: "jounai_fee" } as const;
 /** 店舗設定で使わないことにした種類は出さない（POS 設定「指名・同伴」） */
 const FEE_ENABLED = { yobi: "yobi_enabled", douhan: "douhan_enabled", nomination: "nomination_enabled", jounai: "jounai_enabled" } as const;
-const SET_TYPES = new Set(["course_set", "extension", "course_change"]);
+/** セットの時系列に出す明細（延長・無制限へ変更）。セット料金（course_set）は 1 人 1 行で「注文」に出し、取消 = セットカット */
+const TIMELINE_TYPES = new Set(["extension", "course_change"]);
 
 /**
- * 卓詳細。上段: 卓名・タグ・人数の増減 ／ 左: セットの時系列 ／ 右: 延長の候補 ／ 下端: 現在の金額と 注文・会計。
+ * 卓詳細。上段: 卓名・タグ・人数の増減 ／ 左: セットの時系列（枠）と注文 ／ 右: 延長の候補 ／ 下端: 現在の金額と 注文・会計。
  * 金額は API の quote をそのまま出す。残り時間は終了予定時刻から毎秒計算し直す（再表示・スリープ復帰でも戻る）。
  */
 export default function VisitDetailPage() {
@@ -49,6 +50,7 @@ export default function VisitDetailPage() {
   const [more, setMore] = useState(false);
   const [unlimited, setUnlimited] = useState<CourseEntry | null>(null);
   const [cancelTarget, setCancelTarget] = useState<OrderLine | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<CourseEntry | null>(null);
   const [fee, setFee] = useState<FeeKind | null>(null);
   const [discount, setDiscount] = useState(false);
   const [move, setMove] = useState(false);
@@ -147,7 +149,7 @@ export default function VisitDetailPage() {
 
   const isOpen = visit.status === "open";
   const activeLines = visit.lines.filter((l) => l.status === "active");
-  const otherLines = activeLines.filter((l) => !SET_TYPES.has(l.line_type));
+  const otherLines = activeLines.filter((l) => !TIMELINE_TYPES.has(l.line_type));
   const cancelledCount = visit.lines.length - activeLines.length;
   const total = visit.quote?.total ?? "0";
   const activeEntries = visit.course_entries.filter((e) => e.is_active);
@@ -265,27 +267,52 @@ export default function VisitDetailPage() {
                     )}
                   </div>
                   <div className="space-y-1">
-                    {rows.map((r, i) => (
-                      <div key={r.line.id} className="flex items-center gap-2 rounded-lg px-2" style={{ minHeight: 46, background: "var(--color-panel)", border: "1px solid var(--color-border)" }}>
-                        <span className="font-bold whitespace-nowrap" style={{ minWidth: 76 }}>
-                          {i + 1}
-                          <Tx>セット</Tx>目
-                        </span>
-                        <span className="num whitespace-nowrap">{r.from ? `${fmtTime(r.from)}〜${r.to ? fmtTime(r.to) : "無制限"}` : "—"}</span>
-                        <span className="text-sm whitespace-nowrap" style={{ color: "var(--color-muted)" }}>
-                          {r.minutes ? `${r.minutes}分` : r.line.line_type === "course_change" ? "変更" : ""}
-                        </span>
-                        <span className="num ml-auto whitespace-nowrap">
-                          {yen(r.line.unit_price)} × {Number(r.line.quantity)}
-                        </span>
-                        <span className="font-bold num whitespace-nowrap" style={{ minWidth: 76, textAlign: "right" }}>
-                          {yen(r.line.amount)}
-                        </span>
-                        <button className="btn btn-sm" style={{ padding: "0 0.6rem" }} disabled={r.line.checkout !== null} onClick={() => setCancelTarget(r.line)} aria-label={`${i + 1}セット目を取り消す`}>
-                          取消
-                        </button>
-                      </div>
-                    ))}
+                    {rows.map((r, i) => {
+                      const line = r.line;
+                      return (
+                        <div key={line ? line.id : "base"} className="flex items-center gap-2 rounded-lg px-2" style={{ minHeight: 46, background: "var(--color-panel)", border: "1px solid var(--color-border)" }}>
+                          <span className="font-bold whitespace-nowrap" style={{ minWidth: 76 }}>
+                            {i + 1}
+                            <Tx>セット</Tx>目
+                          </span>
+                          <span className="num whitespace-nowrap">{r.from ? `${fmtTime(r.from)}〜${r.to ? fmtTime(r.to) : "無制限"}` : "—"}</span>
+                          <span className="text-sm whitespace-nowrap" style={{ color: "var(--color-muted)" }}>
+                            {r.minutes ? `${r.minutes}分` : line?.line_type === "course_change" ? "変更" : ""}
+                          </span>
+                          {line ? (
+                            <>
+                              <span className="num ml-auto whitespace-nowrap">
+                                {yen(line.unit_price)} × {Number(line.quantity)}
+                              </span>
+                              <span className="font-bold num whitespace-nowrap" style={{ minWidth: 76, textAlign: "right" }}>
+                                {yen(line.amount)}
+                              </span>
+                              <button className="btn btn-sm" style={{ padding: "0 0.6rem" }} disabled={line.checkout !== null} onClick={() => setCancelTarget(line)} aria-label={`${i + 1}セット目を取り消す`}>
+                                取消
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {/* 1 セット目は枠（人数・時間）だけ。料金は 1 人 1 行で下の「注文」に入る（取消 = セットカット） */}
+                              <span className="text-sm ml-auto whitespace-nowrap" style={{ color: "var(--color-muted)" }}>
+                                <Tx>セット料金は下の注文に</Tx>
+                              </span>
+                              {activeEntries.length > 1 && (
+                                <button
+                                  className="btn btn-sm"
+                                  style={{ padding: "0 0.6rem" }}
+                                  disabled={visit.lines.some((l) => l.course_entry === e.id && l.status === "active" && l.checkout !== null)}
+                                  onClick={() => setRemoveTarget(e)}
+                                  aria-label={`${e.label ? `${e.label} ` : ""}${e.course_name}を外す`}
+                                >
+                                  外す
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -295,7 +322,7 @@ export default function VisitDetailPage() {
           <section className="card" aria-label="注文済み">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-lg font-bold">
-                <Tx>指名・同伴・注文</Tx> <span className="num">{otherLines.length}</span>件
+                <Tx>セット・指名・同伴・注文</Tx> <span className="num">{otherLines.length}</span>件
               </h2>
               <span className="text-sm" style={{ color: "var(--color-muted)" }}>
                 タップで取り消し{cancelledCount > 0 && ` ・ 取消済 ${cancelledCount}件`}
@@ -376,7 +403,8 @@ export default function VisitDetailPage() {
       {cancelTarget && (
         <ReasonModal
           title={`「${cancelTarget.name}${Number(cancelTarget.quantity) !== 1 ? ` ×${Number(cancelTarget.quantity)}` : ""}」${yen(cancelTarget.amount)} を取り消す`}
-          reasons={CANCEL_REASONS}
+          note={cancelTarget.line_type === "course_set" ? tx("セット料金だけを取り消します（セットカット）。人数・時間・延長はそのままです。") : undefined}
+          reasons={cancelTarget.line_type === "course_set" ? [tx("セットカット"), ...CANCEL_REASONS] : CANCEL_REASONS}
           confirmLabel="取り消す"
           onClose={() => setCancelTarget(null)}
           onSubmit={async (reason) => {
@@ -385,6 +413,25 @@ export default function VisitDetailPage() {
             setCancelTarget(null);
             reloadFloor();
             toast.show({ message: `「${cancelTarget.name}」を取り消しました`, tone: "info" });
+          }}
+        />
+      )}
+
+      {/* --- セットごと外す（途中合流などの入力ミス。人数からも外す） --- */}
+      {removeTarget && (
+        <ReasonModal
+          title={tx(`「${removeTarget.label ? `${removeTarget.label} ` : ""}${removeTarget.course_name}」${removeTarget.guest_count}名のセットを外す`)}
+          note={tx(`人数から ${removeTarget.guest_count}名 外し、このセットの料金・延長・チャージもまとめて取り消します（入力ミスのとき用）。料金だけなくすときは、外さずに下の注文の「セット」を取り消してください。`)}
+          reasons={CANCEL_REASONS}
+          confirmLabel="外す"
+          danger
+          onClose={() => setRemoveTarget(null)}
+          onSubmit={async (reason) => {
+            const v = await api<Visit>(`/api/visits/${visitId}/course-entries/${removeTarget.id}/remove`, { method: "POST", idempotencyKey: newIdempotencyKey(), body: { reason } });
+            visitQ.setData(v);
+            setRemoveTarget(null);
+            reloadFloor();
+            toast.show({ message: tx(`「${removeTarget.course_name}」${removeTarget.guest_count}名のセットを外しました`), tone: "info" });
           }}
         />
       )}
@@ -602,12 +649,15 @@ function PricingInfo({ st }: { st: StoreSettings }) {
   );
 }
 
-type SetRow = { line: OrderLine; from: string | null; to: string | null; minutes: number | null };
+/** line が null の行は 1 セット目の枠（人数・時間）。セット料金の明細は「注文」に出す */
+type SetRow = { line: OrderLine | null; from: string | null; to: string | null; minutes: number | null };
 
-/** セットの時系列（1 セット目 = 最初のセット、2 セット目以降 = 延長・変更）。時間帯は終了予定から延長ぶんをさかのぼって並べる */
+/**
+ * セットの時系列（1 セット目 = 最初のセットの枠、2 セット目以降 = 延長・変更）。時間帯は終了予定から延長ぶんをさかのぼって並べる。
+ * 1 セット目はセット料金の明細が無くても（セットカット済みでも）出す。
+ */
 function setRows(e: CourseEntry, activeLines: OrderLine[]): SetRow[] {
   const mine = activeLines.filter((l) => l.course_entry === e.id).sort((a, b) => a.id - b.id);
-  const base = mine.find((l) => l.line_type === "course_set");
   const exts = mine.filter((l) => l.line_type === "extension");
   const changes = mine.filter((l) => l.line_type === "course_change");
   const extMin = (l: OrderLine) => l.extension_minutes ?? e.extension_minutes ?? 0;
@@ -616,14 +666,14 @@ function setRows(e: CourseEntry, activeLines: OrderLine[]): SetRow[] {
   if (e.planned_end_at) {
     const total = exts.reduce((s, l) => s + extMin(l), 0);
     let cursor = new Date(e.planned_end_at).getTime() - total * 60000;
-    if (base) rows.push({ line: base, from: e.started_at, to: iso(cursor), minutes: Math.round((cursor - new Date(e.started_at).getTime()) / 60000) });
+    rows.push({ line: null, from: e.started_at, to: iso(cursor), minutes: Math.round((cursor - new Date(e.started_at).getTime()) / 60000) });
     for (const l of exts) {
       const next = cursor + extMin(l) * 60000;
       rows.push({ line: l, from: iso(cursor), to: iso(next), minutes: extMin(l) });
       cursor = next;
     }
   } else {
-    if (base) rows.push({ line: base, from: e.started_at, to: null, minutes: null });
+    rows.push({ line: null, from: e.started_at, to: null, minutes: null });
     for (const l of exts) rows.push({ line: l, from: null, to: null, minutes: extMin(l) });
   }
   for (const l of changes) rows.push({ line: l, from: null, to: null, minutes: null });

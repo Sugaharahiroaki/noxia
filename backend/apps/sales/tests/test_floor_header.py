@@ -157,8 +157,8 @@ class ChangeEntryTimeTests(Base):
         new_start = (timezone.now() - timedelta(minutes=30)).isoformat()
         # 分割会計でセットだけ会計済み（伝票は営業中のまま）→ そのセットは変更できない
         self.c.post(f"/api/visits/{v['id']}/lines/batch", {"items": [{"kind": "product", "product_id": self.fx.products["beer"].id}]}, format="json", **key())
-        set_line = [l for l in Visit.objects.get(id=v["id"]).lines.all() if l.line_type == "course_set"][0]
-        services.confirm_checkout(self.store, self.user, v["id"], {"line_ids": [set_line.id], "payments": [{"method": "cash", "amount": "5000", "tendered": "5000"}]})
+        set_ids = [l.id for l in Visit.objects.get(id=v["id"]).lines.all() if l.line_type == "course_set"]  # 1 人 1 行
+        services.confirm_checkout(self.store, self.user, v["id"], {"line_ids": set_ids, "payments": [{"method": "cash", "amount": "5000", "tendered": "5000"}]})
         r = self.c.post(self.url(v), {"started_at": new_start}, format="json", **key())
         self.assertEqual(r.status_code, 409)
         self.assertEqual(r.json()["error"]["code"], "entry_closed")

@@ -200,7 +200,7 @@ export type BackTarget = { employee: number; employee_name: string; share_type: 
 export type OrderLine = {
   id: number;
   visit: number;
-  line_type: "course_set" | "extension" | "course_change" | "nomination" | "jounai" | "yobi" | "douhan" | "product" | "discount";
+  line_type: "course_set" | "extension" | "course_change" | "nomination" | "jounai" | "yobi" | "douhan" | "product" | "discount" | "charge";
   line_type_label: string;
   course_entry: number | null;
   product: number | null;

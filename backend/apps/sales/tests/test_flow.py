@@ -85,9 +85,11 @@ class OpenVisitTests(FlowBase):
         planned = datetime.fromisoformat(a["planned_end_at"])
         self.assertEqual(planned - started, timedelta(minutes=60))
         self.assertEqual(a["employee_name"], "cast1")
+        # セット料金は 1 人 1 行（A 1 名 2,500、B 2 名 3,500 × 2 行）
         set_lines = [l for l in v["lines"] if l["line_type"] == "course_set"]
-        self.assertEqual(len(set_lines), 2)
-        self.assertEqual(sorted(Decimal(l["amount"]) for l in set_lines), [Decimal("2500"), Decimal("7000")])
+        self.assertEqual(len(set_lines), 3)
+        self.assertEqual(sorted(Decimal(l["amount"]) for l in set_lines), [Decimal("2500"), Decimal("3500"), Decimal("3500")])
+        self.assertEqual({Decimal(l["quantity"]) for l in set_lines}, {Decimal("1")})
 
     def test_per_group_pricing(self):
         self.fx.settings.price_basis = "per_group"

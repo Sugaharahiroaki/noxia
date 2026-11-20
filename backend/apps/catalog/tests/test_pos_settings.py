@@ -106,8 +106,8 @@ class MasterChangeDoesNotTouchExistingLinesTests(Base):
         line.refresh_from_db()
         back.refresh_from_db()
         self.assertEqual((line.name, line.unit_price, line.amount, line.tax_rate, back.amount, back.rule_snapshot["value"]), snap)
-        set_line = OrderLine.objects.get(visit_id=v["id"], line_type="course_set")
-        self.assertEqual((set_line.unit_price, set_line.amount), (Decimal(3500), Decimal(7000)))
+        set_lines = OrderLine.objects.filter(visit_id=v["id"], line_type="course_set")  # セット料金は 1 人 1 行
+        self.assertEqual([(l.unit_price, l.amount) for l in set_lines], [(Decimal(3500), Decimal(3500))] * 2)
         e = d["course_entries"][0]
         self.assertEqual(Decimal(e["course_price"]), Decimal(3500))
         self.assertEqual(d["table_name"], "VIP")  # 卓の名前は表示なので新しい名前になる

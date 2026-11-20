@@ -447,6 +447,20 @@ class ChangeEntryTimeView(APIView):
         return _visit_response(request, visit_id)
 
 
+class RemoveCourseEntryView(APIView):
+    """セットごと外す（入力ミス用。人数からも外す）。料金だけなくすセットカットは明細の取消。"""
+
+    def get_permissions(self):
+        return [StoreCaps(CAP_FLOOR)]
+
+    @idempotent
+    def post(self, request, visit_id, entry_id):
+        entry = services.remove_course_entry(request.store, request.user, visit_id, entry_id, request.data.get("reason", ""))
+        audit(request, "visit.remove_entry", target=entry.visit, changes={"entry_id": entry.id, "name": entry.course_name,
+                                                                         "guest_count": entry.guest_count, "reason": (request.data.get("reason") or "").strip()})
+        return _visit_response(request, visit_id)
+
+
 class VisitCancelView(APIView):
     def get_permissions(self):
         return [StoreCaps(CAP_FLOOR)]

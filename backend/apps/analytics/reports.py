@@ -14,7 +14,6 @@ from apps.core.money import D, ZERO, round_yen
 
 YOBI_TYPES = ("nomination", "jounai", "yobi")   # 「呼び売上」= 本指名・場内指名・呼びのある伝票
 DOUHAN_TYPES = ("douhan",)
-SET_TYPES = ("course_set", "extension")
 SPLIT_MODES = ("equal", "full_each")
 COUNT_MODES = ("per_slip", "per_set")
 
@@ -140,7 +139,8 @@ def slip_summary(visit, settings: dict) -> dict:
             for bt in l.back_targets.all():
                 designations.append((bt.employee_id, l.line_type))
                 names[bt.employee_id] = bt.employee.display_name
-    set_count = sum(1 for l in paid_lines if l.line_type in SET_TYPES)
+    # セット数 = セット（枠）の数 + 延長の数。セット料金は 1 人 1 行なので、同じセットの行は 1 つと数える
+    set_count = len({l.course_entry_id or f"line{l.id}" for l in paid_lines if l.line_type == "course_set"}) + sum(1 for l in paid_lines if l.line_type == "extension")
     cast = cast_sales_for_slip(subtotal, total, designations, set_count, settings["cast_sales_split_mode"], settings["nomination_count_mode"])
     closed_at = visit.closed_at
     minutes = int((closed_at - visit.opened_at).total_seconds() // 60) if closed_at else None

@@ -269,12 +269,14 @@ def _add_entry(visit: Visit, st, course, e: dict, user, default_started_at) -> C
     )
     amount = course_amount(st, price, guest_count)
     suffix = f"（{entry.label}）" if entry.label else ""
-    OrderLine.objects.create(
-        visit=visit, store=visit.store, line_type=LineType.COURSE_SET, course_entry=entry,
-        name=f"{course.name}{suffix}", unit_price=price,
-        quantity=Decimal(guest_count if st.price_basis == "per_person" else 1), amount=amount,
-        tax_rate=course.tax_rate, tax_included=st.prices_include_tax, category_kind="course", created_by=user,
-    )
+    # セット料金は「注文」の明細として 1 人 1 行（1 組あたりの料金なら 1 行）。セットカットはこの行の取消で、
+    # セットの枠（人数・時間）はそのまま残る。セットごと外すのは remove_course_entry
+    for _ in range(guest_count if st.price_basis == "per_person" else 1):
+        OrderLine.objects.create(
+            visit=visit, store=visit.store, line_type=LineType.COURSE_SET, course_entry=entry,
+            name=f"{course.name}{suffix}", unit_price=price, quantity=Decimal(1), amount=price,
+            tax_rate=course.tax_rate, tax_included=st.prices_include_tax, category_kind="course", created_by=user,
+        )
     # 入店時にセット構成と違う料金・時間にしたら、記録に残す
     changed = []
     if price != D(course.price):
@@ -284,10 +286,10 @@ def _add_entry(visit: Visit, st, course, e: dict, user, default_started_at) -> C
     note = ("入店時に変更: " + "・".join(changed)) if changed else ""
     CourseEvent.objects.create(course_entry=entry, kind="start", performed_by=user, to_planned_end_at=planned_end, amount=amount, note=note[:200])
     if charge:
-        # 1 人 1 行（チャージカットは 1 人分ずつ明細の取消）。セットの取消とは別に扱うので、セットの明細には紐づけない
+        # 1 人 1 行（チャージカットは 1 人分ずつ明細の取消）。セットごと外したときに一緒に取り消せるよう、セットに紐づける
         for _ in range(guest_count):
             OrderLine.objects.create(
-                visit=visit, store=visit.store, line_type=LineType.CHARGE, name=f"チャージ{suffix}",
+                visit=visit, store=visit.store, line_type=LineType.CHARGE, course_entry=entry, name=f"チャージ{suffix}",
                 unit_price=D(course.charge_amount), quantity=Decimal(1), amount=D(course.charge_amount),
                 tax_rate=course.tax_rate, tax_included=st.prices_include_tax, category_kind="charge", created_by=user,
             )
@@ -633,10 +635,7 @@ def cancel_line(store: Store, user, visit_id, line_id, reason: str) -> OrderLine
     reason = (reason or "").strip()
     if not reason:
         raise ApiError("validation_error", "取消理由を入力してください。")
-    if line.line_type == LineType.COURSE_SET:
-        others = visit.lines.filter(status=LineStatus.ACTIVE, course_entry=line.course_entry).exclude(id=line.id).exists()
-        if others:
-            raise ApiError("validation_error", "延長・変更の明細が残っています。先にそれらを取り消してください。")
+    # セット料金の明細の取消は「セットカット」（料金だけ。セットの枠・人数・時間は残す）。セットごと外すのは remove_course_entry
     now = timezone.now()
     line.status = LineStatus.CANCELLED
     line.cancel_reason = reason[:200]
@@ -655,13 +654,53 @@ def cancel_line(store: Store, user, visit_id, line_id, reason: str) -> OrderLine
             entry.save(update_fields=["planned_end_at", "extension_count"])
             CourseEvent.objects.create(course_entry=entry, kind="extend_cancel", performed_by=user, to_planned_end_at=entry.planned_end_at, note=reason)
     if line.line_type == LineType.COURSE_SET and line.course_entry_id:
-        entry = line.course_entry
-        entry.is_active = False
-        entry.ended_at = now
-        entry.save(update_fields=["is_active", "ended_at"])
-        visit.guest_count = sum(ce.guest_count for ce in visit.course_entries.filter(is_active=True)) or visit.guest_count
-        visit.save(update_fields=["guest_count"])
+        CourseEvent.objects.create(course_entry=line.course_entry, kind="set_cut", performed_by=user, amount=line.amount, note=reason[:200])
     return line
+
+
+@transaction.atomic
+def remove_course_entry(store: Store, user, visit_id, entry_id, reason: str) -> CourseEntry:
+    """
+    セットごと外す（途中合流などの入力ミス用）。セットの料金・延長・変更・チャージの明細を取り消し、人数からも外す。
+    料金だけなくす「セットカット」は、セット料金の明細の取消（cancel_line）で行う。
+    最後のセット（在席のお客様が残らない場合も）は外せない（入力ミスなら伝票の取消）。会計済みの明細があるセットも外せない。
+    """
+    from .models import VisitGuest
+
+    visit = _lock_visit(visit_id, store)
+    _require_open(visit)
+    entry = CourseEntry.objects.select_for_update().filter(id=entry_id, visit=visit).first()
+    if entry is None:
+        raise ApiError("not_found", "対象のセットが見つかりません。", status=404)
+    if not entry.is_active:
+        raise ApiError("entry_closed", "このセットは会計済み（または外し済み）です。", status=409)
+    reason = (reason or "").strip()
+    if not reason:
+        raise ApiError("validation_error", "外す理由を入力してください。")
+    others = list(visit.course_entries.filter(is_active=True).exclude(id=entry.id).prefetch_related("guests"))
+    if sum(entry_present_count(e) for e in others) < 1:
+        raise ApiError("last_entry", "最後のセットは外せません。入力ミスのときは伝票を取消してください。", status=409)
+    lines = list(visit.lines.select_for_update().filter(course_entry=entry, status=LineStatus.ACTIVE))
+    if any(l.checkout_id is not None for l in lines):
+        raise ApiError("line_checked_out", "このセットには会計済みの明細があるため外せません。", status=409)
+    _require_no_terminal_payment(visit, line_ids=[l.id for l in lines])
+    now = timezone.now()
+    for line in lines:
+        line.status = LineStatus.CANCELLED
+        line.cancel_reason = f"セットを外す: {reason}"[:200]
+        line.cancelled_by = user
+        line.cancelled_at = now
+        line.save()
+        backs_svc.reverse_entries_for_line(line, user=user, reason=f"セットを外す: {reason}")
+    entry.is_active = False
+    entry.ended_at = now
+    entry.save(update_fields=["is_active", "ended_at", "updated_at"])
+    CourseEvent.objects.create(course_entry=entry, kind="remove", performed_by=user, from_planned_end_at=entry.planned_end_at, note=reason[:200])
+    # このセットのお客様の行も外す（指名・同伴の明細は「注文」に残るので、要らなければそこで取り消す）
+    VisitGuest.objects.filter(visit=visit, course_entry=entry).delete()
+    visit.guest_count = sum(ce.guest_count for ce in others)
+    visit.save(update_fields=["guest_count", "updated_at"])
+    return entry
 
 
 @transaction.atomic
@@ -954,8 +993,12 @@ def confirm_checkout(store: Store, user, visit_id, data: dict, *, terminal_payme
     sc_rate = D(st.service_charge_rate) if st.service_charge_enabled else ZERO
     backs_svc.settle_entries_for_checkout(checkout, lines, user=user, discount_ratio=discount_ratio, service_charge_rate=sc_rate, has_receivable=has_receivable, now=now)
 
-    # コース終了（セット明細が会計されたら時間制アラームの対象から外す）
+    # コース終了（セット明細が会計されたら時間制アラームの対象から外す）。セット料金は 1 人 1 行なので、
+    # 分割会計で一部の人の分だけ会計したときは、そのセットの未会計のセット明細が残っていれば続ける
     entry_ids = {l.course_entry_id for l in lines if l.line_type == LineType.COURSE_SET and l.course_entry_id}
+    if entry_ids:
+        entry_ids -= set(visit.lines.filter(course_entry_id__in=entry_ids, line_type=LineType.COURSE_SET, status=LineStatus.ACTIVE,
+                                            checkout__isnull=True).values_list("course_entry_id", flat=True))
     if entry_ids:
         CourseEntry.objects.filter(id__in=entry_ids, is_active=True).update(is_active=False, ended_at=now)
         for e in CourseEntry.objects.filter(id__in=entry_ids):

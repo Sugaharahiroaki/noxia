@@ -49,8 +49,8 @@ class EntryTermsTests(APITestCase):
         e = CourseEntry.objects.get(visit_id=v["id"])
         self.assertEqual(e.course_price, Decimal("2000"))
         self.assertEqual(e.planned_end_at - e.started_at, timedelta(minutes=90))
-        line = OrderLine.objects.get(visit_id=v["id"], line_type="course_set")
-        self.assertEqual((line.unit_price, line.amount), (Decimal("2000"), Decimal("4000")))
+        lines = OrderLine.objects.filter(visit_id=v["id"], line_type="course_set")
+        self.assertEqual([(l.unit_price, l.amount) for l in lines], [(Decimal("2000"), Decimal("2000"))] * 2)  # 1 人 1 行
         self.assertEqual(Decimal(self.quote(v["id"])["total"]), Decimal("4000"))
         note = CourseEvent.objects.get(course_entry=e, kind="start").note
         self.assertIn("料金 2,500円 → 2,000円", note)
@@ -82,10 +82,12 @@ class EntryTermsTests(APITestCase):
         r = self.c.post(f"/api/visits/{v['id']}/lines/{charges[0].id}/cancel", {"reason": "チャージカット"}, format="json", **key())
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(Decimal(self.quote(v["id"])["total"]), Decimal("5500"))
-        # セットの明細はチャージが残っていても取り消せる（チャージはセットに紐づけない）
-        set_line = OrderLine.objects.get(visit_id=v["id"], line_type="course_set")
-        r = self.c.post(f"/api/visits/{v['id']}/lines/{set_line.id}/cancel", {"reason": "誤入力"}, format="json", **key())
+        # セット料金の明細はチャージが残っていても取り消せる（セットカット。セットの枠は残る）
+        set_line = OrderLine.objects.filter(visit_id=v["id"], line_type="course_set").first()
+        r = self.c.post(f"/api/visits/{v['id']}/lines/{set_line.id}/cancel", {"reason": "セットカット"}, format="json", **key())
         self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(Decimal(self.quote(v["id"])["total"]), Decimal("3000"))
+        self.assertTrue(CourseEntry.objects.get(visit_id=v["id"]).is_active)
 
     def test_charge_counts_as_set_for_service_charge_target(self):
         st = self.fx.store.settings

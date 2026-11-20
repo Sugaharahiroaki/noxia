@@ -9,7 +9,8 @@ import type { OrderLine, Visit } from "@/lib/types";
 import { useLoad } from "@/lib/useLoad";
 
 const FEE = new Set(["nomination", "jounai", "yobi", "douhan"]);
-const SET = new Set(["course_set", "extension", "course_change"]);
+// セット料金（1 人 1 行）・延長・変更・チャージ（1 人 1 行）
+const SET = new Set(["course_set", "extension", "course_change", "charge"]);
 
 /**
  * 明細。「同伴／指名」「セット」「注文」を横に並べる。小計・サービス料・税・合計は API の quote をそのまま出す（画面で計算しない）。

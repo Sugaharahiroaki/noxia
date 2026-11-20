@@ -53,7 +53,8 @@ class OpenVisitWithGuestsTests(Base):
                          [(1, "cast1", "nomination", "present"), (2, "cast2", "jounai", "present")])
         by_type = {l["line_type"]: l for l in v["lines"]}
         self.assertEqual(set(by_type), {"course_set", "nomination", "jounai"})
-        self.assertEqual(Decimal(by_type["course_set"]["amount"]), Decimal(7000))  # 3,500 × 2
+        # セット料金は 1 人 1 行（3,500 × 2 人 = 2 行）
+        self.assertEqual([Decimal(l["amount"]) for l in v["lines"] if l["line_type"] == "course_set"], [Decimal(3500)] * 2)
         self.assertEqual(Decimal(by_type["nomination"]["amount"]), Decimal(1000))
         self.assertEqual(Decimal(by_type["jounai"]["amount"]), Decimal(800))
         self.assertEqual(by_type["jounai"]["line_type_label"], "場内指名")
@@ -73,7 +74,7 @@ class OpenVisitWithGuestsTests(Base):
         r = self.post(self.body([{"employee_id": self.cast1.id}, {}]))
         self.assertEqual(r.status_code, 201, r.content)
         v = r.json()
-        self.assertEqual([l["line_type"] for l in v["lines"]], ["course_set"])
+        self.assertEqual([l["line_type"] for l in v["lines"]], ["course_set", "course_set"])
         self.assertEqual([g["employee_name"] for g in v["guests"]], ["cast1", None])
         self.assertEqual(Decimal(v["quote"]["total"]), Decimal(7000))
 
